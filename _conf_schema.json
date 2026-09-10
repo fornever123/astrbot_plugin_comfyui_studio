@@ -1,0 +1,203 @@
+{
+  "comfyui_url": {
+    "type": "string",
+    "description": "ComfyUI 服务地址",
+    "hint": "默认 http://127.0.0.1:8188",
+    "default": "http://127.0.0.1:8188"
+  },
+  "comfyui_root": {
+    "type": "string",
+    "description": "ComfyUI 根目录",
+    "hint": "例如 E:\\1aaaaaai\\ComfyUI-aki-v3\\ComfyUI；留空自动检测",
+    "default": ""
+  },
+  "source_workflow": {
+    "type": "string",
+    "description": "原始工作流位置",
+    "hint": "本插件不会覆盖原始文件，每次加载会从这里刷新默认工作流副本",
+    "default": "E:\\难工作流.json"
+  },
+  "workflow_dir": {
+    "type": "string",
+    "description": "可切换 API 工作流目录",
+    "hint": "留空使用插件内置 workflows 目录",
+    "default": ""
+  },
+  "workflow_txt2img": {
+    "type": "string",
+    "description": "文生图工作流文件名",
+    "default": "文生图.json"
+  },
+  "workflow_img2img": {
+    "type": "string",
+    "description": "图生图工作流文件名",
+    "default": "图生图.json"
+  },
+  "workflow_hires": {
+    "type": "string",
+    "description": "高清放大工作流文件名",
+    "default": "高清放大.json"
+  },
+  "model_name": {
+    "type": "string",
+    "description": "默认核心模型",
+    "default": "anima_baseV10.safetensors"
+  },
+  "lora_list": {
+    "type": "list",
+    "description": "默认启用的多个 LoRA，格式为 文件名:权重",
+    "default": []
+  },
+  "default_positive": {
+    "type": "text",
+    "description": "默认正面提示词，每次绘图自动放在用户提示词前",
+    "default": "masterpiece, best quality, score_7, safe"
+  },
+  "default_negative": {
+    "type": "text",
+    "description": "Anima 默认负面提示词",
+    "default": "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, lowres, bad anatomy, bad hands, extra fingers, missing fingers, watermark, signature, text"
+  },
+  "quality_prefix": {
+    "type": "text",
+    "description": "Anima 默认质量词条",
+    "default": "masterpiece, best quality, score_7, safe"
+  },
+  "artist_preset": {
+    "type": "string",
+    "description": "当前独立画师串预设名称",
+    "default": "画风001"
+  },
+  "ai_base_url": {
+    "type": "string",
+    "description": "OpenAI 兼容 AI 地址",
+    "default": "https://api.openai.com/v1"
+  },
+  "ai_api_key": {
+    "type": "string",
+    "description": "AI API Key",
+    "secret": true,
+    "default": ""
+  },
+  "ai_model": {
+    "type": "string",
+    "description": "AI 模型",
+    "default": "gpt-4o-mini"
+  },
+  "draw_reply_mode": {
+    "type": "string",
+    "description": "绘图完成后的回复方式",
+    "hint": "custom 使用自定义固定内容；astrbot 使用当前会话的 AstrBot 人格",
+    "default": "astrbot",
+    "options": ["custom", "astrbot"],
+    "enum": ["custom", "astrbot"]
+  },
+  "draw_delivery_mode": {
+    "type": "string",
+    "description": "绘图结果的发送方式",
+    "hint": "normal 普通消息；forward 使用群聊合并转发，图片会出现在聊天记录节点中",
+    "default": "normal",
+    "options": ["normal", "forward"],
+    "enum": ["normal", "forward"]
+  },
+  "draw_reply_timeout": {
+    "type": "float",
+    "description": "AstrBot 人格完成回复最长等待秒数",
+    "hint": "超时后立即发送图片和固定回复；设为 0 可关闭人格完成回复等待",
+    "default": 6
+  },
+  "plain_translate_enabled": {
+    "type": "bool",
+    "description": "自动翻译普通中文提示词",
+    "hint": "不调用 AI，使用普通翻译网站；预设和 LoRA 触发词会原样保留",
+    "default": true
+  },
+  "plain_translate_url": {
+    "type": "string",
+    "description": "普通翻译网站接口地址",
+    "hint": "默认使用 Google Translate 网页接口",
+    "default": "https://translate.googleapis.com/translate_a/single"
+  },
+  "draw_reply_custom": {
+    "type": "string",
+    "description": "绘图完成后的自定义回复",
+    "hint": "支持 {mode}、{count}、{prompt}",
+    "default": "{mode}完成，共 {count} 张。"
+  },
+  "draw_start_reply": {
+    "type": "string",
+    "description": "开始绘图时发送的自定义提示",
+    "hint": "支持 {mode} 和 {prompt}",
+    "default": "{mode}任务已提交，生成期间可以继续聊天，完成后会发送结果。"
+  },
+  "width": {
+    "type": "int",
+    "description": "默认宽度",
+    "default": 832
+  },
+  "height": {
+    "type": "int",
+    "description": "默认高度",
+    "default": 1216
+  },
+  "steps": {
+    "type": "int",
+    "description": "默认步数",
+    "default": 30
+  },
+  "sampler_name": {
+    "type": "string",
+    "description": "Anima 默认采样器",
+    "default": "er_sde"
+  },
+  "scheduler": {
+    "type": "string",
+    "description": "Anima 默认调度器",
+    "default": "normal"
+  },
+  "cfg": {
+    "type": "float",
+    "description": "Anima 默认 CFG",
+    "default": 5.0
+  },
+  "seed": {
+    "type": "int",
+    "description": "默认随机种子，-1 表示每次随机",
+    "default": -1
+  },
+  "denoise": {
+    "type": "float",
+    "description": "图生图重绘幅度",
+    "default": 0.6
+  },
+  "hires_scale": {
+    "type": "float",
+    "description": "高清放大倍率",
+    "default": 2.0
+  },
+  "hires_steps": {
+    "type": "int",
+    "description": "高清放大步数",
+    "default": 20
+  },
+  "hires_denoise": {
+    "type": "float",
+    "description": "高清放大重绘幅度",
+    "default": 0.25
+  },
+  "hires_upscale_model": {
+    "type": "string",
+    "description": "高清放大模型",
+    "default": "realesrganX4plusAnime_v1.pt"
+  },
+  "max_concurrent": {
+    "type": "int",
+    "description": "最大并发绘画任务数",
+    "default": 1
+  },
+  "anima_teacache": {
+    "type": "bool",
+    "description": "是否启用原工作流中的 Anima TeaCache",
+    "default": true
+  }
+}

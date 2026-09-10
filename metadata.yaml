@@ -1,0 +1,15 @@
+name: astrbot_plugin_comfyui_ai_studio
+display_name: ComfyUI AI 绘画台
+short_desc: 在 AstrBot 中使用本地 ComfyUI 进行文生图、图生图和高清放大。
+desc: |
+  ComfyUI 绘画台 v0.6.4。支持中文指令、多核心模型、多个 LoRA、提示词预设、AI 提示词优化、LLM 自然语言绘画、普通中文翻译以及 AstrBot WebUI 控制台。
+  鸣潮角色知识和 Anima 提示词工程师已拆分为独立插件，不占用本插件 WebUI。
+version: 0.6.4
+author: fornever123
+repo: https://github.com/fornever123/astrbot_plugin_comfyui_studio
+license: MIT
+astrbot_version: ">=4.27.0"
+tags:
+  - ComfyUI
+  - AI绘图
+  - LoRA

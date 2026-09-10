@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ComfyUI AI 绘画台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <p class="eyebrow">ASTRBOT 插件</p>
+        <h1>ComfyUI AI 绘画台</h1>
+    <p id="version" class="version">版本 v0.6.4</p>
+      </div>
+      <div class="top-actions">
+        <button id="themeToggle" class="secondary" type="button">切换明暗</button>
+        <div id="status" class="status pending">检查中</div>
+      </div>
+    </header>
+
+    <section class="band status-band">
+      <div>
+        <h2>运行状态</h2>
+        <div id="statusText" class="muted">正在读取 ComfyUI 状态</div>
+      </div>
+      <pre id="paths" class="paths">正在读取模型和工作流位置</pre>
+    </section>
+
+    <nav class="page-tabs" aria-label="控制台功能页面">
+      <button class="page-tab active" type="button" data-view-tab="lora">LoRA 组</button>
+      <button class="page-tab" type="button" data-view-tab="workflow">工作流组</button>
+      <button class="page-tab" type="button" data-view-tab="ai">AI 与提示词 / 回复来源</button>
+      <button class="page-tab" type="button" data-view-tab="presets">提示词预设</button>
+      <button class="page-tab" type="button" data-view-tab="artist">画师串预设</button>
+    </nav>
+
+    <div id="view-lora" class="view-panel" data-view-panel="lora">
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2>模型文件夹</h2><p>LoRA、核心模型和放大模型统一放在本组管理。</p></div>
+      </div>
+      <div class="folder-grid">
+        <article class="folder-card"><div><strong>LoRA</strong><code id="path-loras">未检测到</code></div><div class="folder-actions"><button data-open-folder="loras" class="primary">打开文件夹</button><label class="upload-button">上传 LoRA<input id="loraFile" type="file" accept=".safetensors,.pt,.ckpt,.bin"></label></div></article>
+        <article class="folder-card"><div><strong>核心模型</strong><code id="path-diffusion_models">未检测到</code></div><button data-open-folder="diffusion_models" class="secondary">打开文件夹</button></article>
+        <article class="folder-card"><div><strong>Checkpoint</strong><code id="path-checkpoints">未检测到</code></div><button data-open-folder="checkpoints" class="secondary">打开文件夹</button></article>
+        <article class="folder-card"><div><strong>放大模型</strong><code id="path-upscale_models">未检测到</code></div><button data-open-folder="upscale_models" class="secondary">打开文件夹</button></article>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2>核心模型</h2><p>选择后，绘画时会写入原始工作流副本的核心模型节点。</p></div>
+        <button id="saveModel" class="primary">保存模型</button>
+      </div>
+      <select id="model" class="select"></select>
+    </section>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2>LoRA 管理</h2><p>每个 LoRA 独立保存昵称、多个指令简称、分类、权重和 CivitAI 信息。</p></div>
+        <div class="button-row"><button id="loraDisplayToggle" class="secondary" type="button">简洁选择</button><button id="refreshLoras" class="secondary">刷新 CivitAI</button></div>
+      </div>
+      <div class="lora-download-row">
+        <label>CivitAI 模型链接<input id="civitaiDownloadUrl" class="input" type="url" placeholder="https://civitai.com/models/123456"></label>
+        <label class="check"><input id="civitaiDownloadOverwrite" type="checkbox">允许覆盖同名文件</label>
+        <button id="downloadLora" class="primary" type="button">下载到 LoRA 文件夹</button>
+      </div>
+      <div class="lora-category-toolbar">
+        <label>筛选分类<select id="loraCategoryFilter" class="select"><option value="全部">全部分类</option></select></label>
+        <label>新建自定义分类<input id="newLoraCategory" class="input" placeholder="例如：人物、风景"></label>
+        <button id="addLoraCategory" class="secondary">添加分类</button>
+        <button id="deleteLoraCategory" class="secondary">删除当前分类</button>
+      </div>
+      <div id="loraBulkActions" class="lora-bulk-actions" hidden>
+        <span class="muted">简洁选择模式：勾选后保存，当前分类之外的已启用 LoRA 会保留。</span>
+        <button id="loraSelectAll" class="secondary" type="button">全选当前分类</button>
+        <button id="loraClearAll" class="secondary" type="button">清空当前分类</button>
+        <button id="loraSaveSelection" class="primary" type="button">保存选择</button>
+      </div>
+      <div id="loras" class="lora-grid"></div>
+    </section>
+
+    </div>
+
+    <div id="view-workflow" class="view-panel" data-view-panel="workflow" hidden>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2>工作流</h2><p>工作流基于原始难工作流的修复副本，原文件不会被覆盖。</p></div>
+        <button id="saveWorkflows" class="primary">保存选择</button>
+      </div>
+      <div class="workflow-grid">
+        <label>文生图<select id="wf_txt2img" class="select"></select></label>
+        <label>图生图<select id="wf_img2img" class="select"></select></label>
+        <label>高清放大<select id="wf_hires" class="select"></select></label>
+      </div>
+      <div class="workflow-upload">
+        <label>上传 ComfyUI API 工作流 JSON<input id="workflowFile" class="input" type="file" accept=".json,application/json"></label>
+        <button id="uploadWorkflow" class="secondary" type="button">上传工作流</button>
+        <span class="muted">上传后可在上方三个工作流下拉框中选择</span>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2>绘画参数</h2><p>这些是默认参数，指令或 LLM 明确传入参数时会优先使用单次参数。</p></div>
+        <button id="saveDrawSettings" class="primary" type="button">保存绘画参数</button>
+      </div>
+      <div class="form-grid draw-settings-grid">
+        <label>宽度<input id="width" class="input" type="number" min="64" step="8"></label>
+        <label>高度<input id="height" class="input" type="number" min="64" step="8"></label>
+        <label>步数<input id="steps" class="input" type="number" min="1" max="200" step="1"></label>
+        <label>种子<input id="seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
+        <label>CFG<input id="cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+        <label>采样器<input id="sampler_name" class="input" type="text"></label>
+        <label>调度器<input id="scheduler" class="input" type="text"></label>
+        <label>图生图重绘幅度<input id="denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+        <label>高清放大倍率<input id="hires_scale" class="input" type="number" min="1" max="8" step="0.1"></label>
+        <label>高清放大步数<input id="hires_steps" class="input" type="number" min="1" max="200" step="1"></label>
+        <label>高清放大重绘幅度<input id="hires_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+        <label>高清放大模型<input id="hires_upscale_model" class="input" type="text" placeholder="例如：realesrganX4plusAnime_v1.pt"></label>
+      </div>
+    </section>
+
+    </div>
+
+    <div id="view-ai" class="view-panel" data-view-panel="ai" hidden>
+
+    <section class="band">
+      <div class="section-head"><div><h2>AI 服务与提示词</h2><p>填写兼容 OpenAI 的服务地址和 API Key，先获取模型并测试连接，成功后再保存。</p></div><button id="saveAi" class="primary">保存设置</button></div>
+      <div class="form-grid">
+        <label>服务地址<input id="ai_base_url" class="input" type="url"></label>
+        <label>模型<select id="ai_model" class="select"><option value="">请先获取模型列表</option></select></label>
+        <label>API Key<input id="ai_api_key" class="input" type="password" placeholder="留空表示沿用已保存密钥"></label>
+        <div class="ai-actions wide"><button id="loadAiModels" class="secondary" type="button">获取模型列表</button><button id="testAiConnection" class="secondary" type="button">测试连接</button><span id="aiConnectionStatus" class="muted">尚未测试</span></div>
+        <label class="check"><input id="plain_translate_enabled" type="checkbox">非 AI 中文自动翻译</label>
+        <label>普通翻译网站地址<input id="plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
+        <label class="wide">默认正面提示词<textarea id="default_positive" class="textarea" placeholder="每次绘图都会放在用户提示词前面；留空则使用旧版质量词设置"></textarea></label>
+        <label class="wide">默认负面提示词<textarea id="default_negative" class="textarea"></textarea></label>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="section-head"><div><h2>回复设置</h2><p>绘图会在后台执行，完成后按这里的选择发送文字和图片。AstrBot 回复会使用当前会话人格。</p></div><button id="saveReply" class="primary">保存回复设置</button></div>
+      <div class="form-grid">
+        <label>绘图完成后的回复方式<select id="draw_reply_mode" class="select"><option value="astrbot">AstrBot 当前人格回复</option><option value="custom">自定义固定内容</option></select></label>
+        <label>绘图结果发送方式<select id="draw_delivery_mode" class="select"><option value="normal">普通消息</option><option value="forward">群聊合并转发</option></select></label>
+        <label>人格回复最长等待秒数<input id="draw_reply_timeout" class="input" type="number" min="0" max="60" step="0.5"></label>
+        <label class="wide">开始绘图提示词<textarea id="draw_start_reply" class="textarea" placeholder="支持 {mode} 和 {prompt}"></textarea></label>
+        <label id="drawReplyCustomLabel" class="wide">自定义完成回复<textarea id="draw_reply_custom" class="textarea" placeholder="例如：{mode}完成，共 {count} 张。"></textarea></label>
+      </div>
+    </section>
+
+    </div>
+
+    <div id="view-presets" class="view-panel" data-view-panel="presets" hidden>
+
+    <section class="band">
+      <div class="section-head"><div><h2>提示词预设</h2><p>可以新增、编辑或删除提示词预设。</p></div></div>
+      <div class="preset-add"><input id="presetName" class="input" placeholder="名称"><input id="presetContent" class="input" placeholder="标签或中文描述"><button id="addPreset" class="primary">添加预设</button><button id="cancelPreset" class="secondary" hidden>取消编辑</button></div>
+      <div id="presets" class="preset-list"></div>
+    </section>
+
+    </div>
+
+    <div id="view-artist" class="view-panel" data-view-panel="artist" hidden>
+
+    <section class="band">
+      <div class="section-head"><div><h2>画师串预设（独立）</h2><p>画师串不会和普通提示词预设混用，会在绘画提示词前原样拼接。默认预设为“画风001”。</p></div></div>
+      <div class="preset-add">
+        <label>当前画师串<select id="artistPresetActive" class="select"></select></label>
+        <button id="activateArtistPreset" class="primary">启用当前画师串</button>
+        <button id="disableArtistPreset" class="secondary">关闭画师串</button>
+      </div>
+      <div class="preset-add"><input id="artistPresetName" class="input" placeholder="名称，例如：画风002"><input id="artistPresetContent" class="input" placeholder="画师 tags，例如：@artist_a, @artist_b,"><button id="addArtistPreset" class="primary">添加画师串</button><button id="cancelArtistPreset" class="secondary" hidden>取消编辑</button></div>
+      <div id="artistPresets" class="preset-list"></div>
+    </section>
+
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+  </main>
+  <script src="/api/plugin/page/bridge-sdk.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

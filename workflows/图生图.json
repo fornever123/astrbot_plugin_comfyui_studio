@@ -1,0 +1,1164 @@
+{
+  "97": {
+    "inputs": {
+      "prompt": "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, lowres, censor, bad anatomy, closed eyes, upskirt, miniskirt, blunt bangs, "
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "-prompt"
+    }
+  },
+  "588": {
+    "inputs": {
+      "base_ctx": [
+        "1339:1345",
+        0
+      ],
+      "model": [
+        "1071:1075",
+        0
+      ],
+      "clip": [
+        "1071:1073",
+        0
+      ],
+      "vae": [
+        "1071:1074",
+        0
+      ],
+      "positive": [
+        "1071:1063",
+        0
+      ],
+      "negative": [
+        "1071:1062",
+        0
+      ]
+    },
+    "class_type": "Context Big (rgthree)",
+    "_meta": {
+      "title": "Base Context"
+    }
+  },
+  "592": {
+    "inputs": {
+      "image": "0.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "CN image"
+    }
+  },
+  "909": {
+    "inputs": {
+      "upscale_method": "area",
+      "scale_by": [
+        "915:930",
+        0
+      ],
+      "image": [
+        "912",
+        7
+      ]
+    },
+    "class_type": "ImageScaleBy",
+    "_meta": {
+      "title": "缩放图像（比例）"
+    }
+  },
+  "912": {
+    "inputs": {
+      "base_ctx": [
+        "513:504",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context"
+    }
+  },
+  "1049": {
+    "inputs": {
+      "filename_prefix": "astrbot/img2img",
+      "images": [
+        "1413",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "1054": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": false,
+        "lora": "Anima\\anima-turbo-lora-v0.1.safetensors",
+        "strength": 1.0
+      },
+      "lora_2": {
+        "on": false,
+        "lora": "",
+        "strength": 1.0
+      },
+      "lora_3": {
+        "on": false,
+        "lora": "Anima\\人物\\Yuri_Serafina.safetensors",
+        "strength": 0.8
+      },
+      "lora_4": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_5": {
+        "on": false,
+        "lora": "Anima\\画风\\chen-bin_v4.0.safetensors",
+        "strength": 0.5
+      },
+      "lora_6": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_7": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_8": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_9": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_10": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_11": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_12": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_13": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_14": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_15": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_16": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_17": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_18": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_19": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_20": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_21": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_22": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_23": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_24": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_25": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_26": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_27": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_28": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_29": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "lora_30": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.4
+      },
+      "model": [
+        "1071:1076",
+        0
+      ],
+      "clip": [
+        "1071:1073",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "原工作流多 LoRA（兼容修复）"
+    },
+    "class_type": "Power Lora Loader (rgthree)"
+  },
+  "1088": {
+    "inputs": {
+      "image": "0.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
+  "1341": {
+    "inputs": {
+      "vae": [
+        "1071:1074",
+        0
+      ],
+      "images": [
+        "1088",
+        0
+      ],
+      "mask": [
+        "1088",
+        1
+      ]
+    },
+    "class_type": "Context Big (rgthree)",
+    "_meta": {
+      "title": "Context Big (rgthree)"
+    }
+  },
+  "1346": {
+    "inputs": {
+      "String": ""
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "词条临时存放"
+    }
+  },
+  "1347": {
+    "inputs": {
+      "String": "(masterpiece, best quality, amazing quality, very aesthetic, extremely detailed, very detailed, absurdres, newest, highres, score_9, score_8, year 2024, newest,),"
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "Anima首选质量词条"
+    }
+  },
+  "1348": {
+    "inputs": {
+      "String": "worst quality, low quality, deviantart, ye-pop, blurry, jpeg artifacts, sepia, shiny skin, ribs, dark-skinned male, interracial, "
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "负面"
+    }
+  },
+  "1350": {
+    "inputs": {
+      "String": ""
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "画师串1"
+    }
+  },
+  "1351": {
+    "inputs": {
+      "String": ""
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "画师串2"
+    }
+  },
+  "1356": {
+    "inputs": {
+      "String": ""
+    },
+    "class_type": "String",
+    "_meta": {
+      "title": "正面词条"
+    }
+  },
+  "1381": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": false,
+        "lora": "Anima\\人物\\Yuri_Serafina.safetensors",
+        "strength": 0.7
+      },
+      "lora_2": {
+        "on": false,
+        "lora": "Anima\\人物\\ds_whalemaid.safetensors",
+        "strength": 1
+      },
+      "lora_3": {
+        "on": false,
+        "lora": "Anima\\人物\\anima_moria_luluka_v1.1.safetensors",
+        "strength": 0.8
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1071:1076",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "lora 1 人物"
+    }
+  },
+  "1382": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": false,
+        "lora": "Anima\\画风\\gpt-image-2_anima-base1_v1.safetensors",
+        "strength": 0.25
+      },
+      "lora_2": {
+        "on": false,
+        "lora": "Anima\\画风\\chen-bin_v4.0.safetensors",
+        "strength": 0.8500000000000003
+      },
+      "lora_3": {
+        "on": false,
+        "lora": "Anima\\画风\\firedotinc_old-dataset_anima-p3_v5.5.safetensors",
+        "strength": 0.65
+      },
+      "lora_4": {
+        "on": false,
+        "lora": "Anima\\画风\\futaba_v1_step1800.safetensors",
+        "strength": 1
+      },
+      "lora_5": {
+        "on": false,
+        "lora": "Anima\\画风\\shiratama_2a_anima_lokr-000019.safetensors",
+        "strength": 0.9500000000000003
+      },
+      "lora_6": {
+        "on": false,
+        "lora": "Anima\\画风\\yzs_anima_v0.3.safetensors",
+        "strength": 1
+      },
+      "lora_7": {
+        "on": false,
+        "lora": "Anima\\画风\\nyalia2_anima3.safetensors",
+        "strength": 1
+      },
+      "lora_8": {
+        "on": false,
+        "lora": "Anima\\画风\\FemPOVAnima.safetensors",
+        "strength": 1
+      },
+      "lora_9": {
+        "on": false,
+        "lora": "Anima\\动作\\female ejaculation_anima_V1.0.safetensors",
+        "strength": 0.49999999999999967
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1384",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "lora 2-2 动漫系画风"
+    }
+  },
+  "1383": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": false,
+        "lora": "Anima\\画风\\Scenery_enchancer-Anima-P3.safetensors",
+        "strength": 1
+      },
+      "lora_2": {
+        "on": false,
+        "lora": "Anima\\画风\\anima-base-1-photo-background-v4.safetensors",
+        "strength": 1
+      },
+      "lora_3": {
+        "on": false,
+        "lora": "画风\\bakaE79AAEE882A4.Md2S.safetensors",
+        "strength": 0.4499999999999996
+      },
+      "lora_4": {
+        "on": false,
+        "lora": "画风\\bakav3-000012.safetensors",
+        "strength": 0.6999999999999997
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1382",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "lora 2-3 真实系画风"
+    }
+  },
+  "1384": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": false,
+        "lora": "Anima\\anima_context_detailer_base10.safetensors",
+        "strength": 0.34999999999999987
+      },
+      "lora_2": {
+        "on": false,
+        "lora": "画风\\anima-highres-aesthetic-boost.safetensors",
+        "strength": 0.2999999999999999
+      },
+      "lora_3": {
+        "on": false,
+        "lora": "画风\\Anima_colorfix_v1_by_Volnovik.safetensors",
+        "strength": 0.29999999999999993
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "1381",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "lora 2-1 画风质量"
+    }
+  },
+  "1410": {
+    "inputs": {
+      "rgthree_comparer": {
+        "images": [
+          {
+            "name": "A",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_llpzm_00021_.png&type=temp&subfolder=&rand=0.821339013463165"
+          },
+          {
+            "name": "B",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_llpzm_00022_.png&type=temp&subfolder=&rand=0.18181962400834706"
+          }
+        ]
+      },
+      "image_a": [
+        "592",
+        0
+      ],
+      "image_b": [
+        "1088",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "对比CN input和图像input"
+    }
+  },
+  "1411": {
+    "inputs": {
+      "rgthree_comparer": {
+        "images": [
+          {
+            "name": "A",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_zdxit_00002_.png&type=temp&subfolder=&rand=0.3169944126570442"
+          }
+        ]
+      },
+      "image_a": [
+        "1088",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "Image Comparer (rgthree)"
+    }
+  },
+  "1413": {
+    "inputs": {
+      "select": 1,
+      "sel_mode": false,
+      "input1": [
+        "astrbot_txt2img_decode",
+        0
+      ],
+      "input2": [
+        "915:281",
+        0
+      ]
+    },
+    "class_type": "ImpactSwitch",
+    "_meta": {
+      "title": "Switch (Any)"
+    }
+  },
+  "1414": {
+    "inputs": {
+      "images": [
+        "1413",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "放大后图像"
+    }
+  },
+  "1415": {
+    "inputs": {
+      "rgthree_comparer": {
+        "images": [
+          {
+            "name": "A",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_eldml_00001_.png&type=temp&subfolder=&rand=0.23635587108894085"
+          },
+          {
+            "name": "B",
+            "selected": true,
+            "url": "/api/view?filename=rgthree.compare._temp_eldml_00002_.png&type=temp&subfolder=&rand=0.6174677559070602"
+          }
+        ]
+      },
+      "image_a": [
+        "909",
+        0
+      ],
+      "image_b": [
+        "1413",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "Image Comparer (rgthree)"
+    }
+  },
+  "1339:1191": {
+    "inputs": {
+      "grow_mask_by": 22,
+      "pixels": [
+        "1339:1192",
+        7
+      ],
+      "vae": [
+        "1339:1192",
+        3
+      ],
+      "mask": [
+        "1339:1192",
+        21
+      ]
+    },
+    "class_type": "VAEEncodeForInpaint",
+    "_meta": {
+      "title": "①VAE编码（局部重绘）"
+    }
+  },
+  "1339:123": {
+    "inputs": {
+      "aspect_ratio": "1:1 (Square)",
+      "megapixels": 0.8,
+      "multiple": 8
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率选择器"
+    }
+  },
+  "1339:1190": {
+    "inputs": {
+      "pixels": [
+        "1339:1192",
+        7
+      ],
+      "vae": [
+        "1339:1192",
+        3
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "②VAE编码（图生图）"
+    }
+  },
+  "1339:1193": {
+    "inputs": {
+      "width": [
+        "1339:123",
+        0
+      ],
+      "height": [
+        "1339:123",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "③空Latent图像"
+    }
+  },
+  "1339:1196": {
+    "inputs": {
+      "width": 759,
+      "height": 759,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "④空Latent图像"
+    }
+  },
+  "1339:1342": {
+    "inputs": {
+      "images": [
+        "592",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (rgthree)"
+    }
+  },
+  "1339:1192": {
+    "inputs": {
+      "base_ctx": [
+        "1341",
+        0
+      ]
+    },
+    "class_type": "Context Big (rgthree)",
+    "_meta": {
+      "title": "Context Big (rgthree)"
+    }
+  },
+  "1339:1322": {
+    "inputs": {
+      "select": 2,
+      "sel_mode": false,
+      "input1": [
+        "1339:1191",
+        0
+      ],
+      "input2": [
+        "1339:1190",
+        0
+      ],
+      "input3": [
+        "1339:1193",
+        0
+      ],
+      "input4": [
+        "1339:1196",
+        0
+      ]
+    },
+    "class_type": "ImpactSwitch",
+    "_meta": {
+      "title": "Switch (Any)"
+    }
+  },
+  "1339:1345": {
+    "inputs": {
+      "base_ctx": [
+        "1339:1192",
+        0
+      ],
+      "latent": [
+        "1339:1322",
+        0
+      ]
+    },
+    "class_type": "Context Big (rgthree)",
+    "_meta": {
+      "title": "Context Big (rgthree)"
+    }
+  },
+  "513:504": {
+    "inputs": {
+      "base_ctx": [
+        "513:519",
+        0
+      ],
+      "model": [
+        "513:591",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (rgthree)"
+    }
+  },
+  "513:519": {
+    "inputs": {
+      "base_ctx": [
+        "588",
+        0
+      ]
+    },
+    "class_type": "Context Big (rgthree)",
+    "_meta": {
+      "title": "Context Big (rgthree)"
+    }
+  },
+  "513:591": {
+    "inputs": {
+      "boolean": false,
+      "on_true": [
+        "513:1039",
+        0
+      ],
+      "on_false": [
+        "513:590",
+        0
+      ]
+    },
+    "class_type": "Switch any [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch any"
+    }
+  },
+  "513:590": {
+    "inputs": {
+      "boolean": false,
+      "on_true": [
+        "513:1038",
+        0
+      ],
+      "on_false": [
+        "513:519",
+        1
+      ]
+    },
+    "class_type": "Switch any [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch any"
+    }
+  },
+  "513:1038": {
+    "inputs": {
+      "lllite_name": "Anima-LLLite\\anima-lllite-any-test-like-1-step2000.safetensors",
+      "strength": 0.68,
+      "start_percent": 0,
+      "end_percent": 1,
+      "preserve_wrapper": true,
+      "model": [
+        "513:519",
+        1
+      ],
+      "image": [
+        "1339:1342",
+        7
+      ]
+    },
+    "class_type": "AnimaLLLiteApply_sdscripts",
+    "_meta": {
+      "title": "Apply Anima ControlNet-LLLite (sd-scripts)"
+    }
+  },
+  "513:1039": {
+    "inputs": {
+      "lllite_name": "Anima-LLLite\\anima-lllite-any-test-like-1-step2000.safetensors",
+      "strength": 1,
+      "start_percent": 0,
+      "end_percent": 1,
+      "preserve_wrapper": true,
+      "model": [
+        "513:590",
+        0
+      ],
+      "image": [
+        "513:519",
+        7
+      ],
+      "mask": [
+        "513:519",
+        21
+      ]
+    },
+    "class_type": "AnimaLLLiteApply_sdscripts",
+    "_meta": {
+      "title": "Apply Anima ControlNet-LLLite (sd-scripts)"
+    }
+  },
+  "915:280": {
+    "inputs": {
+      "base_ctx": [
+        "912",
+        0
+      ]
+    },
+    "class_type": "Context (rgthree)",
+    "_meta": {
+      "title": "Context (rgthree)"
+    }
+  },
+  "915:281": {
+    "inputs": {
+      "upscale_model": [
+        "915:279",
+        0
+      ],
+      "image": [
+        "915:280",
+        7
+      ]
+    },
+    "class_type": "ImageUpscaleWithModel",
+    "_meta": {
+      "title": "使用模型放大图像"
+    }
+  },
+  "915:930": {
+    "inputs": {
+      "Number": "2"
+    },
+    "class_type": "Float",
+    "_meta": {
+      "title": "Float"
+    }
+  },
+  "915:279": {
+    "inputs": {
+      "model_name": "realesrganX4plusAnime_v1.pt"
+    },
+    "class_type": "UpscaleModelLoader",
+    "_meta": {
+      "title": "加载放大模型"
+    }
+  },
+  "915:282": {
+    "inputs": {
+      "upscale_by": [
+        "915:930",
+        0
+      ],
+      "seed": 662106496409059,
+      "steps": 20,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "linear_quadratic",
+      "denoise": 0.20000000000000004,
+      "mode_type": "Linear",
+      "tile_width": 512,
+      "tile_height": 512,
+      "mask_blur": 8,
+      "tile_padding": 32,
+      "seam_fix_mode": "None",
+      "seam_fix_denoise": 1,
+      "seam_fix_width": 64,
+      "seam_fix_mask_blur": 8,
+      "seam_fix_padding": 16,
+      "force_uniform_tiles": true,
+      "tiled_decode": false,
+      "batch_size": 1,
+      "image": [
+        "915:280",
+        7
+      ],
+      "model": [
+        "915:280",
+        1
+      ],
+      "positive": [
+        "915:280",
+        4
+      ],
+      "negative": [
+        "915:280",
+        5
+      ],
+      "vae": [
+        "915:280",
+        3
+      ],
+      "upscale_model": [
+        "915:279",
+        0
+      ]
+    },
+    "class_type": "UltimateSDUpscale",
+    "_meta": {
+      "title": "Ultimate SD Upscale"
+    }
+  },
+  "1071:1072": {
+    "inputs": {
+      "threshold": 0.15,
+      "teacache_version": "v2 (Standard Precise)",
+      "adaptive_mode": true,
+      "early_steps_factor": 0.4,
+      "late_steps_factor": 1.8,
+      "start_percent": 0.3,
+      "end_percent": 1,
+      "cache_device": "cuda",
+      "model": [
+        "1071:1077",
+        0
+      ]
+    },
+    "class_type": "AnimaTeaCache",
+    "_meta": {
+      "title": "Anima TeaCache (BSS)"
+    }
+  },
+  "1071:1074": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "1071:1077": {
+    "inputs": {
+      "model_name": "anima_baseV10.safetensors",
+      "sage_attention": "disabled",
+      "torch_compile": false
+    },
+    "class_type": "AnimaBoosterLoader",
+    "_meta": {
+      "title": "Anima Booster Loader (BSS)"
+    }
+  },
+  "1071:1073": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "qwen_image",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "1071:1062": {
+    "inputs": {
+      "text": [
+        "97",
+        0
+      ],
+      "clip": [
+        "1071:1080",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "-"
+    }
+  },
+  "1071:1063": {
+    "inputs": {
+      "text": [
+        "1356",
+        0
+      ],
+      "clip": [
+        "1071:1080",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "+"
+    }
+  },
+  "1071:1076": {
+    "inputs": {
+      "threshold": 0.15,
+      "teacache_version": "v2 (Standard Precise)",
+      "adaptive_mode": true,
+      "early_steps_factor": 0.4,
+      "late_steps_factor": 1.8,
+      "start_percent": 0,
+      "end_percent": 1,
+      "cache_device": "cuda",
+      "model": [
+        "1071:1077",
+        0
+      ]
+    },
+    "class_type": "AnimaTeaCache",
+    "_meta": {
+      "title": "Anima TeaCache (BSS)"
+    }
+  },
+  "1071:1080": {
+    "inputs": {
+      "boolean": false,
+      "on_true": [
+        "1054",
+        1
+      ],
+      "on_false": [
+        "1071:1073",
+        0
+      ]
+    },
+    "class_type": "Switch any [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch any"
+    }
+  },
+  "1071:1081": {
+    "inputs": {
+      "boolean": false,
+      "on_true": [
+        "1054",
+        0
+      ],
+      "on_false": [
+        "1383",
+        0
+      ]
+    },
+    "class_type": "Switch any [Crystools]",
+    "_meta": {
+      "title": "🪛 Switch any"
+    }
+  },
+  "1071:1075": {
+    "inputs": {
+      "sage_attention": "disabled",
+      "allow_compile": false,
+      "model": [
+        "1071:1081",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "astrbot_txt2img_sampler": {
+    "inputs": {
+      "model": [
+        "1071:1075",
+        0
+      ],
+      "positive": [
+        "1071:1063",
+        0
+      ],
+      "negative": [
+        "1071:1062",
+        0
+      ],
+      "latent_image": [
+        "1339:1322",
+        0
+      ],
+      "seed": 662106496409059,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "er_sde",
+      "scheduler": "normal",
+      "denoise": 0.6
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "AstrBot 标准采样"
+    }
+  },
+  "astrbot_txt2img_decode": {
+    "inputs": {
+      "samples": [
+        "astrbot_txt2img_sampler",
+        0
+      ],
+      "vae": [
+        "1071:1074",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "AstrBot 标准解码"
+    }
+  }
+}
