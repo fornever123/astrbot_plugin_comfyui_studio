@@ -41,7 +41,7 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v0.6.4" in page
+    assert "版本 v0.6.8" in page
 
 
 def test_anima_and_character_features_are_outside_comfyui_plugin() -> None:
@@ -90,6 +90,8 @@ def test_console_exposes_reply_and_lora_management() -> None:
     assert 'id="default_positive"' in page
     assert 'id="civitaiDownloadUrl"' in page
     assert 'id="civitaiDownloadOverwrite"' in page
+    assert 'id="loraDownloadProgress"' in page
+    assert 'id="loraDownloadBar"' in page
     for view in ("workflow", "ai", "presets", "artist"):
         assert f'data-view-tab="{view}"' in page
         assert f'data-view-panel="{view}"' in page
@@ -102,6 +104,7 @@ def test_console_exposes_reply_and_lora_management() -> None:
     assert 'data-lora-action="add-command-alias"' in app
     assert 'command_aliases:' in app
     assert 'post(`${API}/download_lora`' in app
+    assert 'post(`${API}/download_lora_progress`' in app
     assert "自定义显示图片（每行一个链接）" not in app
     assert "data-civitai-images-file" not in app
     assert "AI 翻译" not in page
@@ -117,6 +120,17 @@ def test_console_exposes_reply_and_lora_management() -> None:
     assert 'id="seed"' in page
     assert "initLoraMode" in app
     assert "sourcePathElement" in app
+
+
+def test_help_image_and_download_order_are_available() -> None:
+    source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    requirements = (PLUGIN_DIR / "requirements.txt").read_text(encoding="utf-8")
+    assert "def _help_image_path(self)" in source
+    assert "Image.fromFileSystem(str(image_path))" in source
+    assert "def _save_lora_download_order" in source
+    assert "lora_download_order[filename]" in source
+    assert "pillow>=10" in requirements.lower()
+    assert "AstrBot-ComfyUI-AI-Studio/0.6.8" in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
 
 
 def test_config_and_delete_paths_are_stateful_and_windows_safe() -> None:
@@ -270,7 +284,7 @@ def test_input_image_is_cached_before_temp_file_cleanup() -> None:
 
 def test_forward_delivery_builds_merge_forward_nodes() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
-    from astrbot.api.message_components import Nodes, Plain
+    from astrbot.api.message_components import Image, Nodes, Plain
 
     class Event:
         def get_self_id(self):
@@ -282,12 +296,45 @@ def test_forward_delivery_builds_merge_forward_nodes() -> None:
     assert len(chain) == 1
     assert isinstance(chain[0], Nodes)
     assert len(chain[0].nodes) == 3
-    assert isinstance(chain[0].nodes[0].content[0], Plain)
-    assert chain[0].nodes[0].content[0].text == "绘图完成"
+    assert isinstance(chain[0].nodes[0].content[0], Image)
+    assert isinstance(chain[0].nodes[-1].content[0], Plain)
+    assert chain[0].nodes[-1].content[0].text == "绘图完成"
     assert [node.uin for node in chain[0].nodes] == ["123456", "123456", "123456"]
     flattened = star._flatten_forward_chain(chain)
-    assert isinstance(flattened[0], Plain)
+    assert isinstance(flattened[0], Image)
+    assert isinstance(flattened[-1], Plain)
     assert len(flattened) == 3
+
+
+def test_lora_search_and_preset_labels_are_alias_based() -> None:
+    page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
+    app = (PLUGIN_DIR / "pages" / "console" / "app.js").read_text(encoding="utf-8")
+    assert 'id="loraSearch"' in page
+    assert "loraSearchQuery" in app
+    assert "data-lora-preset-alias" in app
+    assert "CivitAI tag" not in app
+
+
+def test_completion_forward_quotes_original_message_and_puts_text_last() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot.api.message_components import Image, Nodes, Plain, Reply
+
+    class Message:
+        message_id = "qq-message-123"
+
+    class Event:
+        message_obj = Message()
+
+        def get_self_id(self):
+            return "123456"
+
+    star = object.__new__(ComfyUIAIStudio)
+    chain = star._forward_result_chain(Event(), "绘图完成", [Path("one.png")])
+    assert isinstance(chain[0], Reply)
+    assert chain[0].id == "qq-message-123"
+    assert isinstance(chain[1], Nodes)
+    assert isinstance(chain[1].nodes[0].content[0], Image)
+    assert isinstance(chain[1].nodes[-1].content[0], Plain)
 
 
 def test_civitai_trigger_words_sync_to_command_alias_presets() -> None:
@@ -323,6 +370,105 @@ def test_civitai_trigger_words_sync_to_command_alias_presets() -> None:
         assert star.presets.items["手动简称"]["content"] == "user_owned"
 
 
+def test_lora_tags_and_private_presets_are_kept_separate_from_global_presets() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import PresetStore
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_lora_private_preset_test_") as temp:
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(temp) / "presets.json")
+        star.presets.add("旧全局预设", "old_global_tag")
+        star.civitai_overrides = {
+            "demo.safetensors": {
+                "tags": ["civitai_tag", "civitai_tag"],
+            }
+        }
+        star.civitai_cache = {}
+        star.lora_presets = {
+            "demo.safetensors": [
+                {"tag": "civitai_tag", "content": "character_tag, red_hair"},
+                {"tag": "second_tag", "content": "blue_eyes"},
+            ]
+        }
+
+        assert star._lora_civitai_tags("demo.safetensors") == ["civitai_tag"]
+        assert star._lora_prompt_values("demo.safetensors") == [
+            "character_tag, red_hair",
+            "blue_eyes",
+        ]
+        assert star.presets.effective("旧全局预设") == "old_global_tag"
+
+
+def test_civitai_tag_normalization_and_private_preset_validation() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    assert ComfyUIAIStudio._normalize_civitai_tags("one, two，one") == ["one", "two"]
+    assert ComfyUIAIStudio._normalize_lora_preset_entries(
+        {"entries": {"tag_a": "content_a", "tag_b": "content_b"}}
+    ) == [
+        {"tag": "tag_a", "content": "content_a"},
+        {"tag": "tag_b", "content": "content_b"},
+    ]
+
+
+def test_civitai_download_links_and_windows_filename_are_supported() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    assert ComfyUIAIStudio._civitai_reference(
+        "https://civitai.com/models/123456?modelVersionId=789012"
+    ) == ("123456", "789012")
+    assert ComfyUIAIStudio._civitai_reference(
+        "https://civitai.com/api/download/models/789012?fileId=9"
+    ) == ("", "789012")
+    assert ComfyUIAIStudio._safe_lora_filename(
+        "bad:name?.safetensors", "fallback.safetensors"
+    ) == "bad_name_.safetensors"
+    assert ComfyUIAIStudio._safe_lora_filename(
+        "CON.safetensors", "fallback.safetensors"
+    ) == "_CON.safetensors"
+
+
+def test_llm_plugin_prompt_keeps_original_action_and_debug_output() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Event:
+        message_str = "帮我画一张洗澡的夏空"
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "llm_prompt_source": "plugin",
+        "plugin_ai_debug": True,
+    }
+
+    received: list[str] = []
+
+    async def fake_translate(event, text, **kwargs):
+        received.append(text)
+        assert kwargs["source_override"] == "plugin_llm"
+        return "ciaccona, bathing, in bathtub, wet hair"
+
+    star._translate_prompt = fake_translate
+    params = DrawParams(prompt="夏空")
+    translated = asyncio.run(star._prepare_llm_prompt(Event(), params, Event.message_str))
+
+    assert "洗澡" in received[0]
+    assert "夏空" in received[0]
+    assert translated == params.prompt == "ciaccona, bathing, in bathtub, wet hair"
+    assert "bathing" in star._llm_debug_reply("任务已提交", translated)
+
+
+def test_console_exposes_separate_llm_and_command_ai_prompts() -> None:
+    page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
+    app = (PLUGIN_DIR / "pages" / "console" / "app.js").read_text(encoding="utf-8")
+    assert 'id="llm_prompt_source"' in page
+    assert 'id="plugin_ai_llm_system_prompt"' in page
+    assert 'id="plugin_ai_command_system_prompt"' in page
+    assert 'id="plugin_ai_debug"' in page
+    assert "plugin_ai_llm_system_prompt" in app
+    assert "plugin_ai_command_system_prompt" in app
+
+
 def test_plugin_import_and_registration() -> None:
     assert ASTRBOT_DIR.is_dir(), f"AstrBot 目录不存在：{ASTRBOT_DIR}"
     with tempfile.TemporaryDirectory(prefix="astrbot_ai_studio_test_") as temp:
@@ -352,6 +498,7 @@ def test_plugin_import_and_registration() -> None:
             "/astrbot_plugin_comfyui_ai_studio/open_folder",
             "/astrbot_plugin_comfyui_ai_studio/upload_lora",
             "/astrbot_plugin_comfyui_ai_studio/download_lora",
+            "/astrbot_plugin_comfyui_ai_studio/download_lora_progress",
             "/astrbot_plugin_comfyui_ai_studio/delete_lora",
             "/astrbot_plugin_comfyui_ai_studio/recent",
         }

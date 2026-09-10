@@ -44,7 +44,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "0.6.4"
+PLUGIN_VERSION = "0.6.8"
 DEFAULT_ARTIST_PRESET_NAME = "画风001"
 DEFAULT_ARTIST_PRESET_TAGS = (
     "@yukisiannn, @kani biimu, @ixy, @shnva, @shiromochi sakura, @stmast,"
@@ -62,12 +62,23 @@ WRITABLE_CONFIG = {
     "comfyui_url", "comfyui_root", "source_workflow", "workflow_dir", "model_name",
     "workflow_txt2img", "workflow_img2img", "workflow_hires",
     "lora_list", "default_positive", "default_negative", "quality_prefix", "artist_preset", "ai_base_url",
-    "ai_api_key", "ai_model", "width", "height", "steps", "cfg", "seed",
+    "ai_api_key", "ai_model", "civitai_token", "width", "height", "steps", "cfg", "seed",
     "sampler_name", "scheduler", "denoise", "hires_scale",
     "hires_steps", "hires_denoise", "hires_upscale_model", "max_concurrent",
     "anima_teacache", "draw_start_reply", "draw_reply_mode", "draw_reply_custom", "draw_delivery_mode",
     "draw_reply_timeout", "plain_translate_enabled", "plain_translate_url",
+    "llm_prompt_source", "plugin_ai_command_system_prompt", "plugin_ai_llm_system_prompt",
+    "plugin_ai_debug",
 }
+
+DEFAULT_PLUGIN_AI_LLM_SYSTEM_PROMPT = """你是 ComfyUI Anima 工作流的提示词工程师，负责把用户的完整绘图要求转换成可直接用于 Anima 的英文 Danbooru 标签。
+你会同时收到用户原话和 AstrBot LLM 提取的画面描述。必须以用户原话为最高优先级，补回 LLM 遗漏的关键内容。
+完整保留并具体表达：角色、主体、动作、姿势、正在进行的行为、表情、服装、镜头、构图、场景、时间、天气和光线。
+例如用户说“洗澡的夏空”，必须输出与洗澡动作相关的标签，不能只输出角色名；用户说“坐在浴缸里洗澡”，必须保留坐姿、浴缸和洗澡行为。
+不要把“帮我画一张”“请生成图片”等聊天套话写进提示词，也不要臆造用户没有要求的角色、服装或场景。
+角色名、作品名优先转换为稳定的 Danbooru 标签；已经存在的英文标签保留且不要重复。
+输出顺序遵循：人数与性别、角色与作品、外观、服装与状态、动作与姿势、表情、镜头与构图、场景环境、细节氛围。
+只输出一行小写英文、逗号分隔的最终提示词，不要解释、Markdown、代码块、质量词、画师名、LoRA 语法或权重语法。用户原话中用于控制预设和 LoRA 的名称由绘图插件单独处理，不要因为翻译而删除或改写它们。"""
 BLANK_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAACxIAAAsSAdLdfvwAAACaSURBVHhe5cgxDQAACMAw/JsGBMxBl/TZfIvLKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpySnJKckpyYmYPVh88OKn4LsIAAAAAElFTkSuQmCC"
 )
@@ -118,6 +129,9 @@ class ComfyUIAIStudio(Star):
         self.civitai_cache_path = self.data_dir / "civitai_lora_cache.json"
         self.civitai_links_path = self.data_dir / "civitai_lora_links.json"
         self.civitai_overrides_path = self.data_dir / "civitai_lora_overrides.json"
+        self.lora_download_order_path = self.data_dir / "lora_download_order.json"
+        # LoRA 独立预设与旧版全局 presets.json 分开保存，旧预设永远不迁移、不覆盖。
+        self.lora_presets_path = self.data_dir / "lora_presets.json"
         self.lora_aliases = self._load_map(self.lora_aliases_path)
         self.lora_command_aliases = self._load_map(self.lora_command_aliases_path)
         self.lora_categories = self._load_map(self.lora_categories_path)
@@ -125,10 +139,13 @@ class ComfyUIAIStudio(Star):
         self.civitai_cache = self._load_map(self.civitai_cache_path)
         self.civitai_links = self._load_map(self.civitai_links_path)
         self.civitai_overrides = self._load_map(self.civitai_overrides_path)
+        self.lora_presets = self._load_map(self.lora_presets_path)
+        self.lora_download_order = self._load_map(self.lora_download_order_path)
         self._civitai_cache_lock = asyncio.Lock()
         self.last_images: dict[str, str] = {}
         self.semaphore: asyncio.Semaphore | None = None
         self._tasks: set[asyncio.Task[Any]] = set()
+        self._download_jobs: dict[str, dict[str, Any]] = {}
         self._lora_names_cache: tuple[float, list[str]] | None = None
         self._register_web_api()
 
@@ -148,6 +165,7 @@ class ComfyUIAIStudio(Star):
             ("open_folder", self.api_open_folder, ["POST"], "打开本地模型文件夹"),
             ("upload_lora", self.api_upload_lora, ["POST"], "上传 LoRA 文件"),
             ("download_lora", self.api_download_lora, ["POST"], "从 CivitAI 下载 LoRA 文件"),
+            ("download_lora_progress", self.api_download_lora_progress, ["POST"], "读取 LoRA 下载进度"),
             ("delete_lora", self.api_delete_lora, ["POST"], "删除 LoRA 文件"),
             ("recent", self.api_recent, ["GET"], "读取最近生成图片"),
         ]
@@ -224,6 +242,12 @@ class ComfyUIAIStudio(Star):
 
     def _save_civitai_overrides(self) -> None:
         self._write_map(self.civitai_overrides_path, self.civitai_overrides)
+
+    def _save_lora_presets(self) -> None:
+        self._write_map(self.lora_presets_path, self.lora_presets)
+
+    def _save_lora_download_order(self) -> None:
+        self._write_map(self.lora_download_order_path, self.lora_download_order)
 
     def _set(self, key: str, value: Any) -> None:
         self.config[key] = value
@@ -424,7 +448,18 @@ class ComfyUIAIStudio(Star):
         source_override: str = "",
     ) -> str:
         source = str(source_override or "astrbot").lower()
-        system_prompt = DANBOORU_SYSTEM_PROMPT
+        if source == "plugin_llm":
+            system_prompt = str(
+                self._get("plugin_ai_llm_system_prompt", "")
+                or DEFAULT_PLUGIN_AI_LLM_SYSTEM_PROMPT
+            ).strip()
+        elif source == "plugin":
+            system_prompt = str(
+                self._get("plugin_ai_command_system_prompt", "")
+                or DANBOORU_SYSTEM_PROMPT
+            ).strip()
+        else:
+            system_prompt = DANBOORU_SYSTEM_PROMPT
         if source == "astrbot":
             result = await self._astrbot_generate(
                 event,
@@ -434,9 +469,9 @@ class ComfyUIAIStudio(Star):
             return result
         ai_config = self._config_dict()
         result = await AITranslator(ai_config).generate(
-            f"画面描述：{text}",
+            text,
             system_prompt=system_prompt,
-            max_tokens=512,
+            max_tokens=768 if source == "plugin_llm" else 512,
         )
         return result
 
@@ -467,7 +502,10 @@ class ComfyUIAIStudio(Star):
         event: AstrMessageEvent,
         params: DrawParams,
         lora_trigger_words: list[str] | None = None,
+        lora_prompt_values: list[str] | None = None,
     ) -> tuple[str, str, str]:
+        # 预设必须在任何翻译或扩写前识别，避免 AI 把预设名称翻译成普通描述。
+        self._extract_inline_presets(params)
         text = self.presets.expand(params.prompt)
         preset_values: list[str] = []
         trigger_values = self._normalize_trigger_words(lora_trigger_words or [])
@@ -492,7 +530,13 @@ class ComfyUIAIStudio(Star):
                     force_enabled=params.ai is True or params.auto_ai,
                     source_override=source,
                 )
-                note = "提示词已由 AstrBot 当前 AI 优化为 Danbooru 标签并修正角色词条"
+                note = (
+                    "提示词已由插件 AI 根据 LLM 绘图要求整理为 Danbooru 标签"
+                    if source == "plugin_llm"
+                    else "提示词已由插件 AI 优化为 Danbooru 标签并修正角色词条"
+                    if source == "plugin"
+                    else "提示词已由 AstrBot 当前 AI 优化为 Danbooru 标签并修正角色词条"
+                )
             except AIError as exc:
                 raise UsageError(f"AI 翻译失败：{exc}；可使用 --noai 直接出图") from exc
         elif contains_chinese(text):
@@ -515,7 +559,9 @@ class ComfyUIAIStudio(Star):
             or self._get("quality_prefix", "")
             or ""
         ).strip()
-        fragments = [quality, artist_text, *preset_values]
+        # LoRA 的触发词和专属预设只在 LoRA 实际启用时加入。
+        # 普通 CivitAI tag 不再进入提示词；旧版全局预设仍按原顺序保留。
+        fragments = [quality, artist_text, *preset_values, *(lora_prompt_values or [])]
         combined = ", ".join(value.strip(" ,，") for value in fragments if value.strip(" ,，"))
         for trigger in trigger_values:
             if trigger.casefold() not in combined.casefold() and trigger.casefold() not in text.casefold():
@@ -643,6 +689,88 @@ class ComfyUIAIStudio(Star):
                 return self._normalize_trigger_words(data.get("trigger_words", []))
         return []
 
+    def _lora_civitai_tags(self, file_name: str) -> list[str]:
+        """读取 CivitAI 模型 tags；旧缓存没有 tags 时自然返回空列表。"""
+        candidates = [file_name, Path(file_name).name]
+        for key in candidates:
+            override = getattr(self, "civitai_overrides", {}).get(key)
+            if isinstance(override, dict) and "tags" in override:
+                return self._normalize_civitai_tags(override.get("tags", []))
+            cached = getattr(self, "civitai_cache", {}).get(key)
+            if not isinstance(cached, dict):
+                continue
+            data = cached.get("data", cached)
+            if isinstance(data, dict) and "tags" in data:
+                return self._normalize_civitai_tags(data.get("tags", []))
+        return []
+
+    def _lora_preset_entries(self, file_name: str) -> list[dict[str, str]]:
+        """读取单个 LoRA 的 tag -> 预设内容映射，并兼容早期实验格式。"""
+        mapping = getattr(self, "lora_presets", {})
+        raw = self._lora_map_value(mapping, file_name, []) if isinstance(mapping, dict) else []
+        if isinstance(raw, dict):
+            raw = raw.get("entries", raw.get("presets", raw))
+        if isinstance(raw, dict):
+            raw = [{"tag": key, "content": value} for key, value in raw.items()]
+        if not isinstance(raw, list):
+            return []
+        result: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in raw:
+            if isinstance(item, dict):
+                tag = str(item.get("tag", item.get("civitai_tag", "")) or "").strip()
+                content = str(item.get("content", item.get("value", "")) or "").strip()
+            elif isinstance(item, str):
+                tag, content = item.strip(), item.strip()
+            else:
+                continue
+            if not tag and not content:
+                continue
+            if len(tag) > 160 or len(content) > 4000:
+                continue
+            key = (tag.casefold(), content.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({"tag": tag, "content": content})
+        return result
+
+    @staticmethod
+    def _normalize_lora_preset_entries(value: Any) -> list[dict[str, str]]:
+        if isinstance(value, dict):
+            value = value.get("entries", value.get("presets", value))
+        if isinstance(value, dict):
+            value = [{"tag": key, "content": item} for key, item in value.items()]
+        if not isinstance(value, list):
+            raise UsageError("LoRA 预设必须是列表")
+        result: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for item in value:
+            if not isinstance(item, dict):
+                raise UsageError("LoRA 预设每一项必须包含 tag 和 content")
+            tag = str(item.get("tag", item.get("civitai_tag", "")) or "").strip()
+            content = str(item.get("content", item.get("value", "")) or "").strip()
+            if not tag and not content:
+                continue
+            if len(tag) > 160 or len(content) > 4000:
+                raise UsageError("LoRA tag 不能超过 160 个字符，预设内容不能超过 4000 个字符")
+            key = (tag.casefold(), content.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({"tag": tag, "content": content})
+        return result
+
+    def _lora_prompt_values(self, file_name: str) -> list[str]:
+        """生成当前 LoRA 的专属预设内容，不再把普通 CivitAI tag 当提示词。"""
+        values: list[str] = []
+        for entry in self._lora_preset_entries(file_name):
+            # 左侧简称只是这条预设的分类/触发标识，右侧才是实际加入的内容。
+            value = entry["content"]
+            if value:
+                values.append(value)
+        return self._normalize_civitai_tags(values)
+
     async def _extract_inline_loras(self, params: DrawParams, extra_text: str = "") -> None:
         """提取提示词和用户原话中的简称，并只对当前任务临时加载。
 
@@ -744,14 +872,17 @@ class ComfyUIAIStudio(Star):
         for name in sorted(self.presets.items, key=len, reverse=True):
             if not name:
                 continue
-            in_prompt = name in text
-            in_original = name in str(extra_text or "")
+            name_folded = name.casefold()
+            in_prompt = name_folded in text.casefold()
+            in_original = name_folded in str(extra_text or "").casefold()
             if not in_prompt and not in_original:
                 continue
             if name not in params.presets:
                 params.presets.append(name)
             if in_prompt:
-                text = text.replace(name, " ")
+                # 用大小写不敏感的方式移除命中的名称，避免英文预设被重复送入 AI。
+                pattern = re.compile(re.escape(name), re.IGNORECASE)
+                text = pattern.sub(" ", text)
         params.prompt = re.sub(r"\s+", " ", text).strip(" ,，。；;")
 
     @staticmethod
@@ -777,6 +908,65 @@ class ComfyUIAIStudio(Star):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise UsageError("CivitAI 链接必须是完整的 http:// 或 https:// 地址")
         return link
+
+    def _civitai_headers(self, accept: str) -> dict[str, str]:
+        """构造 CivitAI API 和 CDN 下载都能使用的请求头。"""
+        headers = {
+            "Accept": accept,
+            "User-Agent": f"AstrBot-ComfyUI-AI-Studio/{PLUGIN_VERSION}",
+            "Referer": "https://civitai.com/",
+        }
+        token = str(self._get("civitai_token", "") or "").strip()
+        if token:
+            headers["Authorization"] = (
+                token if token.lower().startswith("bearer ") else f"Bearer {token}"
+            )
+        return headers
+
+    @staticmethod
+    def _civitai_error_detail(payload: bytes | str, limit: int = 360) -> str:
+        """从 CivitAI 的 JSON/HTML 错误响应中提取短中文可读信息。"""
+        if isinstance(payload, bytes):
+            text = payload[:4096].decode("utf-8", errors="replace")
+        else:
+            text = str(payload or "")[:4096]
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return "远端没有返回错误详情"
+        try:
+            parsed = json.loads(text)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            for key in ("message", "error", "detail", "title"):
+                value = parsed.get(key)
+                if isinstance(value, dict):
+                    value = value.get("message", value.get("detail", ""))
+                if value:
+                    text = str(value).strip()
+                    break
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:limit] + ("..." if len(text) > limit else "")
+
+    @staticmethod
+    def _safe_lora_filename(value: Any, fallback: str) -> str:
+        """把 CivitAI 文件名转换为 Windows 和 Linux 都可写入的文件名。"""
+        raw = unquote(str(value or "")).replace("\\", "/")
+        name = Path(raw).name
+        name = re.sub(r'[<>:"/|?*\x00-\x1f]', "_", name).rstrip(" .")
+        if not name or name in {".", ".."}:
+            name = fallback
+        if name.upper().split(".", 1)[0] in {
+            "CON", "PRN", "AUX", "NUL",
+            *(f"COM{index}" for index in range(1, 10)),
+            *(f"LPT{index}" for index in range(1, 10)),
+        }:
+            name = f"_{name}"
+        suffix = Path(name).suffix
+        if len(name) > 180:
+            name = name[: 180 - len(suffix)] + suffix
+        return name
 
     def _civitai_link_override(self, file_name: str) -> str:
         try:
@@ -805,6 +995,8 @@ class ComfyUIAIStudio(Star):
         custom_images = custom_images[:1]
         if custom_url and "trigger_words" in override:
             result["trigger_words"] = self._normalize_trigger_words(override.get("trigger_words", []))
+        if custom_url and "tags" in override:
+            result["tags"] = self._normalize_civitai_tags(override.get("tags", []))
         if custom_name:
             result["model_name"] = custom_name
         if custom_images:
@@ -817,6 +1009,7 @@ class ComfyUIAIStudio(Star):
         result["custom_url"] = custom_url
         result["custom_name"] = custom_name
         result["custom_images"] = [item["url"] for item in custom_images]
+        result["civitai_tags"] = self._normalize_civitai_tags(result.get("tags", []))
         result["custom_link"] = bool(custom_url)
         result["custom_info"] = bool(custom_url or custom_name or custom_images)
         result["show_images"] = override.get("show_images", True) is not False
@@ -848,6 +1041,7 @@ class ComfyUIAIStudio(Star):
             "model_url": self._civitai_search_url(file_name),
             "images": [],
             "trigger_words": [],
+            "tags": [],
             "error": "",
         }
         try:
@@ -897,6 +1091,7 @@ class ComfyUIAIStudio(Star):
                     result["trigger_words"] = self._normalize_trigger_words(
                         selected_version.get("trainedWords", [])
                     )
+                    result["tags"] = self._normalize_civitai_tags(item.get("tags", []))
                     images: list[dict[str, Any]] = []
                     for version in item.get("modelVersions", []) or []:
                         for image in version.get("images", []) or []:
@@ -982,6 +1177,7 @@ class ComfyUIAIStudio(Star):
             "model_name": str(item.get("name", "") or "").strip(),
             "images": images[:1],
             "trigger_words": self._normalize_trigger_words(selected_version.get("trainedWords", [])),
+            "tags": self._normalize_civitai_tags(item.get("tags", [])),
         }
 
     @staticmethod
@@ -1007,6 +1203,30 @@ class ComfyUIAIStudio(Star):
         if not isinstance(data, dict):
             return []
         return self._normalize_trigger_words(data.get("trigger_words", []))
+
+    @staticmethod
+    def _normalize_civitai_tags(value: Any) -> list[str]:
+        """规范化 CivitAI tags，保留 tag 中的空格并去重。"""
+        if isinstance(value, str):
+            values = re.split(r"[,，\n]+", value)
+        elif isinstance(value, (list, tuple, set)):
+            values = list(value)
+        else:
+            values = []
+        result: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            tag = str(raw or "").strip()
+            key = tag.casefold()
+            if tag and key not in seen:
+                seen.add(key)
+                result.append(tag)
+        return result
+
+    def _civitai_tags(self, data: Any) -> list[str]:
+        if not isinstance(data, dict):
+            return []
+        return self._normalize_civitai_tags(data.get("tags", []))
 
     async def _sync_lora_trigger_presets(
         self,
@@ -1040,15 +1260,28 @@ class ComfyUIAIStudio(Star):
         """从 CivitAI 模型页提取模型 ID 和可选版本 ID。"""
         parsed = urlparse(link)
         host = parsed.netloc.lower().split(":", 1)[0]
-        if host not in {"civitai.com", "www.civitai.com"}:
+        if host not in {"civitai.com", "www.civitai.com", "civitai.ai", "www.civitai.ai"}:
             raise UsageError("下载地址必须是 civitai.com 的模型链接")
         model_match = re.search(r"/models/(\d+)(?:/|$)", parsed.path, re.IGNORECASE)
         version_match = re.search(r"/model-versions/(\d+)(?:/|$)", parsed.path, re.IGNORECASE)
+        direct_version_match = re.search(r"/(?:api/)?download/models/(\d+)(?:/|$)", parsed.path, re.IGNORECASE)
+        api_version_match = re.search(r"/api/v1/model-versions/(\d+)(?:/|$)", parsed.path, re.IGNORECASE)
         model_id = model_match.group(1) if model_match else ""
-        version_id = version_match.group(1) if version_match else ""
-        query_version = parse_qs(parsed.query).get("modelVersionId", [""])[0]
-        if query_version and str(query_version).isdigit():
-            version_id = str(query_version)
+        version_id = (
+            version_match.group(1)
+            if version_match
+            else direct_version_match.group(1)
+            if direct_version_match
+            else api_version_match.group(1)
+            if api_version_match
+            else ""
+        )
+        query = parse_qs(parsed.query)
+        for key in ("modelVersionId", "model_version_id", "versionId", "version_id"):
+            query_version = query.get(key, [""])[0]
+            if str(query_version).isdigit():
+                version_id = str(query_version)
+                break
         if not model_id and not version_id:
             raise UsageError("链接中没有找到 CivitAI 模型 ID")
         return model_id, version_id
@@ -1056,12 +1289,35 @@ class ComfyUIAIStudio(Star):
     async def _civitai_download_file(self, link: str) -> tuple[str, str, int]:
         """读取 CivitAI 模型页，返回下载地址、文件名和版本 ID。"""
         model_id, version_id = self._civitai_reference(link)
+        parsed_link = urlparse(link)
+        is_direct_download = bool(re.search(r"/(?:api/)?download/models/\d+(?:/|$)", parsed_link.path, re.IGNORECASE))
+        headers = self._civitai_headers("application/json")
+
+        async def get_json(client: httpx.AsyncClient, url: str) -> Any:
+            for attempt in range(3):
+                response = await client.get(url, headers=headers)
+                if response.status_code not in {408, 429, 500, 502, 503, 504} or attempt == 2:
+                    if response.is_error:
+                        detail = self._civitai_error_detail(response.text)
+                        raise UsageError(
+                            f"CivitAI 模型信息请求失败（HTTP {response.status_code}）：{detail}"
+                        )
+                    try:
+                        return response.json()
+                    except ValueError as exc:
+                        raise UsageError("CivitAI 模型信息返回格式不是 JSON") from exc
+                retry_after = response.headers.get("retry-after", "")
+                try:
+                    delay = max(0.5, min(3.0, float(retry_after)))
+                except (TypeError, ValueError):
+                    delay = 0.8 * (attempt + 1)
+                await asyncio.sleep(delay)
+            raise UsageError("CivitAI 模型信息请求失败")
+
         try:
-            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True, headers=headers) as client:
                 if not version_id:
-                    response = await client.get(f"https://civitai.com/api/v1/models/{model_id}")
-                    response.raise_for_status()
-                    model = response.json()
+                    model = await get_json(client, f"https://civitai.com/api/v1/models/{model_id}")
                     versions = model.get("modelVersions", []) if isinstance(model, dict) else []
                     version_id = str(
                         next(
@@ -1074,9 +1330,7 @@ class ComfyUIAIStudio(Star):
                     )
                 if not version_id or not version_id.isdigit():
                     raise UsageError("CivitAI 模型没有可用版本")
-                response = await client.get(f"https://civitai.com/api/v1/model-versions/{version_id}")
-                response.raise_for_status()
-                version = response.json()
+                version = await get_json(client, f"https://civitai.com/api/v1/model-versions/{version_id}")
         except UsageError:
             raise
         except (httpx.HTTPError, ValueError, TypeError) as exc:
@@ -1095,10 +1349,13 @@ class ComfyUIAIStudio(Star):
         if not candidates:
             raise UsageError("CivitAI 版本中没有可下载的 LoRA 文件")
         selected = next((item for item in candidates if item.get("primary") is True), candidates[0])
-        download_url = str(selected.get("downloadUrl", selected.get("download_url", "")) or "").strip()
+        download_url = link if is_direct_download else str(selected.get("downloadUrl", selected.get("download_url", "")) or "").strip()
         if not download_url:
             download_url = f"https://civitai.com/api/download/models/{version_id}"
-        filename = Path(unquote(str(selected.get("name", "") or ""))).name
+        filename = self._safe_lora_filename(
+            selected.get("name", ""),
+            f"civitai_{version_id}.safetensors",
+        )
         if Path(filename).suffix.lower() not in allowed:
             filename = f"civitai_{version_id}.safetensors"
         return download_url, filename, int(version_id)
@@ -1125,6 +1382,8 @@ class ComfyUIAIStudio(Star):
                 "command_aliases": self._lora_command_aliases_for(name, names),
                 "command_alias": self._lora_command_alias(name, names),
                 "category": self._lora_category(name),
+                "civitai_tags": self._civitai_tags(info),
+                "lora_presets": self._lora_preset_entries(name),
                 **info,
             }
 
@@ -1134,6 +1393,8 @@ class ComfyUIAIStudio(Star):
         return {
             "items": await self._lora_details(force=force),
             "categories": self._lora_categories_list(),
+            # 仅新增读取字段；旧的 presets.json 仍由 /presets 原样管理。
+            "lora_presets": getattr(self, "lora_presets", {}),
         }
 
     def _model_folder_path(self, kind: str) -> Path:
@@ -1218,6 +1479,7 @@ class ComfyUIAIStudio(Star):
                     "name": custom_name,
                     "images": custom_images,
                     "trigger_words": self._normalize_trigger_words(link_info.get("trigger_words", [])),
+                    "tags": self._normalize_civitai_tags(link_info.get("tags", [])),
                     "show_images": bool(data.get("show_images", True)),
                 }
                 self.civitai_links.pop(file_name, None)
@@ -1295,8 +1557,17 @@ class ComfyUIAIStudio(Star):
                     "name": custom_name,
                     "images": custom_images,
                     "trigger_words": self._normalize_trigger_words(link_info.get("trigger_words", [])),
+                    "tags": self._normalize_civitai_tags(link_info.get("tags", [])),
                     "show_images": bool(data.get("show_images", True)),
                 }
+
+                if "lora_presets" in data or "presets" in data:
+                    try:
+                        self.lora_presets[file_name] = self._normalize_lora_preset_entries(
+                            data.get("lora_presets", data.get("presets", []))
+                        )
+                    except UsageError as exc:
+                        return json_response({"error": str(exc)}, status_code=400)
                 self.civitai_links.pop(file_name, None)
 
                 try:
@@ -1318,6 +1589,7 @@ class ComfyUIAIStudio(Star):
                 self._save_lora_command_aliases()
                 self._save_lora_categories()
                 self._save_civitai_overrides()
+                self._save_lora_presets()
                 self._save_civitai_links()
                 self._save_config()
                 await self._sync_lora_trigger_presets(
@@ -1397,9 +1669,13 @@ class ComfyUIAIStudio(Star):
                     existing_override["trigger_words"] = self._normalize_trigger_words(
                         link_info.get("trigger_words", [])
                     )
+                    existing_override["tags"] = self._normalize_civitai_tags(
+                        link_info.get("tags", [])
+                    )
                 else:
                     existing_override.pop("url", None)
                     existing_override.pop("trigger_words", None)
+                    existing_override.pop("tags", None)
                 self.civitai_overrides[file_name] = existing_override
                 self._save_civitai_overrides()
                 self._save_civitai_links()
@@ -1446,12 +1722,13 @@ class ComfyUIAIStudio(Star):
             if target.exists():
                 return json_response({"error": f"文件已存在：{filename}，请先处理原文件"}, status_code=409)
             await upload.save(str(target))
+            self._lora_names_cache = None
             return json_response({"ok": True, "file_name": filename, "path": str(target)})
         except (OSError, UsageError) as exc:
             return json_response({"error": str(exc)}, status_code=400)
 
     async def api_download_lora(self):
-        """根据 CivitAI 模型页下载 LoRA 到 ComfyUI models/loras。"""
+        """创建后台下载任务，WebUI 通过 download_lora_progress 读取进度。"""
         from astrbot.api.web import json_response, request
 
         try:
@@ -1461,37 +1738,185 @@ class ComfyUIAIStudio(Star):
             link = self._validate_civitai_link(data.get("url", data.get("civitai_url", "")))
             if not link:
                 return json_response({"error": "请输入 CivitAI 模型链接"}, status_code=400)
+            job_id = uuid.uuid4().hex
+            self._download_jobs[job_id] = {
+                "job_id": job_id,
+                "status": "queued",
+                "stage": "等待开始",
+                "progress": 0,
+                "downloaded": 0,
+                "total": 0,
+                "file_name": "",
+                "error": "",
+            }
+            task = asyncio.create_task(
+                self._run_lora_download_job(
+                    job_id,
+                    link,
+                    bool(data.get("overwrite", False)),
+                )
+            )
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
+            return json_response({"ok": True, "job_id": job_id, "status": "queued"})
+        except (UsageError, ValueError) as exc:
+            return json_response({"error": str(exc)}, status_code=400)
+
+    def _update_download_job(self, job_id: str, **changes: Any) -> None:
+        job = self._download_jobs.get(job_id)
+        if job is not None:
+            job.update(changes)
+
+    async def _run_lora_download_job(self, job_id: str, link: str, overwrite: bool) -> None:
+        """后台下载 LoRA 并持续记录字节数，避免 WebUI 请求被大文件阻塞。"""
+        temp_path: Path | None = None
+        try:
+            self._update_download_job(job_id, status="running", stage="正在读取 CivitAI 模型信息")
             download_url, filename, version_id = await self._civitai_download_file(link)
             directory = self._model_folder_path("loras")
             directory.mkdir(parents=True, exist_ok=True)
             target = directory / filename
-            if target.exists() and not bool(data.get("overwrite", False)):
-                return json_response({"error": f"文件已存在：{filename}，请先删除原文件或确认覆盖"}, status_code=409)
+            if target.exists() and not overwrite:
+                raise UsageError(f"文件已存在：{filename}，请先删除原文件或确认覆盖")
             temp_path = directory / f".astrbot_download_{uuid.uuid4().hex}.tmp"
-            headers = {"User-Agent": "AstrBot ComfyUI AI Studio"}
-            try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(60, read=180), follow_redirects=True) as client:
-                    async with client.stream("GET", download_url, headers=headers) as response:
-                        response.raise_for_status()
-                        content_type = str(response.headers.get("content-type", "")).lower()
-                        if "text/html" in content_type:
-                            raise UsageError("CivitAI 返回了网页而不是模型文件，请检查链接或登录状态")
-                        with temp_path.open("wb") as output:
-                            async for chunk in response.aiter_bytes(1024 * 1024):
-                                if chunk:
+            self._update_download_job(
+                job_id,
+                stage="正在下载模型文件",
+                file_name=filename,
+                version_id=version_id,
+            )
+            headers = self._civitai_headers("application/octet-stream, */*;q=0.8")
+            retry_statuses = {408, 429, 500, 502, 503, 504}
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60, read=180),
+                follow_redirects=True,
+            ) as client:
+                for attempt in range(3):
+                    current_url = download_url
+                    if attempt:
+                        # CivitAI 的 CDN 地址带短时签名；重试时重新获取，避免复用过期地址。
+                        current_url, _, _ = await self._civitai_download_file(link)
+                    try:
+                        async with client.stream("GET", current_url, headers=headers) as response:
+                            if response.status_code in retry_statuses:
+                                payload = await response.aread()
+                                detail = self._civitai_error_detail(payload)
+                                if attempt < 2:
+                                    self._update_download_job(
+                                        stage=f"CivitAI 暂时不可用，正在重试（{attempt + 1}/2）"
+                                    )
+                                    await asyncio.sleep(1.2 * (attempt + 1))
+                                    continue
+                                raise UsageError(
+                                    f"CivitAI 下载失败（HTTP {response.status_code}）：{detail}"
+                                )
+                            if response.is_error:
+                                payload = await response.aread()
+                                detail = self._civitai_error_detail(payload)
+                                raise UsageError(
+                                    f"CivitAI 下载失败（HTTP {response.status_code}）：{detail}"
+                                )
+
+                            content_type = str(response.headers.get("content-type", "")).lower()
+                            stream = response.aiter_bytes(1024 * 1024)
+                            try:
+                                first_chunk = await stream.__anext__()
+                            except StopAsyncIteration:
+                                first_chunk = b""
+                            sample = first_chunk[:4096].lstrip()
+                            looks_like_error = (
+                                sample.startswith((b"{", b"[", b"<"))
+                                and (
+                                    "json" in content_type
+                                    or "text" in content_type
+                                    or "xml" in content_type
+                                    or sample.startswith((b"<html", b"<!doctype"))
+                                )
+                            )
+                            if looks_like_error:
+                                detail = self._civitai_error_detail(first_chunk)
+                                raise UsageError(
+                                    f"CivitAI 返回了错误内容而不是模型文件：{detail}"
+                                )
+                            try:
+                                total = max(0, int(response.headers.get("content-length", "0") or 0))
+                            except (TypeError, ValueError):
+                                total = 0
+                            downloaded = 0
+                            self._update_download_job(job_id, total=total, downloaded=0, progress=0)
+                            with temp_path.open("wb") as output:
+                                if first_chunk:
+                                    output.write(first_chunk)
+                                    downloaded = len(first_chunk)
+                                    progress = round(downloaded * 100 / total, 1) if total else 0
+                                    self._update_download_job(
+                                        job_id,
+                                        downloaded=downloaded,
+                                        progress=min(99.9, progress) if total else 0,
+                                    )
+                                async for chunk in stream:
+                                    if not chunk:
+                                        continue
                                     output.write(chunk)
-                if not temp_path.exists() or temp_path.stat().st_size < 1024:
-                    raise UsageError("下载结果为空或文件不完整")
-                temp_path.replace(target)
-            except UsageError:
+                                    downloaded += len(chunk)
+                                    progress = round(downloaded * 100 / total, 1) if total else 0
+                                    self._update_download_job(
+                                        job_id,
+                                        downloaded=downloaded,
+                                        progress=min(99.9, progress) if total else 0,
+                                    )
+                        break
+                    except (httpx.TransportError, asyncio.TimeoutError) as exc:
+                        if attempt >= 2:
+                            raise UsageError(f"CivitAI 下载连接中断：{exc}") from exc
+                        self._update_download_job(
+                            job_id,
+                            stage=f"下载连接中断，正在重试（{attempt + 1}/2）",
+                        )
+                        await asyncio.sleep(1.2 * (attempt + 1))
+            if not temp_path.exists() or temp_path.stat().st_size < 1024:
+                raise UsageError("下载结果为空或文件不完整")
+            temp_path.replace(target)
+            self.lora_download_order[filename] = time.time()
+            self._save_lora_download_order()
+            self._lora_names_cache = None
+            self._update_download_job(
+                job_id,
+                status="done",
+                stage="下载完成，等待 WebUI 刷新",
+                progress=100,
+                downloaded=target.stat().st_size,
+                total=target.stat().st_size,
+                path=str(target),
+            )
+        except asyncio.CancelledError:
+            if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-                raise
-            except (httpx.HTTPError, OSError) as exc:
+            raise
+        except (UsageError, httpx.HTTPError, OSError, ValueError) as exc:
+            if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
-                raise UsageError(f"下载 LoRA 失败：{exc}") from exc
-            return json_response({"ok": True, "file_name": filename, "path": str(target), "version_id": version_id})
-        except (UsageError, ValueError) as exc:
-            return json_response({"error": str(exc)}, status_code=400)
+            message = str(exc)
+            if not isinstance(exc, UsageError):
+                message = f"下载 LoRA 失败：{message}"
+            self._update_download_job(job_id, status="error", stage="下载失败", error=message)
+        except Exception as exc:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            logger.exception("[%s] LoRA 后台下载任务异常", PLUGIN_NAME)
+            self._update_download_job(job_id, status="error", stage="下载失败", error=f"下载 LoRA 失败：{exc}")
+
+    async def api_download_lora_progress(self):
+        from astrbot.api.web import json_response, request
+
+        data = await self._request_json(request, {})
+        if not isinstance(data, dict):
+            return json_response({"error": "请求体必须是对象"}, status_code=400)
+        job_id = str(data.get("job_id", "") or "").strip()
+        job = self._download_jobs.get(job_id)
+        if not job:
+            return json_response({"error": "下载任务不存在或已过期"}, status_code=404)
+        return json_response(dict(job))
 
     async def api_delete_lora(self):
         """删除本地 LoRA，并清理插件中该文件的所有管理信息。"""
@@ -1518,14 +1943,17 @@ class ComfyUIAIStudio(Star):
             if not target.is_file():
                 return json_response({"error": "本地 LoRA 文件不存在"}, status_code=404)
             target.unlink()
+            self._lora_names_cache = None
             metadata_keys = {filename, relative.name}
             for key in metadata_keys:
                 self.lora_aliases.pop(key, None)
                 self.lora_command_aliases.pop(key, None)
                 self.lora_categories.pop(key, None)
+                self.lora_download_order.pop(key, None)
                 self.civitai_cache.pop(key, None)
                 self.civitai_links.pop(key, None)
                 self.civitai_overrides.pop(key, None)
+                self.lora_presets.pop(key, None)
                 self.presets.sync_auto(
                     source="civitai_lora",
                     source_key=key,
@@ -1543,9 +1971,11 @@ class ComfyUIAIStudio(Star):
             self._save_lora_aliases()
             self._save_lora_command_aliases()
             self._save_lora_categories()
+            self._save_lora_download_order()
             self._save_civitai_cache()
             self._save_civitai_links()
             self._save_civitai_overrides()
+            self._save_lora_presets()
             self._save_config()
             return json_response({
                 "ok": True,
@@ -1561,11 +1991,26 @@ class ComfyUIAIStudio(Star):
         if not directory.is_dir():
             return []
         allowed = {".safetensors", ".pt", ".ckpt", ".bin"}
-        return sorted(
+        names = sorted(
             path.relative_to(directory).as_posix()
             for path in directory.rglob("*")
             if path.is_file() and path.suffix.lower() in allowed
         )
+        # 只调整通过本插件新下载的文件；没有下载记录的旧 LoRA 继续保持原有顺序。
+        downloaded = []
+        old_names = []
+        for index, name in enumerate(names):
+            raw_time = self.lora_download_order.get(name)
+            try:
+                download_time = float(raw_time)
+            except (TypeError, ValueError):
+                download_time = 0
+            if download_time > 0:
+                downloaded.append((download_time, index, name))
+            else:
+                old_names.append(name)
+        downloaded.sort(key=lambda item: (-item[0], item[1]))
+        return [name for _, _, name in downloaded] + old_names
 
     async def api_upload_workflow(self):
         from astrbot.api.web import json_response, request
@@ -1692,10 +2137,19 @@ class ComfyUIAIStudio(Star):
             resolved_loras[actual.casefold()] = f"{actual}:{weight}"
         loras = list(resolved_loras.values())
         lora_trigger_words: list[str] = []
+        lora_prompt_values: list[str] = []
         for item in loras:
             actual = item.rsplit(":", 1)[0]
+            # 首次通过指令使用 LoRA 时也自动读取 CivitAI 触发词；24 小时缓存命中时
+            # 不会重复联网，网络失败则继续使用本地已有配置。
+            try:
+                await self._fetch_civitai_lora(actual)
+            except Exception as exc:
+                logger.debug("[%s] 绘图前读取 LoRA CivitAI 信息失败：%s", PLUGIN_NAME, exc)
             lora_trigger_words.extend(self._lora_trigger_words(actual))
+            lora_prompt_values.extend(self._lora_prompt_values(actual))
         lora_trigger_words = self._normalize_trigger_words(lora_trigger_words)
+        lora_prompt_values = self._normalize_civitai_tags(lora_prompt_values)
         logger.info(
             "[%s] %s 参数：预设=%s；临时/启用 LoRA=%s",
             PLUGIN_NAME,
@@ -1703,7 +2157,12 @@ class ComfyUIAIStudio(Star):
             ",".join(params.presets) or "无",
             ",".join(loras) or "无",
         )
-        positive, negative, note = await self._prompt_text(event, params, lora_trigger_words)
+        positive, negative, note = await self._prompt_text(
+            event,
+            params,
+            lora_trigger_words,
+            lora_prompt_values,
+        )
         configured_seed = self._get("seed", -1)
         try:
             configured_seed = int(configured_seed)
@@ -1791,6 +2250,15 @@ class ComfyUIAIStudio(Star):
             fallback,
         )
 
+    @staticmethod
+    def _completion_quote(event: AstrMessageEvent) -> Reply | None:
+        """获取原始 QQ 消息 ID，供后台完成消息作为引用回复。"""
+        message_obj = getattr(event, "message_obj", None)
+        message_id = getattr(message_obj, "message_id", None)
+        if message_id in (None, ""):
+            return None
+        return Reply(id=str(message_id))
+
     async def _draw_reply(self, event: AstrMessageEvent, params: DrawParams, mode: str, count: int) -> str:
         fallback = self._custom_draw_reply(mode, count, params.prompt)
         source = str(self._get("draw_reply_mode", "astrbot") or "astrbot").lower()
@@ -1850,8 +2318,11 @@ class ComfyUIAIStudio(Star):
             reply = await self._draw_reply(event, params, mode, len(images))
             if str(self._get("draw_delivery_mode", "normal") or "normal").lower() == "forward":
                 return self._forward_result_chain(event, reply, images)
-            result = [Plain(reply)]
-            result.extend(Image.fromFileSystem(str(path)) for path in images)
+            result = [Image.fromFileSystem(str(path)) for path in images]
+            result.append(Plain(reply))
+            quote = self._completion_quote(event)
+            if quote:
+                result.insert(0, quote)
             return result
 
     def _forward_result_chain(
@@ -1863,16 +2334,18 @@ class ComfyUIAIStudio(Star):
         """把完成回复和每张图片组织成群聊常见的合并转发消息。"""
         get_self_id = getattr(event, "get_self_id", None)
         uin = str(get_self_id() if callable(get_self_id) else "0") or "0"
-        nodes = [Node(uin=uin, name="ComfyUI 绘图", content=[Plain(reply)])]
-        nodes.extend(
+        nodes = [
             Node(
                 uin=uin,
                 name="ComfyUI 绘图",
                 content=[Image.fromFileSystem(str(path))],
             )
             for path in images
-        )
-        return [Nodes(nodes)]
+        ]
+        nodes.append(Node(uin=uin, name="ComfyUI 绘图", content=[Plain(reply)]))
+        chain = [Nodes(nodes)]
+        quote = self._completion_quote(event)
+        return [quote, *chain] if quote else chain
 
     @staticmethod
     def _flatten_forward_chain(chain: list) -> list:
@@ -1922,9 +2395,9 @@ class ComfyUIAIStudio(Star):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    @filter.command("helpd", desc="查询 ComfyUI AI 绘画指令")
-    async def command_help(self, event: AstrMessageEvent):
-        yield event.plain_result(
+    def _help_text(self) -> str:
+        """帮助图片不可用时的文字版兜底内容。"""
+        return (
             "ComfyUI AI 绘画台指令\n"
             "/文生图 描述\n"
             "/图生图 描述（同一条消息附图片）\n"
@@ -1939,11 +2412,186 @@ class ComfyUIAIStudio(Star):
             "/工作流 列表；/工作流 文生图 文件名；/工作流 图生图 文件名；/工作流 高清放大 文件名\n"
             "/画图配置 查询模型位置、工作流位置和当前配置\n"
             "/comfy状态 查询 ComfyUI 状态\n"
-             "直接用自然语言要求 AstrBot 画图时，会自动识别提示词预设和 LoRA 指令简称；预设与 LoRA 可同时生效，其余内容作为画面描述。\n"
-             "生成结果的发送方式可在 WebUI 回复设置中选择普通消息或群聊合并转发；不支持合并转发的平台会自动退回普通消息。\n"
-             "鸣潮角色知识和 Anima 提示词工程师由独立插件提供；本插件只负责绘图执行，并保留临时 LoRA 和提示词预设的最高优先级。\n"
+            "直接用自然语言要求 AstrBot 画图时，会自动识别提示词预设和 LoRA 指令简称；预设与 LoRA 可同时生效，其余内容作为画面描述。\n"
+            "生成结果的发送方式可在 WebUI 回复设置中选择普通消息或群聊合并转发；不支持合并转发的平台会自动退回普通消息。\n"
+            "鸣潮角色知识和 Anima 提示词工程师由独立插件提供；本插件只负责绘图执行，并保留临时 LoRA 和提示词预设的最高优先级。\n"
             "绘画选项：--模型=名称 --lora=a:0.8,b:0.5 --预设=夏空 --画师=画风001 --负面=内容 --宽=832 --高=1216 --步数=24 --种子=-1 --ai=开 --noai --强度=0.6 --放大=2"
         )
+
+    def _help_image_path(self) -> Path:
+        """生成适合聊天发送的中文帮助长图。"""
+        from PIL import Image as PILImage
+        from PIL import ImageDraw, ImageFont
+
+        font_paths = [
+            r"C:\Windows\Fonts\msyh.ttc",
+            r"C:\Windows\Fonts\msyhbd.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+
+        def load_font(size: int, bold: bool = False):
+            ordered = font_paths[1:] + font_paths[:1] if bold else font_paths
+            for font_path in ordered:
+                try:
+                    if Path(font_path).is_file():
+                        return ImageFont.truetype(font_path, size=size)
+                except (OSError, ValueError):
+                    continue
+            return ImageFont.load_default()
+
+        small = load_font(22)
+        card_title = load_font(29, bold=True)
+        title_font = load_font(52, bold=True)
+        subtitle_font = load_font(24)
+        footer_font = load_font(20)
+
+        width = 1500
+        margin = 66
+        column_gap = 26
+        card_width = (width - margin * 2 - column_gap) // 2
+        sections = [
+            (
+                "基础绘图",
+                [
+                    "/文生图 内容：文生图",
+                    "/图生图 内容：附图后修改画面",
+                    "/高清放大 附图、回复图片或放大最近出图",
+                    "画图时可以继续聊天，任务完成后会自动发送结果",
+                ],
+            ),
+            (
+                "LoRA 与预设",
+                [
+                    "/lora 查看 LoRA、简称、启用状态和 C站图片",
+                    "/loraon 简称 开启或关闭 LoRA",
+                    "画图内容后写 LoRA 简称，可临时加载且任务结束自动关闭",
+                    "预设和 LoRA 简称同名时会同时生效",
+                ],
+            ),
+            (
+                "工作流与配置",
+                [
+                    "/模型 列表 或 /模型 名称",
+                    "/工作流 列表；/工作流 文生图 文件名",
+                    "/画图配置 查看模型、LoRA 和工作流位置",
+                    "宽高、步数、种子、CFG、采样器等可在 WebUI 调整",
+                ],
+            ),
+            (
+                "自然语言绘图",
+                [
+                    "直接说：帮我画一张夏空在海边的图片",
+                    "AstrBot 会识别绘图模式、动作、预设和 LoRA 简称",
+                    "可在 WebUI 选择 AstrBot AI 或插件 AI 生成提示词",
+                    "提示词优化失败时会提示原因，不会静默改变用户要求",
+                ],
+            ),
+            (
+                "预设与画师串",
+                [
+                    "/预设 列表；/预设 添加 名称=内容",
+                    "/预设 修改 名称=新内容；/预设 删除 名称",
+                    "/画师串 列表；/画师串 使用 画风001",
+                    "普通提示词预设和 LoRA 独立 tag 预设均可在 WebUI 管理",
+                ],
+            ),
+            (
+                "WebUI 与状态",
+                [
+                    "/comfy状态 查看 ComfyUI 连接状态",
+                    "WebUI 可切换工作流、模型、明暗主题和回复方式",
+                    "可上传 LoRA，也可用 CivitAI 链接下载并查看进度",
+                    "下载完成后会自动刷新模型、LoRA 和预设信息",
+                ],
+            ),
+        ]
+
+        def wrap(text: str, font, max_width: int) -> list[str]:
+            result: list[str] = []
+            current = ""
+            for char in text:
+                candidate = current + char
+                box = measure_draw.textbbox((0, 0), candidate, font=font)
+                if current and box[2] - box[0] > max_width:
+                    result.append(current)
+                    current = char
+                else:
+                    current = candidate
+            if current:
+                result.append(current)
+            return result or [""]
+
+        measure_draw = ImageDraw.Draw(PILImage.new("RGB", (1, 1)))
+        card_data = []
+        for title, lines in sections:
+            wrapped_lines = []
+            for line in lines:
+                wrapped_lines.extend(wrap(line, small, card_width - 54))
+            card_height = 72 + len(wrapped_lines) * 34 + 24
+            card_data.append((title, wrapped_lines, card_height))
+
+        header_height = 176
+        footer_height = 66
+        row_heights = [
+            max(card_data[index][2], card_data[index + 1][2])
+            for index in range(0, len(card_data), 2)
+        ]
+        height = header_height + sum(row_heights) + 28 * len(row_heights) + footer_height + margin
+        image = PILImage.new("RGB", (width, height), (15, 23, 29))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((0, 0, width, 10), fill=(104, 211, 181))
+        draw.text((margin, 48), "ComfyUI AI 绘画台", font=title_font, fill=(238, 248, 246))
+        draw.text(
+            (margin, 116),
+            f"AstrBot 绘图指令速查 · 插件版本 {PLUGIN_VERSION}",
+            font=subtitle_font,
+            fill=(164, 187, 190),
+        )
+
+        y = header_height
+        for row_index, row_height in enumerate(row_heights):
+            for column in range(2):
+                item_index = row_index * 2 + column
+                title, lines, _ = card_data[item_index]
+                x = margin + column * (card_width + column_gap)
+                draw.rounded_rectangle(
+                    (x, y, x + card_width, y + row_height),
+                    radius=18,
+                    fill=(25, 37, 44),
+                    outline=(49, 69, 76),
+                    width=2,
+                )
+                draw.rounded_rectangle((x, y, x + 9, y + row_height), radius=5, fill=(104, 211, 181))
+                draw.text((x + 28, y + 20), title, font=card_title, fill=(255, 210, 122))
+                line_y = y + 76
+                for line in lines:
+                    draw.ellipse((x + 30, line_y + 9, x + 39, line_y + 18), fill=(104, 211, 181))
+                    draw.text((x + 52, line_y), line, font=small, fill=(226, 237, 237))
+                    line_y += 34
+            y += row_height + 28
+
+        draw.text(
+            (margin, height - footer_height + 7),
+            "输入 /helpd 可再次查看帮助 · 详细参数和模型管理请打开 AstrBot WebUI",
+            font=footer_font,
+            fill=(146, 170, 174),
+        )
+        path = self.data_dir / "helpd.png"
+        temp_path = self.data_dir / "helpd.tmp.png"
+        image.save(temp_path, format="PNG", optimize=True)
+        temp_path.replace(path)
+        return path
+
+    @filter.command("helpd", desc="查询 ComfyUI AI 绘画指令")
+    async def command_help(self, event: AstrMessageEvent):
+        try:
+            image_path = self._help_image_path()
+            yield event.chain_result([Image.fromFileSystem(str(image_path))])
+        except Exception as exc:
+            logger.warning("[%s] 生成帮助图片失败，回退文字帮助：%s", PLUGIN_NAME, exc)
+            yield event.plain_result(self._help_text())
 
     @filter.command("文生图", alias=["txt2img"], desc="使用原始工作流进行文生图")
     async def command_txt2img(self, event: AstrMessageEvent, prompt: GreedyStr):
@@ -2208,6 +2856,7 @@ class ComfyUIAIStudio(Star):
                     event,
                     item.get("content", ""),
                     force_enabled=True,
+                    source_override="plugin",
                 )
             except AIError as exc:
                 yield event.plain_result(f"AI 翻译失败：{exc}")
@@ -2378,14 +3027,80 @@ class ComfyUIAIStudio(Star):
         if ai is not None:
             add_option("ai", "开" if ai else "关")
         params = fill_params(raw, mode)
-        # LLM 工具的调用方已经是 AstrBot 当前 LLM。这里直接使用它传入的
-        # prompt、preset 和 lora，禁止再次调用插件 AI 或 AstrBot AI 改写提示词，
-        # 否则模型触发词和预设内容可能在二次改写时被丢掉。保留 ai 参数只是为了
-        # 兼容旧的工具 schema，当前 LLM 工具始终按 noai 执行。
+        # 默认直接使用 AstrBot LLM 传入的 prompt、preset 和 lora；如果 WebUI
+        # 选择插件 AI，_llm_execute 会在后台绘图前用用户原话重新生成一次 prompt。
+        # 这里先关闭旧的 ai 字段，避免同一条任务被普通指令翻译逻辑二次处理。
         params.ai = False
         params.auto_ai = False
         params.ai_source = ""
         return params
+
+    def _llm_plugin_ai_enabled(self) -> bool:
+        value = self._get("llm_prompt_source", "astrbot")
+        return str(value or "astrbot").strip().lower() in {
+            "plugin",
+            "plugin_ai",
+            "插件",
+            "插件ai",
+        }
+
+    def _plugin_ai_debug_enabled(self) -> bool:
+        value = self._get("plugin_ai_debug", False)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on", "是", "开启"}
+        return bool(value)
+
+    @staticmethod
+    def _llm_prompt_input(original_text: str, extracted_prompt: str) -> str:
+        """给插件 AI 同时提供用户原话和当前 LLM 结果，避免动作在中间步骤丢失。"""
+        original = str(original_text or "").strip()
+        extracted = str(extracted_prompt or "").strip()
+        if original and extracted and original.casefold() != extracted.casefold():
+            return (
+                "用户原话：\n"
+                f"{original}\n\n"
+                "AstrBot LLM 已提取的画面描述：\n"
+                f"{extracted}"
+            )
+        return original or extracted
+
+    async def _prepare_llm_prompt(
+        self,
+        event: AstrMessageEvent,
+        params: DrawParams,
+        original_text: str,
+    ) -> str:
+        """按 WebUI 选择决定是否由插件 AI 生成 LLM 绘图提示词。"""
+        if not self._llm_plugin_ai_enabled():
+            return ""
+        source_text = self._llm_prompt_input(original_text, params.prompt)
+        if not source_text:
+            return ""
+        # 仅供开发者调试回显，不参与绘图参数序列化。
+        params.plugin_ai_debug_input = source_text
+        try:
+            translated = await self._translate_prompt(
+                event,
+                source_text,
+                force_enabled=True,
+                source_override="plugin_llm",
+            )
+        except AIError as exc:
+            raise UsageError(f"LLM 插件 AI 提示词生成失败：{exc}") from exc
+        params.prompt = translated
+        # 已经在工具执行前完成插件 AI 转换，后台 _generate 不再二次改写，
+        # 这样动作、预设和 LoRA 控制项可以由同一条链路稳定合并。
+        params.ai = False
+        params.auto_ai = False
+        params.ai_source = ""
+        logger.info("[%s] LLM 插件 AI 提示词：%s", PLUGIN_NAME, translated)
+        return translated
+
+    def _llm_debug_reply(self, reply: str, prompt: str, source_text: str = "") -> str:
+        if not prompt or not self._plugin_ai_debug_enabled():
+            return reply
+        details = f"[开发者调试] 插件 AI 输入：\n{source_text or '无'}\n\n插件 AI 最终提示词：\n{prompt}"
+        return f"{reply}\n\n{details}"
 
     async def _llm_execute(
         self,
@@ -2405,6 +3120,10 @@ class ComfyUIAIStudio(Star):
             return f"{MODE_NAMES[mode]}失败：无法读取 LoRA 列表：{exc}"
         if mode == "txt2img" and not params.prompt and not params.presets and not params.loras:
             return "文生图失败：请提供画面描述、提示词预设或 LoRA 指令简称。"
+        try:
+            plugin_prompt = await self._prepare_llm_prompt(event, params, original_text)
+        except UsageError as exc:
+            return f"{MODE_NAMES[mode]}失败：{exc}"
         image_path = ""
         if require_image:
             image_path = await self._extract_image(event)
@@ -2415,7 +3134,11 @@ class ComfyUIAIStudio(Star):
                 return f"{MODE_NAMES[mode]}需要用户附图、回复图片，或已有最近出图。"
 
         self._schedule_draw(event, params, mode, image_path)
-        return self._draw_start_reply(mode, params.prompt)
+        return self._llm_debug_reply(
+            self._draw_start_reply(mode, params.prompt),
+            plugin_prompt,
+            str(getattr(params, "plugin_ai_debug_input", "") or ""),
+        )
 
     @filter.llm_tool(name=LLM_TOOL_NAMES["status"])
     async def llm_status(self, event: AstrMessageEvent) -> str:
@@ -2453,7 +3176,9 @@ class ComfyUIAIStudio(Star):
         用户用自然语言提出绘画要求时必须调用此工具。即使用户只说“帮我画一张夏空的图”，
         也要调用此工具，不要先单独回复查资料。把命中的提示词预设填入 preset，
         把命中的 LoRA 指令简称填入 lora；preset 和 lora 可以同时填写。其余画面描述填入 prompt，
-        不要把“我来画一张”等聊天套话放入 prompt。任务提交后后台执行，用户可以继续聊天。
+        不要把“我来画一张”等聊天套话放入 prompt。prompt 必须是适配 ComfyUI Anima 工作流的英文 Danbooru 标签，
+        按主体、角色、外观、服装、动作、表情、镜头、构图、场景的顺序组织，并完整保留用户要求的动作。
+        任务提交后后台执行，用户可以继续聊天。
 
         Args:
             prompt(string): 画面描述，可以是用户自然语言；不要把预设名或 LoRA 简称遗漏在描述之外。
@@ -2467,7 +3192,7 @@ class ComfyUIAIStudio(Star):
             lora(string): 可选多个 LoRA，优先填写指令简称，格式为 1号lora:0.8,2号lora:0.6。
             preset(string): 可选一个或多个提示词预设名称，多个用逗号分隔，例如 夏空,画面预设。
             artist_preset(string): 可选画师串预设名称，不传使用 WebUI 当前画师串。
-            ai(boolean): 为兼容旧工具字段而保留；LLM 工具不会调用插件 AI 二次改写提示词。
+            ai(boolean): 为兼容旧工具字段而保留；是否使用插件 AI 由 WebUI 的 LLM 提示词来源决定。
         """
         if not str(prompt or "").strip() and not str(preset or "").strip():
             return "文生图失败：缺少画面描述或提示词预设。"
@@ -2508,7 +3233,8 @@ class ComfyUIAIStudio(Star):
 
         用户要求修改、重绘或改变当前图片时必须调用此工具，不要只用文字回复。
         用户要求修改、重绘或改变当前图片时调用此工具。preset 和 lora 可以与 prompt 同时使用；
-        其余自然语言画面描述放入 prompt，任务后台执行，期间可以继续聊天。
+        其余画面描述放入 prompt，prompt 使用适配 ComfyUI Anima 的英文 Danbooru 标签并保留动作和构图，
+        任务后台执行，期间可以继续聊天。
 
         Args:
             prompt(string): 修改描述，可以是用户自然语言。
@@ -2518,7 +3244,7 @@ class ComfyUIAIStudio(Star):
             lora(string): 可选多个 LoRA 指令简称，格式为 1号lora:0.8,2号lora:0.6。
             preset(string): 可选一个或多个提示词预设名称，多个用逗号分隔。
             artist_preset(string): 可选画师串预设名称。
-            ai(boolean): 为兼容旧工具字段而保留；LLM 工具不会调用插件 AI 二次改写提示词。
+            ai(boolean): 为兼容旧工具字段而保留；是否使用插件 AI 由 WebUI 的 LLM 提示词来源决定。
         """
         if not str(prompt or "").strip() and not str(preset or "").strip():
             return "图生图失败：缺少画面描述或提示词预设。"
@@ -2557,7 +3283,7 @@ class ComfyUIAIStudio(Star):
 
         用户要求放大或高清修复当前图片时必须调用此工具，不要只用文字回复。
         prompt、preset 和 lora 仍可填写，插件会和“高清放大”指令一样进入原始高清工作流。
-        工具会优先使用当前消息图片、引用图片或最近出图，任务后台执行。
+        prompt 使用适配 ComfyUI Anima 的英文 Danbooru 标签；工具会优先使用当前消息图片、引用图片或最近出图，任务后台执行。
 
         Args:
             scale(number): 可选放大倍率，默认使用插件配置。
@@ -2569,7 +3295,7 @@ class ComfyUIAIStudio(Star):
             lora(string): 可选多个 LoRA 指令简称。
             preset(string): 可选提示词预设名称，多个用逗号分隔。
             artist_preset(string): 可选画师串预设名称。
-            ai(boolean): 为兼容旧工具字段而保留；LLM 工具不会调用插件 AI 二次改写提示词。
+            ai(boolean): 为兼容旧工具字段而保留；是否使用插件 AI 由 WebUI 的 LLM 提示词来源决定。
         """
         try:
             params = self._llm_params(
@@ -2594,6 +3320,8 @@ class ComfyUIAIStudio(Star):
         # WebUI 只需要知道是否已经配置密钥，绝不能把密钥原文下发到浏览器。
         data.pop("ai_api_key", None)
         data["ai_api_key_configured"] = bool(self._get("ai_api_key", ""))
+        data.pop("civitai_token", None)
+        data["civitai_token_configured"] = bool(self._get("civitai_token", ""))
         data["workflow_selected"] = {mode: self._workflow_path(mode).name for mode in MODE_NAMES}
         return data
 
@@ -2666,7 +3394,7 @@ class ComfyUIAIStudio(Star):
         changed = []
         for key, value in data.items():
             if key in WRITABLE_CONFIG:
-                if key == "ai_api_key" and not str(value or "").strip():
+                if key in {"ai_api_key", "civitai_token"} and not str(value or "").strip():
                     continue
                 self._set(key, value)
                 changed.append(key)
@@ -2758,7 +3486,14 @@ class ComfyUIAIStudio(Star):
                     return json_response({"error": "预设不存在"}, status_code=404)
                 ai_config = self._config_dict()
                 ai_config["ai_enabled"] = True
-                item["translated"] = await AITranslator(ai_config).translate(item.get("content", ""))
+                item["translated"] = await AITranslator(ai_config).generate(
+                    item.get("content", ""),
+                    system_prompt=str(
+                        self._get("plugin_ai_command_system_prompt", "")
+                        or DANBOORU_SYSTEM_PROMPT
+                    ).strip(),
+                    max_tokens=512,
+                )
                 self.presets.save()
                 return json_response({"ok": True, "translated": item["translated"]})
             else:

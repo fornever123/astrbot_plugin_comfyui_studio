@@ -12,7 +12,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>ComfyUI AI 绘画台</h1>
-    <p id="version" class="version">版本 v0.6.4</p>
+    <p id="version" class="version">版本 v0.6.8</p>
       </div>
       <div class="top-actions">
         <button id="themeToggle" class="secondary" type="button">切换明暗</button>
@@ -60,7 +60,7 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2>LoRA 管理</h2><p>每个 LoRA 独立保存昵称、多个指令简称、分类、权重和 CivitAI 信息。</p></div>
+        <div><h2>LoRA 管理</h2><p>每个 LoRA 独立保存昵称、多个指令简称、分类、权重和专属预设；原有全局预设仍会保留。</p></div>
         <div class="button-row"><button id="loraDisplayToggle" class="secondary" type="button">简洁选择</button><button id="refreshLoras" class="secondary">刷新 CivitAI</button></div>
       </div>
       <div class="lora-download-row">
@@ -68,7 +68,13 @@
         <label class="check"><input id="civitaiDownloadOverwrite" type="checkbox">允许覆盖同名文件</label>
         <button id="downloadLora" class="primary" type="button">下载到 LoRA 文件夹</button>
       </div>
+      <div id="loraDownloadProgress" class="download-progress" hidden>
+        <div class="download-progress-head"><strong id="loraDownloadStage">等待下载</strong><span id="loraDownloadPercent">0%</span></div>
+        <progress id="loraDownloadBar" max="100" value="0"></progress>
+        <div class="download-progress-meta"><span id="loraDownloadFile">尚未开始</span><span id="loraDownloadBytes">0 B / 未知大小</span></div>
+      </div>
       <div class="lora-category-toolbar">
+        <label class="lora-search">搜索 LoRA<input id="loraSearch" class="input" type="search" placeholder="按昵称、文件名或指令简称搜索"></label>
         <label>筛选分类<select id="loraCategoryFilter" class="select"><option value="全部">全部分类</option></select></label>
         <label>新建自定义分类<input id="newLoraCategory" class="input" placeholder="例如：人物、风景"></label>
         <button id="addLoraCategory" class="secondary">添加分类</button>
@@ -135,7 +141,14 @@
         <label>服务地址<input id="ai_base_url" class="input" type="url"></label>
         <label>模型<select id="ai_model" class="select"><option value="">请先获取模型列表</option></select></label>
         <label>API Key<input id="ai_api_key" class="input" type="password" placeholder="留空表示沿用已保存密钥"></label>
+        <label>CivitAI API Key（可选）<input id="civitai_token" class="input" type="password" placeholder="公共模型通常不需要"></label>
         <div class="ai-actions wide"><button id="loadAiModels" class="secondary" type="button">获取模型列表</button><button id="testAiConnection" class="secondary" type="button">测试连接</button><span id="aiConnectionStatus" class="muted">尚未测试</span></div>
+        <div class="ai-config-subhead wide"><h3>LLM 绘图提示词</h3><p>选择后，LLM 收到绘图要求时会把用户原话和 LLM 提取结果一起交给对应的提示词生成器。</p></div>
+        <label>LLM 提示词来源<select id="llm_prompt_source" class="select"><option value="astrbot">AstrBot LLM 已提取的提示词</option><option value="plugin">插件 AI 重新生成提示词</option></select></label>
+        <label class="check"><input id="plugin_ai_debug" type="checkbox">显示插件 AI 提示词调试过程（开发者）</label>
+        <label class="wide">插件 AI：LLM 绘图提示词<textarea id="plugin_ai_llm_system_prompt" class="textarea" placeholder="留空使用内置提示词；要求保留用户原话中的动作、姿势、表情、场景和镜头"></textarea></label>
+        <div class="ai-config-subhead wide"><h3>插件 AI：普通指令翻译</h3><p>用于 /文生图 ai、/图生图 ai、/预设 翻译等场景，与 LLM 绘图提示词分开保存。</p></div>
+        <label class="wide">插件 AI：指令翻译提示词<textarea id="plugin_ai_command_system_prompt" class="textarea" placeholder="留空使用内置 Danbooru 翻译提示词"></textarea></label>
         <label class="check"><input id="plain_translate_enabled" type="checkbox">非 AI 中文自动翻译</label>
         <label>普通翻译网站地址<input id="plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
         <label class="wide">默认正面提示词<textarea id="default_positive" class="textarea" placeholder="每次绘图都会放在用户提示词前面；留空则使用旧版质量词设置"></textarea></label>
@@ -159,7 +172,7 @@
     <div id="view-presets" class="view-panel" data-view-panel="presets" hidden>
 
     <section class="band">
-      <div class="section-head"><div><h2>提示词预设</h2><p>可以新增、编辑或删除提示词预设。</p></div></div>
+      <div class="section-head"><div><h2>提示词预设</h2><p>这里保留原有全局提示词预设；LoRA 专属的指令简称与预设内容请在对应 LoRA 卡片中编辑。</p></div></div>
       <div class="preset-add"><input id="presetName" class="input" placeholder="名称"><input id="presetContent" class="input" placeholder="标签或中文描述"><button id="addPreset" class="primary">添加预设</button><button id="cancelPreset" class="secondary" hidden>取消编辑</button></div>
       <div id="presets" class="preset-list"></div>
     </section>

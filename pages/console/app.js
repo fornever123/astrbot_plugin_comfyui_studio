@@ -6,6 +6,7 @@ let modelData = {};
 let loraItems = [];
 let loraCategories = ["未分类"];
 let loraCategoryFilter = "全部";
+let loraSearchQuery = "";
 let loraSimpleMode = false;
 let presetItems = {};
 let editingPreset = "";
@@ -185,7 +186,7 @@ async function load() {
   initViews();
   try {
     const status = await get(`${API}/status`);
-    document.getElementById("version").textContent = `版本 ${status.version || "v0.6.4"}`;
+    document.getElementById("version").textContent = `版本 ${status.version || "v0.6.8"}`;
     config = status.config || {};
     const comfy = status.comfy || {};
     const statusEl = document.getElementById("status");
@@ -215,7 +216,13 @@ async function load() {
 
 function fillConfig() {
   document.getElementById("ai_base_url").value = config.ai_base_url || "";
+  document.getElementById("civitai_token").value = "";
+  document.getElementById("civitai_token").placeholder = config.civitai_token_configured ? "已保存密钥，留空表示沿用" : "公共模型通常不需要";
   setAiModelOptions(config.ai_model ? [config.ai_model] : [], config.ai_model || "");
+  document.getElementById("llm_prompt_source").value = config.llm_prompt_source || "astrbot";
+  document.getElementById("plugin_ai_debug").checked = config.plugin_ai_debug === true || config.plugin_ai_debug === "true" || config.plugin_ai_debug === 1;
+  document.getElementById("plugin_ai_llm_system_prompt").value = config.plugin_ai_llm_system_prompt || "";
+  document.getElementById("plugin_ai_command_system_prompt").value = config.plugin_ai_command_system_prompt || "";
   document.getElementById("plain_translate_enabled").checked = config.plain_translate_enabled !== false;
   document.getElementById("plain_translate_url").value = config.plain_translate_url || "https://translate.googleapis.com/translate_a/single";
   document.getElementById("default_positive").value = config.default_positive || config.quality_prefix || "";
@@ -263,6 +270,30 @@ function renderLoraCategories() {
   select.value = loraCategoryFilter;
 }
 
+function normalizedLoraPresetEntries(item) {
+  const result = [];
+  const seen = new Set();
+  const add = (tag, content = "") => {
+    tag = String(tag || "").trim();
+    content = String(content || "").trim();
+    if (!tag && !content) return;
+    const key = `${tag.toLowerCase()}\u0000${content.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({tag, content});
+  };
+  (Array.isArray(item.lora_presets) ? item.lora_presets : []).forEach(entry => {
+    if (entry && typeof entry === "object") add(entry.tag || entry.civitai_tag, entry.content || entry.value);
+  });
+  return result;
+}
+
+function renderLoraPresetEditor(item, file, compact = false) {
+  const entries = normalizedLoraPresetEntries(item);
+  const rows = entries.map(entry => `<div class="lora-preset-row" data-lora-preset-row><input class="input lora-preset-alias" data-lora-preset-alias value="${escapeHtml(entry.tag)}" placeholder="指令简称"><textarea class="textarea lora-preset-content" data-lora-preset-content placeholder="该指令简称对应的预设内容">${escapeHtml(entry.content)}</textarea><button type="button" class="secondary" data-lora-action="remove-lora-preset" data-file="${file}" title="移除这一行">移除</button></div>`).join("");
+  return `<div class="lora-preset-editor${compact ? " compact" : ""}"><div class="lora-preset-title"><strong>LoRA 专属预设</strong><span class="muted">左侧指令简称，右侧绘图时加入的预设内容</span></div><div class="lora-preset-list" data-lora-preset-list="${file}">${rows || `<span class="muted lora-preset-empty">暂无专属预设，点击添加一行</span>`}</div><button type="button" class="secondary" data-lora-action="add-lora-preset" data-file="${file}">添加指令简称预设</button></div>`;
+}
+
 function renderLoras() {
   const active = {};
   (config.lora_list || []).forEach(item => {
@@ -271,8 +302,13 @@ function renderLoras() {
     const name = split > 0 ? text.slice(0, split) : text;
     active[name] = split > 0 ? text.slice(split + 1) : "0.8";
   });
-  const allItems = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), command_aliases: [], command_alias: "", category: "未分类", images: [], found: false, model_url: "", custom_url: "", custom_name: "", show_images: true}));
-  const items = loraCategoryFilter === "全部" ? allItems : allItems.filter(item => (item.category || "未分类") === loraCategoryFilter);
+  const allItems = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), command_aliases: [], command_alias: "", category: "未分类", images: [], found: false, model_url: "", custom_url: "", custom_name: "", civitai_tags: [], lora_presets: [], show_images: true}));
+  const search = loraSearchQuery.trim().toLowerCase();
+  const categoryItems = loraCategoryFilter === "全部" ? allItems : allItems.filter(item => (item.category || "未分类") === loraCategoryFilter);
+  const items = search ? categoryItems.filter(item => {
+    const aliases = Array.isArray(item.command_aliases) ? item.command_aliases : (item.command_alias ? [item.command_alias] : []);
+    return [item.file_name, item.alias, ...aliases].some(value => String(value || "").toLowerCase().includes(search));
+  }) : categoryItems;
   const container = document.getElementById("loras");
   container.classList.toggle("lora-simple", loraSimpleMode);
   const toggle = document.getElementById("loraDisplayToggle");
@@ -296,9 +332,9 @@ function renderLoras() {
     const info = url ? `<div class="civitai-link-row"><a class="civitai-link ${item.found ? "" : "muted"}" href="${escapedUrl}" target="_blank" rel="noopener noreferrer" data-civitai-url="${escapedUrl}">${linkText}</a><button type="button" class="secondary" data-civitai-copy="${escapedUrl}">复制链接</button></div><code class="civitai-url">${escapedUrl}</code>` : `<span class="muted">暂未获得 CivitAI 链接</span>`;
     const categoryOptions = loraCategories.map(value => `<option value="${escapeHtml(value)}" ${value === category ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
     if (loraSimpleMode) {
-      return `<article class="lora-card lora-card-simple"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><small class="lora-simple-meta">分类：${escapeHtml(category)}　简称：${escapeHtml(commandAliases.join("、") || "默认简称")}</small></article>`;
+      return `<article class="lora-card lora-card-simple"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-simple-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label>${renderLoraPresetEditor(item, file, true)}<button class="primary" data-lora-action="save-lora" data-file="${file}">保存分类与预设</button></div><small class="lora-simple-meta">指令简称：${escapeHtml(commandAliases.join("、") || "默认简称")}</small></article>`;
     }
-    return `<article class="lora-card"><div class="lora-main"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>显示昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias)}"></label><label>权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(active[item.file_name] || "0.8")}"></label><div class="command-alias-label"><span>指令简称（可添加多个）</span><div class="command-alias-list" data-command-alias-list="${file}">${commandAliasChips || `<span class="muted command-alias-empty">尚未添加简称，将使用默认简称</span>`}</div><div class="command-alias-add"><input class="input command-alias-input" data-command-alias-input-file="${file}" placeholder="如：1号lora"><button type="button" class="secondary" data-lora-action="add-command-alias" data-file="${file}">添加简称</button></div></div><label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapedCustomUrl}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label><div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="danger-button" data-lora-action="delete-lora" data-file="${file}">删除此 LoRA</button></div></div></div><div class="civitai-info">${info}<div class="civitai-gallery">${images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
+    return `<article class="lora-card"><div class="lora-main"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>显示昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias)}"></label><label>权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(active[item.file_name] || "0.8")}"></label><div class="command-alias-label"><span>指令简称（可添加多个）</span><div class="command-alias-list" data-command-alias-list="${file}">${commandAliasChips || `<span class="muted command-alias-empty">尚未添加简称，将使用默认简称</span>`}</div><div class="command-alias-add"><input class="input command-alias-input" data-command-alias-input-file="${file}" placeholder="如：1号lora"><button type="button" class="secondary" data-lora-action="add-command-alias" data-file="${file}">添加简称</button></div></div><label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapedCustomUrl}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="danger-button" data-lora-action="delete-lora" data-file="${file}">删除此 LoRA</button></div></div></div><div class="civitai-info">${info}<div class="civitai-gallery">${images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
   }).join("") || '<div class="empty">当前分类没有 LoRA。</div>';
 }
 
@@ -378,19 +414,75 @@ document.getElementById("loraFile").onchange = async event => {
   if (!file) return;
   try { await upload(`${API}/upload_lora`, file); show("LoRA 已上传，正在刷新模型列表"); await loadModels(); } catch (e) { show(e.message); } finally { event.target.value = ""; }
 };
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / (1024 ** index)).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function updateLoraDownloadProgress(job) {
+  const panel = document.getElementById("loraDownloadProgress");
+  const bar = document.getElementById("loraDownloadBar");
+  const percent = document.getElementById("loraDownloadPercent");
+  const stage = document.getElementById("loraDownloadStage");
+  const file = document.getElementById("loraDownloadFile");
+  const bytes = document.getElementById("loraDownloadBytes");
+  if (!panel || !job) return;
+  panel.hidden = false;
+  const hasTotal = Number(job.total || 0) > 0;
+  const value = hasTotal ? Math.max(0, Math.min(100, Number(job.progress || 0))) : 0;
+  bar.value = value;
+  bar.removeAttribute("indeterminate");
+  if (!hasTotal && job.status === "running") bar.classList.add("indeterminate");
+  else bar.classList.remove("indeterminate");
+  percent.textContent = hasTotal ? `${value.toFixed(value % 1 ? 1 : 0)}%` : "下载中";
+  stage.textContent = job.stage || "正在处理";
+  file.textContent = job.file_name ? `文件：${job.file_name}` : "正在读取模型信息";
+  bytes.textContent = hasTotal ? `${formatBytes(job.downloaded)} / ${formatBytes(job.total)}` : `${formatBytes(job.downloaded)} / 未知大小`;
+}
+
+function finishLoraDownloadProgress() {
+  const button = document.getElementById("downloadLora");
+  if (button) { button.disabled = false; button.textContent = "下载到 LoRA 文件夹"; }
+}
+
+async function waitForLoraDownload(jobId) {
+  while (true) {
+    const job = await post(`${API}/download_lora_progress`, {job_id: jobId});
+    updateLoraDownloadProgress(job);
+    if (job.status === "done") return job;
+    if (job.status === "error") throw new Error(job.error || "LoRA 下载失败");
+    await new Promise(resolve => setTimeout(resolve, 700));
+  }
+}
+
 document.getElementById("downloadLora").onclick = async () => {
   const input = document.getElementById("civitaiDownloadUrl");
   const overwrite = document.getElementById("civitaiDownloadOverwrite").checked;
+  const button = document.getElementById("downloadLora");
   const url = input.value.trim();
   if (!url) { show("请先输入 CivitAI 模型链接"); return; }
   try {
-    show("正在下载 LoRA，请稍候…");
-    const result = await post(`${API}/download_lora`, {url, overwrite});
+    button.disabled = true;
+    button.textContent = "下载中…";
+    updateLoraDownloadProgress({status: "queued", stage: "已创建下载任务", progress: 0, downloaded: 0, total: 0});
+    show("LoRA 下载任务已创建");
+    const task = await post(`${API}/download_lora`, {url, overwrite});
+    if (!task.job_id) throw new Error("下载任务创建失败：未返回任务编号");
+    const result = await waitForLoraDownload(task.job_id);
     input.value = "";
     document.getElementById("civitaiDownloadOverwrite").checked = false;
     await loadModels();
+    await loadLoraInfo(true);
+    await loadPresets();
+    updateLoraDownloadProgress({...result, stage: "下载完成，模型列表已刷新"});
     show(`LoRA 下载完成：${result.file_name}`);
-  } catch (e) { show(e.message); }
+  } catch (e) {
+    updateLoraDownloadProgress({status: "error", stage: "下载失败", error: e.message || "未知错误", progress: 0, downloaded: 0, total: 0});
+    show(e.message);
+  } finally { finishLoraDownloadProgress(); }
 };
 document.getElementById("uploadWorkflow").onclick = async () => {
   const input = document.getElementById("workflowFile");
@@ -403,6 +495,7 @@ document.getElementById("uploadWorkflow").onclick = async () => {
   } catch (e) { show(e.message); }
   finally { input.value = ""; }
 };
+document.getElementById("loraSearch").oninput = event => { loraSearchQuery = event.target.value || ""; renderLoras(); };
 document.getElementById("loraCategoryFilter").onchange = event => { loraCategoryFilter = event.target.value; renderLoras(); };
 document.getElementById("addLoraCategory").onclick = async () => {
   const input = document.getElementById("newLoraCategory");
@@ -448,6 +541,24 @@ document.getElementById("loras").onclick = async event => {
   if (!button) return;
   try {
     const file = button.dataset.file;
+    if (button.dataset.loraAction === "add-lora-preset") {
+      const list = document.querySelector(`[data-lora-preset-list="${CSS.escape(file)}"]`);
+      if (!list) return;
+      list.querySelector(".lora-preset-empty")?.remove();
+      const row = document.createElement("div");
+      row.className = "lora-preset-row";
+      row.setAttribute("data-lora-preset-row", "");
+      row.innerHTML = `<input class="input lora-preset-alias" data-lora-preset-alias placeholder="指令简称"><textarea class="textarea lora-preset-content" data-lora-preset-content placeholder="该指令简称对应的预设内容"></textarea><button type="button" class="secondary" data-lora-action="remove-lora-preset" data-file="${escapeHtml(file)}">移除</button>`;
+      list.appendChild(row);
+      row.querySelector("[data-lora-preset-alias]")?.focus();
+      return;
+    }
+    if (button.dataset.loraAction === "remove-lora-preset") {
+      const list = button.closest("[data-lora-preset-list]");
+      button.closest("[data-lora-preset-row]")?.remove();
+      if (list && !list.querySelector("[data-lora-preset-row]")) list.innerHTML = '<span class="muted lora-preset-empty">暂无 tag，点击添加一行</span>';
+      return;
+    }
     if (button.dataset.loraAction === "add-command-alias") {
       const input = document.querySelector(`[data-command-alias-input-file="${CSS.escape(file)}"]`);
       const list = document.querySelector(`[data-command-alias-list="${CSS.escape(file)}"]`);
@@ -493,10 +604,12 @@ document.getElementById("loras").onclick = async event => {
       loraItems = loraItems.filter(value => value.file_name !== file);
       modelData.loras = (modelData.loras || []).filter(value => value !== file);
       config.lora_list = result.lora_list || currentLoraSelectionListWithout(file);
-      renderLoras();
+      await loadModels();
+      await loadLoraInfo(true);
       await loadPresets();
       show(`LoRA 已删除：${name}`);
     } else if (button.dataset.loraAction === "save-lora") {
+      const item = loraItems.find(value => value.file_name === file) || {};
       const aliasInput = document.querySelector(`[data-alias-file="${CSS.escape(file)}"]`);
       const commandList = document.querySelector(`[data-command-alias-list="${CSS.escape(file)}"]`);
       const categoryInput = document.querySelector(`[data-lora-category-file="${CSS.escape(file)}"]`);
@@ -505,17 +618,23 @@ document.getElementById("loras").onclick = async event => {
       const urlInput = document.querySelector(`[data-civitai-url-file="${CSS.escape(file)}"]`);
       const showImagesInput = document.querySelector(`[data-show-images-file="${CSS.escape(file)}"]`);
       const enabledInput = document.querySelector(`[data-lora-checkbox="${CSS.escape(file)}"]`);
+      const presetList = document.querySelector(`[data-lora-preset-list="${CSS.escape(file)}"]`);
+      const loraPresets = [...(presetList?.querySelectorAll("[data-lora-preset-row]") || [])].map(row => ({
+        tag: row.querySelector("[data-lora-preset-alias]")?.value.trim() || "",
+        content: row.querySelector("[data-lora-preset-content]")?.value.trim() || "",
+      })).filter(entry => entry.tag || entry.content);
       const result = await post(`${API}/lora_info`, {
         action: "save_lora",
         file_name: file,
-        alias: aliasInput.value,
-        command_aliases: [...commandList.querySelectorAll("[data-command-alias-value]")].map(chip => chip.dataset.commandAliasValue),
-        category: categoryInput.value,
-        weight: weightInput.value,
-        civitai_name: nameInput.value,
-        civitai_url: urlInput.value,
-        show_images: showImagesInput.checked,
-        enabled: enabledInput.checked,
+        alias: aliasInput?.value ?? item.alias ?? "",
+        command_aliases: commandList ? [...commandList.querySelectorAll("[data-command-alias-value]")].map(chip => chip.dataset.commandAliasValue) : (Array.isArray(item.command_aliases) ? item.command_aliases : []),
+        category: categoryInput?.value || item.category || "未分类",
+        weight: weightInput?.value || currentLoraSelection()[file] || "0.8",
+        civitai_name: nameInput?.value ?? item.custom_name ?? "",
+        civitai_url: urlInput?.value ?? item.custom_url ?? "",
+        show_images: showImagesInput ? showImagesInput.checked : item.show_images !== false,
+        enabled: enabledInput ? enabledInput.checked : currentLoraSelection()[file] !== undefined,
+        lora_presets: loraPresets,
       });
       loraItems = result.items || [];
       loraCategories = result.categories || loraCategories;
@@ -584,11 +703,11 @@ document.getElementById("testAiConnection").onclick = async () => {
     show(e.message);
   }
 };
-for (const id of ["ai_base_url", "ai_model", "ai_api_key"]) {
+for (const id of ["ai_base_url", "ai_model", "ai_api_key", "civitai_token"]) {
   document.getElementById(id).addEventListener("input", () => { aiConnectionTested = false; });
 }
 document.getElementById("saveAi").onclick = async () => {
-  try { await post(`${API}/config`, {ai_base_url: document.getElementById("ai_base_url").value, ai_model: document.getElementById("ai_model").value, ai_api_key: document.getElementById("ai_api_key").value, plain_translate_enabled: document.getElementById("plain_translate_enabled").checked, plain_translate_url: document.getElementById("plain_translate_url").value, default_positive: document.getElementById("default_positive").value, default_negative: document.getElementById("default_negative").value}); show("AI 与提示词设置已保存"); } catch (e) { show(e.message); }
+  try { await post(`${API}/config`, {ai_base_url: document.getElementById("ai_base_url").value, ai_model: document.getElementById("ai_model").value, ai_api_key: document.getElementById("ai_api_key").value, civitai_token: document.getElementById("civitai_token").value, llm_prompt_source: document.getElementById("llm_prompt_source").value, plugin_ai_debug: document.getElementById("plugin_ai_debug").checked, plugin_ai_llm_system_prompt: document.getElementById("plugin_ai_llm_system_prompt").value, plugin_ai_command_system_prompt: document.getElementById("plugin_ai_command_system_prompt").value, plain_translate_enabled: document.getElementById("plain_translate_enabled").checked, plain_translate_url: document.getElementById("plain_translate_url").value, default_positive: document.getElementById("default_positive").value, default_negative: document.getElementById("default_negative").value}); show("AI、LLM、提示词和 CivitAI 设置已保存"); } catch (e) { show(e.message); }
 };
 document.getElementById("draw_reply_mode").onchange = updateReplyCustomVisibility;
 document.getElementById("saveReply").onclick = async () => { try { await post(`${API}/config`, {draw_reply_mode: document.getElementById("draw_reply_mode").value, draw_delivery_mode: document.getElementById("draw_delivery_mode").value, draw_reply_timeout: Number(document.getElementById("draw_reply_timeout").value || 6), draw_start_reply: document.getElementById("draw_start_reply").value, draw_reply_custom: document.getElementById("draw_reply_custom").value}); show("回复设置已保存"); } catch (e) { show(e.message); } };

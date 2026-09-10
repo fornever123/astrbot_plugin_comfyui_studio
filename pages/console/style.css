@@ -68,8 +68,18 @@ button.secondary { background: transparent; }
 .workflow-upload { display: flex; align-items: flex-end; gap: 10px; margin-top: 16px; }
 .workflow-upload label { display: flex; flex: 1 1 360px; flex-direction: column; gap: 6px; color: var(--muted); }
 .workflow-upload .muted { padding-bottom: 10px; font-size: 12px; }
+.download-progress { display: grid; gap: 7px; margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.download-progress-head, .download-progress-meta { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.download-progress-head { color: var(--text); }
+.download-progress-head span { color: var(--accent); font-variant-numeric: tabular-nums; }
+.download-progress progress { width: 100%; height: 9px; accent-color: var(--accent); }
+.download-progress progress.indeterminate { opacity: .68; animation: download-pulse 1.1s ease-in-out infinite alternate; }
+.download-progress-meta { min-width: 0; color: var(--muted); font-size: 12px; }
+.download-progress-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes download-pulse { from { filter: brightness(.82); } to { filter: brightness(1.22); } }
 .lora-category-toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-top: 16px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .lora-category-toolbar label { display: flex; flex: 1 1 190px; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12px; }
+.lora-category-toolbar .lora-search { flex: 2 1 280px; }
 .lora-category-toolbar .select { margin-top: 0; }
 .lora-category-toolbar button { flex: 0 0 auto; }
 .lora-bulk-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
@@ -79,6 +89,9 @@ button.secondary { background: transparent; }
 .form-grid .wide { grid-column: 1 / -1; }
 .ai-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ai-actions button { flex: 0 0 auto; }
+.ai-config-subhead { padding-top: 6px; border-top: 1px solid var(--line); }
+.ai-config-subhead h3 { margin: 0 0 3px; color: var(--text); font-size: 14px; }
+.ai-config-subhead p { margin: 0; color: var(--muted); font-size: 12px; }
 .success-text { color: var(--accent); }
 .error-text { color: var(--danger); }
 .check { flex-direction: row !important; align-items: center; justify-content: flex-start; padding-top: 8px; }
@@ -109,6 +122,22 @@ button.secondary { background: transparent; }
 .lora-controls .civitai-name-label { min-width: 200px; }
 .lora-controls .lora-show-images { flex: 0 0 auto; min-width: auto; padding-top: 0; }
 .weight { width: 74px; border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 7px; border-radius: 6px; }
+.lora-preset-editor { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.lora-preset-title { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-bottom: 8px; font-size: 12px; }
+.lora-preset-title strong { color: var(--text); }
+.lora-preset-list { display: grid; gap: 8px; }
+.lora-preset-row { display: grid; grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.8fr) auto; gap: 7px; align-items: start; }
+.lora-preset-row .input, .lora-preset-row .textarea { padding: 7px 8px; min-height: 36px; }
+.lora-preset-row .textarea { min-height: 52px; }
+.lora-preset-row button { padding: 7px 9px; }
+.lora-preset-editor > button { margin-top: 8px; padding: 6px 9px; font-size: 12px; }
+.lora-simple-controls { display: grid; gap: 8px; margin-top: 10px; }
+.lora-simple-controls > label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+.lora-simple-controls .select { margin-top: 0; }
+.lora-simple-controls .lora-preset-editor { margin-top: 2px; padding-top: 9px; }
+.lora-simple-controls .lora-preset-row { grid-template-columns: minmax(95px, .8fr) minmax(130px, 1.2fr) auto; }
+.lora-simple-controls > button { justify-self: start; }
+.civitai-tags { margin-top: 9px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .civitai-info { border-top: 1px solid var(--line); padding: 11px 14px 14px; }
 .civitai-link-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .civitai-link-row .civitai-link { flex: 1 1 auto; min-width: 0; }
@@ -134,4 +163,4 @@ button.secondary { background: transparent; }
 .toast.show { opacity: 1; transform: none; }
 
 @media (max-width: 900px) { .folder-grid, .lora-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .folder-card { align-items: flex-start; flex-direction: column; } .paths { flex-basis: 52%; } }
-@media (max-width: 680px) { .shell { padding: 20px 14px 45px; } .topbar, .section-head, .status-band { display: block; } .top-actions { margin-top: 14px; } .top-actions .status { display: inline-block; } .page-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; } .page-tab { flex: 0 0 auto; } .folder-grid, .lora-grid, .workflow-grid, .form-grid { grid-template-columns: 1fr; } .workflow-upload { align-items: stretch; flex-direction: column; } .workflow-upload .muted { padding-bottom: 0; } .paths { margin-top: 16px; } .form-grid .wide { grid-column: auto; } .preset-add { grid-template-columns: 1fr; } .preset { display: block; } .preset .button-row { margin-top: 10px; } .lora-category-toolbar { align-items: stretch; flex-direction: column; } .lora-category-toolbar label { flex-basis: auto; } }
+@media (max-width: 680px) { .shell { padding: 20px 14px 45px; } .topbar, .section-head, .status-band { display: block; } .top-actions { margin-top: 14px; } .top-actions .status { display: inline-block; } .page-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 8px; } .page-tab { flex: 0 0 auto; } .folder-grid, .lora-grid, .workflow-grid, .form-grid { grid-template-columns: 1fr; } .workflow-upload { align-items: stretch; flex-direction: column; } .workflow-upload .muted { padding-bottom: 0; } .paths { margin-top: 16px; } .form-grid .wide { grid-column: auto; } .preset-add { grid-template-columns: 1fr; } .preset { display: block; } .preset .button-row { margin-top: 10px; } .lora-category-toolbar { align-items: stretch; flex-direction: column; } .lora-category-toolbar label { flex-basis: auto; } .lora-preset-row, .lora-simple-controls .lora-preset-row { grid-template-columns: 1fr; } .lora-preset-row button { justify-self: start; } }

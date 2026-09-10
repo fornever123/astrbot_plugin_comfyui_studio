@@ -1,6 +1,6 @@
 # ComfyUI AI 绘画台
 
-[![版本](https://img.shields.io/badge/版本-0.6.4-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-0.6.8-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 
@@ -11,11 +11,15 @@ ComfyUI AI 绘画台是一个适用于 AstrBot 的本地 ComfyUI 绘图插件。
 - 文生图、图生图和高清放大三种绘图模式。
 - 基于原始 ComfyUI 工作流生成独立的 API 工作流副本。
 - 支持核心模型、采样步数、CFG、种子、尺寸和重绘幅度等参数。
-- 支持多个 LoRA，能够设置权重、中文昵称、多个指令简称、分类和启用状态。
+- 支持多个 LoRA，能够设置权重、中文昵称、多个旧指令简称、分类和启用状态。
+- 读取 LoRA 的 CivitAI 触发词，并在启用或临时调用 LoRA 时加入绘图提示词；普通 CivitAI tag 不会自动进入提示词。
+- 每个 LoRA 独立管理多个指令简称、分类和“指令简称 -> 预设内容”映射，完整模式和简洁模式都可以编辑；原有全局提示词预设继续保留。
 - 支持 LoRA CivitAI 链接、触发词、预览图片、下载、上传和删除。
 - 支持提示词预设和独立的画师串预设。
 - 绘图指令可以同时使用提示词预设和 LoRA 简称；临时 LoRA 只在当前任务中生效。
 - 支持使用 AstrBot 当前 AI 或插件独立 AI 优化提示词。
+- LLM 绘图可选择使用 AstrBot LLM 提取结果，或由插件 AI 根据用户原话重新生成完整提示词；开发者模式可查看输入与最终提示词。
+- LLM 绘图提示词和普通指令翻译分别使用独立的插件 AI 提示词，可在 WebUI 单独修改。
 - 支持普通中文提示词的非 AI 翻译，翻译失败时保留原文继续绘图。
 - 支持 AstrBot LLM 通过自然语言调用绘图工具。
 - 支持自定义开始绘图提示和完成提示，可使用 AstrBot 当前人格回复。
@@ -23,6 +27,9 @@ ComfyUI AI 绘画台是一个适用于 AstrBot 的本地 ComfyUI 绘图插件。
 - WebUI 分组管理工作流、AI、提示词预设、画师串和 LoRA。
 - 支持在 WebUI 查看 ComfyUI 状态、模型目录、LoRA 目录和工作流目录。
 - 支持上传和切换 API 工作流，明暗主题可切换。
+- CivitAI LoRA 下载支持实时进度显示，下载完成后自动刷新模型和 LoRA 列表。
+- CivitAI 下载支持模型页、版本页和直接下载链接；可选填写 API Key，自动处理 CDN 重定向、临时限流和断线重试。
+- `/helpd` 会发送包含常用指令的中文帮助图片。
 
 ## 安装
 
@@ -133,7 +140,7 @@ AstrBot 会根据请求选择绘图模式，并把识别出的预设、LoRA 简�
 - **提示词与回复**：配置默认正面提示词、默认负面提示词、开始提示、完成提示、回复方式和合并转发。
 - **提示词预设**：新增、修改和删除提示词预设。
 - **画师串预设**：维护和切换画师串预设，默认预设为 `画风001`。
-- **LoRA 管理**：管理模型文件、昵称、多个指令简称、权重、分类、CivitAI 信息和预览图。
+- **LoRA 管理**：管理模型文件、昵称、多个指令简称、权重、分类、专属预设、CivitAI 信息和预览图，并支持搜索。
 
 默认配置示例：
 

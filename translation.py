@@ -28,7 +28,7 @@ class PlainTranslator:
             "dt": "t",
             "q": value,
         }
-        headers = {"User-Agent": "AstrBot-ComfyUI-AI-Studio/0.6.4"}
+        headers = {"User-Agent": "AstrBot-ComfyUI-AI-Studio/0.6.8"}
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
                 response = await client.get(self.endpoint, params=params, headers=headers)

@@ -1,1 +1,2 @@
 httpx>=0.24
+pillow>=10

@@ -84,6 +84,39 @@
     "description": "AI 模型",
     "default": "gpt-4o-mini"
   },
+  "civitai_token": {
+    "type": "string",
+    "description": "CivitAI API Key（可选）",
+    "hint": "公共 LoRA 通常不需要；下载受限、私有或被限流的模型时可填写 CivitAI API Key",
+    "secret": true,
+    "default": ""
+  },
+  "llm_prompt_source": {
+    "type": "string",
+    "description": "LLM 绘图提示词来源",
+    "hint": "astrbot 使用 AstrBot LLM 已提取的提示词；plugin 使用本插件 AI 根据用户原话重新整理提示词",
+    "default": "astrbot",
+    "options": ["astrbot", "plugin"],
+    "enum": ["astrbot", "plugin"]
+  },
+  "plugin_ai_command_system_prompt": {
+    "type": "text",
+    "description": "插件 AI 的普通指令翻译提示词",
+    "hint": "用于 /文生图 ai、/图生图 ai、/预设 翻译等插件 AI 翻译场景",
+    "default": ""
+  },
+  "plugin_ai_llm_system_prompt": {
+    "type": "text",
+    "description": "插件 AI 的 LLM 绘图提示词",
+    "hint": "用于 LLM 自然语言绘图；会同时收到用户原话和 AstrBot LLM 提取结果，并优先保留动作、姿势和场景",
+    "default": ""
+  },
+  "plugin_ai_debug": {
+    "type": "bool",
+    "description": "显示插件 AI 提示词调试过程",
+    "hint": "开发者使用；启用后 LLM 绘图回复会显示插件 AI 最终提示词，并写入插件日志",
+    "default": false
+  },
   "draw_reply_mode": {
     "type": "string",
     "description": "绘图完成后的回复方式",

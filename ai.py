@@ -62,7 +62,7 @@ class AITranslator:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.6.4",
+            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.6.8",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
