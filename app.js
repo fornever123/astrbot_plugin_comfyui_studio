@@ -242,6 +242,8 @@ function fillConfig() {
   document.getElementById("img2img_plugin_ai_user_prompt_template").value = config.img2img_plugin_ai_user_prompt_template || img2imgDefaults.plugin_user_prompt_template || "";
   document.getElementById("img2img_plugin_ai_output_format").value = config.img2img_plugin_ai_output_format || img2imgDefaults.output_format || "";
   document.getElementById("img2img_llm_tool_prompt").value = config.img2img_llm_tool_prompt || img2imgDefaults.llm_tool_prompt || "";
+  const img2imgAspect = document.getElementById("img2img_keep_aspect_ratio");
+  if (img2imgAspect) img2imgAspect.checked = config.img2img_keep_aspect_ratio !== false && config.img2img_keep_aspect_ratio !== "false" && config.img2img_keep_aspect_ratio !== 0;
   document.getElementById("plain_translate_enabled").checked = config.plain_translate_enabled !== false;
   document.getElementById("plain_translate_url").value = config.plain_translate_url || "https://translate.googleapis.com/translate_a/single";
   document.getElementById("default_positive").value = config.default_positive || config.quality_prefix || "";

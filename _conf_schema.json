@@ -31,17 +31,236 @@
   "workflow_img2img": {
     "type": "string",
     "description": "图生图工作流文件名",
-    "default": "图生图.json"
+    "default": "图生图_qwen_edit.json"
   },
   "workflow_hires": {
     "type": "string",
     "description": "高清放大工作流文件名",
     "default": "高清放大.json"
   },
+  "img2img_source_workflow": {
+    "type": "string",
+    "description": "Qwen Image Edit 图生图源工作流位置",
+    "hint": "支持 ComfyUI API 格式；如果填写编辑器格式，插件会在启动时兼容转换",
+    "default": "E:\\112121121.json"
+  },
+  "img2img_unet_name": {
+    "type": "string",
+    "description": "图生图独立 UNet 核心模型",
+    "default": "Qwen-Rapid-NSFW-v23_Q3_K.gguf"
+  },
+  "img2img_clip_name": {
+    "type": "string",
+    "description": "图生图独立 Qwen 文本编码器",
+    "default": "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf"
+  },
+  "img2img_vae_name": {
+    "type": "string",
+    "description": "图生图独立 VAE",
+    "default": "qwen_image_vae.safetensors"
+  },
+  "img2img_lora_name": {
+    "type": "string",
+    "description": "图生图独立 LoRA，可留空关闭",
+    "default": ""
+  },
+  "img2img_lora_strength": {
+    "type": "float",
+    "description": "图生图独立 LoRA 权重",
+    "default": 0.8
+  },
+  "img2img_default_positive": {
+    "type": "text",
+    "description": "图生图默认正面提示词",
+    "default": ""
+  },
+  "img2img_default_negative": {
+    "type": "text",
+    "description": "图生图默认负面提示词",
+    "default": ""
+  },
+  "img2img_llm_prompt_source": {
+    "type": "string",
+    "description": "图生图 LLM 编辑提示词来源",
+    "hint": "plugin 使用插件独立 AI 将要求整理为精简编辑指令；astrbot 直接使用 AstrBot LLM 传入的编辑要求",
+    "default": "plugin",
+    "options": ["plugin", "astrbot"],
+    "enum": ["plugin", "astrbot"]
+  },
+  "img2img_plugin_ai_llm_system_prompt": {
+    "type": "text",
+    "description": "图生图插件 AI：LLM 编辑提示词",
+    "hint": "留空使用内置规则，只输出用户明确要求的编辑内容",
+    "default": ""
+  },
+  "img2img_plugin_ai_knowledge": {
+    "type": "text",
+    "description": "图生图编辑知识库",
+    "hint": "留空使用内置的保留原图规则；可补充你自己的编辑约束",
+    "default": ""
+  },
+  "img2img_plugin_ai_debug": {
+    "type": "bool",
+    "description": "显示图生图插件 AI 调试提示词",
+    "hint": "开发者使用；完成消息会附带图生图 AI 的输入和最终编辑指令",
+    "default": false
+  },
+  "img2img_llm_tool_prompt": {
+    "type": "text",
+    "description": "图生图 AstrBot 工具规则",
+    "hint": "AstrBot LLM 判断使用图生图工具时的规则；留空使用内置规则。",
+    "default": ""
+  },
+  "img2img_astrbot_llm_system_prompt": {
+    "type": "text",
+    "description": "图生图 AstrBot LLM 系统提示词",
+    "hint": "使用 AstrBot LLM 时的完整系统提示词；留空使用内置规则。",
+    "default": ""
+  },
+  "img2img_astrbot_user_prompt_template": {
+    "type": "text",
+    "description": "图生图 AstrBot LLM 用户输入模板",
+    "hint": "支持 {request}、{用户要求} 或 {用户原话} 占位符；留空使用内置模板。",
+    "default": ""
+  },
+  "img2img_plugin_ai_user_prompt_template": {
+    "type": "text",
+    "description": "图生图插件 AI 用户输入模板",
+    "hint": "支持 {request}、{用户要求} 或 {用户原话} 占位符；留空使用内置模板。",
+    "default": ""
+  },
+  "img2img_plugin_ai_output_format": {
+    "type": "text",
+    "description": "图生图 AI 输出格式要求",
+    "hint": "插件 AI 和 AstrBot LLM 共用；留空使用内置 EDIT 格式要求。",
+    "default": ""
+  },
+  "img2img_width": {
+    "type": "int",
+    "description": "图生图目标宽度",
+    "default": 720
+  },
+  "img2img_height": {
+    "type": "int",
+    "description": "图生图目标高度",
+    "default": 1280
+  },
+  "img2img_keep_aspect_ratio": {
+    "type": "bool",
+    "description": "图生图按原图宽高比输出",
+    "hint": "开启后以宽度和高度作为最大外框，自动保持原图比例",
+    "default": true
+  },
+  "img2img_steps": {
+    "type": "int",
+    "description": "图生图采样步数",
+    "default": 4
+  },
+  "img2img_cfg": {
+    "type": "float",
+    "description": "图生图 CFG",
+    "default": 1.0
+  },
+  "img2img_seed": {
+    "type": "int",
+    "description": "图生图随机种子，-1 为随机",
+    "default": -1
+  },
+  "img2img_sampler_name": {
+    "type": "string",
+    "description": "图生图采样器",
+    "default": "euler"
+  },
+  "img2img_scheduler": {
+    "type": "string",
+    "description": "Qwen 图生图调度器",
+    "default": "simple"
+  },
+  "img2img_denoise": {
+    "type": "float",
+    "description": "图生图重绘幅度",
+    "default": 1.0
+  },
+  "img2img_scale_method": {
+    "type": "string",
+    "description": "图生图输入缩放算法",
+    "default": "lanczos"
+  },
+  "img2img_largest_size": {
+    "type": "int",
+    "description": "图生图参考图最大边",
+    "default": 1152
+  },
+  "img2img_crop": {
+    "type": "string",
+    "description": "图生图参考图裁剪方式",
+    "default": "center"
+  },
+  "img2img_megapixels": {
+    "type": "float",
+    "description": "图生图输入目标像素",
+    "default": 1.0
+  },
+  "img2img_resolution_steps": {
+    "type": "int",
+    "description": "图生图分辨率对齐步长",
+    "default": 1
+  },
+  "img2img_reference_method": {
+    "type": "string",
+    "description": "Qwen 图生图参考图方法（由工作流固定）",
+    "default": ""
+  },
+  "img2img_sampling_shift": {
+    "type": "float",
+    "description": "Qwen 工作流不使用该参数，保留以兼容旧配置",
+    "default": 0
+  },
+  "img2img_cfg_norm_strength": {
+    "type": "float",
+    "description": "Qwen 工作流不使用该参数，保留以兼容旧配置",
+    "default": 0
+  },
+  "img2img_pre_cfg": {
+    "type": "bool",
+    "description": "图生图 CFGNorm 预 CFG",
+    "hint": "对应 Qwen 工作流 CFGNorm 节点的 pre_cfg 输入",
+    "default": false
+  },
+  "img2img_tile_size": {
+    "type": "int",
+    "description": "图生图分块解码尺寸",
+    "default": 512
+  },
+  "img2img_tile_overlap": {
+    "type": "int",
+    "description": "图生图分块重叠尺寸",
+    "default": 64
+  },
+  "img2img_temporal_size": {
+    "type": "int",
+    "description": "图生图时间分块尺寸",
+    "default": 64
+  },
+  "img2img_temporal_overlap": {
+    "type": "int",
+    "description": "图生图时间分块重叠",
+    "default": 8
+  },
+  "img2img_second_image": {
+    "type": "string",
+    "description": "图生图第二参考图路径，可留空",
+    "default": ""
+  },
+  "img2img_filename_prefix": {
+    "type": "string",
+    "description": "图生图输出文件名前缀",
+    "default": "astrbot/img2img_qwen"
+  },
   "model_name": {
     "type": "string",
     "description": "默认核心模型",
-    "default": "anima_baseV10.safetensors"
+    "default": "anima-base-v1.0.safetensors"
   },
   "lora_list": {
     "type": "list",
@@ -111,11 +330,23 @@
     "hint": "用于 LLM 自然语言绘图；会同时收到用户原话和 AstrBot LLM 提取结果，并优先保留动作、姿势和场景",
     "default": ""
   },
+  "plugin_ai_anima_context": {
+    "type": "text",
+    "description": "Anima 提示词工程师知识",
+    "hint": "留空自动读取本插件内置 Anima3 模板的精简知识；填写后可覆盖或补充规则",
+    "default": ""
+  },
   "plugin_ai_debug": {
     "type": "bool",
     "description": "显示插件 AI 提示词调试过程",
     "hint": "开发者使用；启用后 LLM 绘图回复会显示插件 AI 最终提示词，并写入插件日志",
     "default": false
+  },
+  "llm_wait_timeout": {
+    "type": "float",
+    "description": "LLM 工具等待图片返回的秒数",
+    "hint": "图片在此时间内完成时直接返回图片；超时后继续后台生成并主动发送",
+    "default": 45
   },
   "draw_reply_mode": {
     "type": "string",
@@ -138,6 +369,18 @@
     "description": "AstrBot 人格完成回复最长等待秒数",
     "hint": "超时后立即发送图片和固定回复；设为 0 可关闭人格完成回复等待",
     "default": 6
+  },
+  "draw_attach_prompt": {
+    "type": "bool",
+    "description": "发送图片时附带本次实际正面和负面提示词",
+    "hint": "关闭时只发送图片和完成回复，开启后会在图片后附带最终提交给 ComfyUI 的提示词",
+    "default": false
+  },
+  "nsfw_group_blacklist": {
+    "type": "text",
+    "description": "禁止生成疑似成人内容的群聊黑名单",
+    "hint": "每行一个群号，也支持逗号或空格分隔；黑名单群仍可生成普通图片",
+    "default": ""
   },
   "plain_translate_enabled": {
     "type": "bool",
@@ -186,7 +429,7 @@
   "scheduler": {
     "type": "string",
     "description": "Anima 默认调度器",
-    "default": "normal"
+    "default": "simple"
   },
   "cfg": {
     "type": "float",
@@ -227,6 +470,30 @@
     "type": "int",
     "description": "最大并发绘画任务数",
     "default": 1
+  },
+  "draw_limit_count": {
+    "type": "int",
+    "description": "单个用户时间窗口内最多生成图片数",
+    "hint": "设为 0 关闭用户绘图限额；批次会按图片数量计入",
+    "default": 0
+  },
+  "draw_limit_window_seconds": {
+    "type": "int",
+    "description": "用户绘图限额时间窗口（秒）",
+    "hint": "例如 3600 表示一小时",
+    "default": 3600
+  },
+  "draw_limit_admin_ids": {
+    "type": "text",
+    "description": "绘图管理员 ID",
+    "hint": "每行一个 QQ/平台用户 ID；管理员不受绘图限额影响，并可使用 /comfy打开、/comfy关闭",
+    "default": ""
+  },
+  "comfyui_start_script": {
+    "type": "string",
+    "description": "ComfyUI 启动脚本路径",
+    "hint": "留空自动寻找 run_nvidia_gpu.bat 或 run.bat；仅管理员可通过指令启动",
+    "default": ""
   },
   "anima_teacache": {
     "type": "bool",

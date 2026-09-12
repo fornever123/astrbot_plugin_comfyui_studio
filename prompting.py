@@ -33,6 +33,9 @@ class DrawParams:
     model: str = ""
     loras: list[str] = field(default_factory=list)
     presets: list[str] = field(default_factory=list)
+    # 本次任务实际命中的 LoRA 专属预设，键为 LoRA 文件名，值为简称列表。
+    # 它与 loras 分开保存，避免一个 LoRA 的多个专属预设被全部拼入提示词。
+    lora_preset_tags: dict[str, list[str]] = field(default_factory=dict)
     artist_preset: str = ""
     ai: bool | None = None
     # LLM 工具可以把自然语言交给当前 AstrBot 内置 AI 优化；普通指令不使用这两个字段。
@@ -49,6 +52,16 @@ class DrawParams:
     batch: int = 1
     sampler: str = ""
     scheduler: str = ""
+    # 图生图的编辑指令已经由专用 LLM/插件 AI 整理，后续不再套用文生图
+    # 的 Anima 标签扩写或普通翻译。
+    img2img_edit_instruction_ready: bool = False
+    # 图生图 LLM 整理出的最终编辑指令。单独保存，避免后续预设/LoRA
+    # 识别或普通参数整理把它覆盖回 LLM 工具传入的原始描述。
+    img2img_edit_instruction: str = ""
+    # 用户绘图限额的本次预留标识。任务提交失败时可精确归还额度。
+    draw_limit_user_id: str = ""
+    draw_limit_token: str = ""
+    draw_limit_cost: int = 0
 
 
 def _tokens(text: str) -> list[str]:
@@ -207,6 +220,23 @@ class PresetStore:
             "content": content,
             "translated": translated,
         }
+        self.save()
+
+    def update(self, old_name: str, name: str, content: str) -> None:
+        """更新预设，支持 WebUI 修改名称且保留翻译缓存。"""
+        old_name = str(old_name or "").strip()
+        name, content = str(name or "").strip(), str(content or "").strip()
+        if not name or not content:
+            raise UsageError("预设名称和内容都不能为空")
+        previous = self.items.get(old_name, {}) if old_name else {}
+        if old_name and old_name != name and old_name in self.items:
+            del self.items[old_name]
+        translated = (
+            str(previous.get("translated") or "")
+            if isinstance(previous, dict) and previous.get("content") == content
+            else ""
+        )
+        self.items[name] = {"content": content, "translated": translated}
         self.save()
 
     def sync_auto(

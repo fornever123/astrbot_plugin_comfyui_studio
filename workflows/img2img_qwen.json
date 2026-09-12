@@ -1,0 +1,238 @@
+{
+  "36": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "76",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "37": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "39": {
+    "inputs": {
+      "upscale_method": "lanczos",
+      "megapixels": 0.8,
+      "resolution_steps": 1,
+      "image": [
+        "46",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "缩放图像（像素）"
+    }
+  },
+  "40": {
+    "inputs": {
+      "strength": 1,
+      "pre_cfg": false,
+      "model": [
+        "41",
+        0
+      ]
+    },
+    "class_type": "CFGNorm",
+    "_meta": {
+      "title": "CFG归一化"
+    }
+  },
+  "41": {
+    "inputs": {
+      "shift": 3.1,
+      "model": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
+    }
+  },
+  "42": {
+    "inputs": {
+      "seed": 751887705029165,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "beta",
+      "denoise": 1,
+      "model": [
+        "40",
+        0
+      ],
+      "positive": [
+        "43",
+        0
+      ],
+      "negative": [
+        "44",
+        0
+      ],
+      "latent_image": [
+        "52",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "43": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "48",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "44": {
+    "inputs": {
+      "reference_latents_method": "index_timestep_zero",
+      "conditioning": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "FluxKontextMultiReferenceLatentMethod",
+    "_meta": {
+      "title": "Edit Model Reference Method"
+    }
+  },
+  "46": {
+    "inputs": {
+      "image": "cb24f5c367b297235a41b2350c24fb91.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像1"
+    }
+  },
+  "48": {
+    "inputs": {
+      "prompt": "根据图片中主体人物形象，生成一张“全景式角色深度概念分解图”。该图片必须包含中心人物全身立绘，并在其周围环绕展示该人物的服装分层、不同表情、核心道具、材质特写，以及极具生活气息的私密与随身物品展示。\n\n视觉规范\n1. 构图布局 :\n• 中心位 : 放置角色的全身立绘或主要动态姿势，作为视觉锚点。\n• 环绕位 : 在中心人物四周空白处，有序排列拆解后的元素。\n• 视觉引导 : 使用手绘箭头或引导线，将周边的拆解物品与中心人物的对应部位或所属区域（如包包连接手部）连接起来。\n2. 拆解内容 —— 核心迭代区域:\n服装分层 :\n• 将角色的服装拆分为单品展示。如果是多层穿搭，需展示脱下外套后的内层状态。\n• 新增：私密内里拆解 : 独立展示角色的内层衣物，重点突出设计感与材质。\n表情集 :\n• 在角落绘制 3-4 个不同的头部特写，展示不同的情绪。\n材质特写 :\n• 选取 1-2 个关键部位进行放大特写。\n• 新增：物品质感特写，对小物件材质的描绘。\n关联物品 :\n• 此处不再局限于大型道具，需增加展示角色的“生活切片”。\n• 随身包袋与内容物 : 绘制角色的日常通勤包或手拿包，并将其“打开”，展示散落在旁的物品，符合其职业、爱好、性格和生活习惯的个人物品。\n• 美妆与护理 : 展示符合其角色的化妆品组合。\n• 私密生活物件 : 不能随意向外人展现的物品，最能代表其私密生活、情感寄托或内心世界。\n3. 风格与注释 :\n• 画风: 保持高质量的 2D 插画风格或概念设计草图风格，线条干净利落。\n• 背景: 使用米黄色、羊皮纸或浅灰色纹理背景，营造设计手稿的氛围。\n• 文字说明: 在每个拆解元素旁模拟手写注释，简要说明材质或品牌/型号暗示。",
+      "clip": [
+        "56",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ],
+      "image1": [
+        "39",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "文本编码（QwenImageEditPlus）"
+    }
+  },
+  "52": {
+    "inputs": {
+      "pixels": [
+        "39",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "53": {
+    "inputs": {
+      "prompt": "",
+      "clip": [
+        "56",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "_meta": {
+      "title": "文本编码（QwenImageEditPlus）"
+    }
+  },
+  "55": {
+    "inputs": {
+      "unet_name": "Qwen-Rapid-NSFW-v23_Q3_K.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "Unet Loader (GGUF)"
+    }
+  },
+  "56": {
+    "inputs": {
+      "clip_name": "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
+      "type": "qwen_image"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "CLIPLoader (GGUF)"
+    }
+  },
+  "66": {
+    "inputs": {
+      "lora_name": "qwen\\Qwen-Image-Edit-F2P.safetensors",
+      "strength_model": 0.8,
+      "model": [
+        "55",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "76": {
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 64,
+      "temporal_overlap": 8,
+      "samples": [
+        "42",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE解码（分块）"
+    }
+  }
+}

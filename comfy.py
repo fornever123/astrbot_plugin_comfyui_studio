@@ -14,7 +14,10 @@ class ComfyError(Exception):
     pass
 
 
-MODEL_TYPES = ("diffusion_models", "checkpoints", "loras", "upscale_models", "vae", "text_encoders")
+MODEL_TYPES = (
+    "diffusion_models", "checkpoints", "loras", "upscale_models", "vae",
+    "text_encoders", "unet", "unet_gguf", "clip_gguf",
+)
 
 
 class ComfyClient:
@@ -54,16 +57,50 @@ class ComfyClient:
     async def models(self, category: str) -> list[str]:
         if category not in MODEL_TYPES:
             return []
-        data = await self.request("GET", f"/models/{category}")
-        values = data.get("models", data) if isinstance(data, dict) else data
-        if not isinstance(values, list):
-            return []
-        names = []
+        try:
+            data = await self.request("GET", f"/models/{category}")
+            values = data.get("models", data) if isinstance(data, dict) else data
+            if isinstance(values, list):
+                return self._unique_model_names(values)
+        except ComfyError as exc:
+            # ComfyUI 0.30+ 默认不再提供 /models/{category}，但 /object_info
+            # 仍包含所有加载器的实际下拉选项。不要让旧接口 404 造成“未检测到”。
+            if "HTTP 404" not in str(exc):
+                raise
+        return self.models_from_object_info(await self.object_info(), category)
+
+    @staticmethod
+    def _unique_model_names(values: list[Any]) -> list[str]:
+        names: list[str] = []
         for value in values:
-            if isinstance(value, str):
-                names.append(value)
-            elif isinstance(value, dict) and value.get("name"):
-                names.append(str(value["name"]))
+            name = value if isinstance(value, str) else value.get("name") if isinstance(value, dict) else ""
+            name = str(name or "").strip()
+            if name and name not in names:
+                names.append(name)
+        return names
+
+    @classmethod
+    def models_from_object_info(cls, data: dict[str, Any], category: str) -> list[str]:
+        """从 ComfyUI /object_info 提取模型加载器的下拉值。"""
+        node_inputs: dict[str, tuple[str, ...]] = {
+            "diffusion_models": (("UNETLoader", "unet_name"),),
+            "checkpoints": (("CheckpointLoaderSimple", "ckpt_name"),),
+            "loras": (("LoraLoader", "lora_name"), ("LoraLoaderModelOnly", "lora_name")),
+            "upscale_models": (("UpscaleModelLoader", "model_name"),),
+            "clip_gguf": (("CLIPLoaderGGUF", "clip_name"),),
+            "vae": (("VAELoader", "vae_name"),),
+            "unet_gguf": (("UnetLoaderGGUF", "unet_name"),),
+        }
+        names: list[str] = []
+        for node_name, input_name in node_inputs.get(category, ()):
+            node = data.get(node_name, {}) if isinstance(data, dict) else {}
+            required = node.get("input", {}).get("required", {}) if isinstance(node, dict) else {}
+            spec = required.get(input_name) if isinstance(required, dict) else None
+            values = spec[0] if isinstance(spec, list) and spec and isinstance(spec[0], list) else []
+            for value in values:
+                name = str(value or "").strip()
+                if name and name not in names:
+                    names.append(name)
         return names
 
     async def upload_image(self, path: str) -> dict[str, str]:

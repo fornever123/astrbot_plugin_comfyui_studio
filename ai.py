@@ -62,7 +62,7 @@ class AITranslator:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.6.8",
+            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.8.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
@@ -82,24 +82,57 @@ class AITranslator:
 
     @staticmethod
     def _content_value(data: Any) -> str:
-        """兼容 OpenAI 及代理服务返回的字符串或内容数组。"""
-        try:
-            value = data["choices"][0]["message"].get("content")
-        except (KeyError, IndexError, TypeError):
+        """从常见 OpenAI 兼容响应中提取文本。
+
+        不同的本地网关和推理模型会把结果放在 ``message.content``、
+        ``message.reasoning_content``、``choice.text``，或把 content 返回成
+        多模态数组。以前只读取第一种格式，模型实际已经返回内容时也会被
+        错误判定为“返回格式无法解析”。
+        """
+
+        def flatten(value: Any) -> str:
+            if isinstance(value, str):
+                return value
+            if isinstance(value, list):
+                parts: list[str] = []
+                for item in value:
+                    if isinstance(item, str):
+                        parts.append(item)
+                    elif isinstance(item, dict):
+                        nested = item.get("text") or item.get("content") or item.get("value")
+                        if nested:
+                            parts.append(flatten(nested))
+                return "".join(parts)
+            if isinstance(value, dict):
+                for key in ("text", "content", "value", "output_text", "reasoning_content", "reasoning"):
+                    if value.get(key):
+                        return flatten(value[key])
+            return str(value or "") if value is not None else ""
+
+        if not isinstance(data, dict):
             return ""
-        if isinstance(value, str):
-            return value
-        if isinstance(value, list):
-            parts: list[str] = []
-            for item in value:
-                if isinstance(item, str):
-                    parts.append(item)
-                elif isinstance(item, dict):
-                    text = item.get("text") or item.get("content")
-                    if text:
-                        parts.append(str(text))
-            return "".join(parts)
-        return str(value or "")
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0] if isinstance(choices[0], dict) else {}
+            message = choice.get("message")
+            if isinstance(message, dict):
+                for key in ("content", "text", "reasoning_content", "reasoning"):
+                    value = flatten(message.get(key))
+                    if value.strip():
+                        return value
+            elif message:
+                value = flatten(message)
+                if value.strip():
+                    return value
+            for key in ("text", "content", "reasoning_content", "reasoning"):
+                value = flatten(choice.get(key))
+                if value.strip():
+                    return value
+        for key in ("output_text", "content", "response", "text"):
+            value = flatten(data.get(key))
+            if value.strip():
+                return value
+        return ""
 
     async def list_models(self) -> list[str]:
         """读取 OpenAI 兼容服务的 GET /models 列表。"""
@@ -165,6 +198,7 @@ class AITranslator:
         system_prompt: str,
         require_enabled: bool = False,
         max_tokens: int | None = None,
+        preserve_newlines: bool = False,
     ) -> str:
         """调用插件配置的 OpenAI 兼容接口生成文本。"""
         if require_enabled and not self.enabled:
@@ -191,7 +225,11 @@ class AITranslator:
         value = self._content_value(data)
         if not value.strip():
             raise AIError("AI 返回格式无法解析")
-        result = value.replace("\n", ", ").strip(" `,，。；;")
+        result = (
+            value.strip(" `\n\t")
+            if preserve_newlines
+            else value.replace("\n", ", ").strip(" `,，。；;")
+        )
         if not result:
             raise AIError("AI 返回了空内容")
         return result

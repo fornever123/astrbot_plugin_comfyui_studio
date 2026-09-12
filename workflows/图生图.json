@@ -1115,10 +1115,23 @@
       "title": "Patch Sage Attention KJ"
     }
   },
-  "astrbot_txt2img_sampler": {
+  "astrbot_anima_model_sampling": {
     "inputs": {
       "model": [
         "1071:1075",
+        0
+      ],
+      "shift": 3.0
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "Anima AuraFlow 采样适配"
+    }
+  },
+  "astrbot_txt2img_sampler": {
+    "inputs": {
+      "model": [
+        "astrbot_anima_model_sampling",
         0
       ],
       "positive": [
@@ -1137,7 +1150,7 @@
       "steps": 20,
       "cfg": 5.0,
       "sampler_name": "er_sde",
-      "scheduler": "normal",
+      "scheduler": "simple",
       "denoise": 0.6
     },
     "class_type": "KSampler",

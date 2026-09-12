@@ -10,6 +10,36 @@ class WorkflowError(Exception):
     pass
 
 
+# Anima-2.9B is a 40-layer expansion of the 28-layer Anima base model.  The
+# filename used by the CivitAI release contains ``29B`` even though the model
+# is approximately 2.9B parameters, so do not treat it as a 29B model.
+ANIMA_29B_MARKERS = ("anima29b", "anima-2.9b", "anima_2.9b")
+
+
+def is_anima_29b_model(model_name: str) -> bool:
+    normalized = str(model_name or "").replace("-", "").replace("_", "").lower()
+    return any(marker.replace("-", "").replace("_", "") in normalized for marker in ANIMA_29B_MARKERS)
+
+
+def anima_sampling_defaults(model_name: str) -> dict[str, Any]:
+    """Return the tested defaults for the selected Anima model family."""
+    if is_anima_29b_model(model_name):
+        return {
+            "steps": 35,
+            "cfg": 3.5,
+            "sampler_name": "euler",
+            "scheduler": "sgm_uniform",
+            "denoise": 1.0,
+        }
+    return {
+        "steps": 30,
+        "cfg": 5.0,
+        "sampler_name": "er_sde",
+        "scheduler": "simple",
+        "denoise": 1.0,
+    }
+
+
 def load_api_workflow(path: Path) -> dict[str, Any]:
     if not path.is_file():
         raise WorkflowError(f"工作流不存在：{path}")
@@ -22,6 +52,120 @@ def load_api_workflow(path: Path) -> dict[str, Any]:
     ):
         raise WorkflowError("工作流不是 ComfyUI API 格式，请使用 API 导出 JSON")
     return data
+
+
+def convert_ui_workflow(data: dict[str, Any]) -> dict[str, Any]:
+    """Convert a ComfyUI editor workflow into the API prompt format.
+
+    ComfyUI's ``Save (API Format)`` export is not the only format users save.
+    The Qwen edit workflow supplied with the model pack is an editor JSON, so
+    keep the conversion local and deterministic instead of asking the user to
+    export it again by hand.
+    """
+    raw_nodes = data.get("nodes")
+    raw_links = data.get("links")
+    if not isinstance(raw_nodes, list) or not isinstance(raw_links, list):
+        raise WorkflowError("工作流不是可识别的 ComfyUI API 或编辑器格式")
+
+    links: dict[int, tuple[str, int, str, int]] = {}
+    for raw in raw_links:
+        if not isinstance(raw, list) or len(raw) < 5:
+            continue
+        try:
+            link_id = int(raw[0])
+            source_id = str(raw[1])
+            source_slot = int(raw[2])
+            target_id = str(raw[3])
+            target_slot = int(raw[4])
+        except (TypeError, ValueError):
+            continue
+        links[link_id] = (source_id, source_slot, target_id, target_slot)
+
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for node in raw_nodes:
+        if not isinstance(node, dict) or "id" not in node or not node.get("type"):
+            continue
+        if str(node.get("type")) in {"Note", "Reroute", "PrimitiveNode"}:
+            continue
+        # Disabled editor nodes must not be executed. The Qwen workflow uses
+        # this for its optional second reference image and optional LoRA.
+        if int(node.get("mode", 0) or 0) == 4:
+            continue
+        node_by_id[str(node["id"])] = node
+
+    widget_maps: dict[str, tuple[str, ...]] = {
+        "TextEncodeQwenImageEditPlus": ("prompt",),
+        "TextEncodeQwenImageEdit": ("prompt",),
+        "LoadImage": ("image",),
+        "ImageScaleToTotalPixels": (
+            "upscale_method", "megapixels", "resolution_steps"
+        ),
+        "FluxKontextMultiReferenceLatentMethod": ("reference_latents_method",),
+        "ModelSamplingAuraFlow": ("shift",),
+        "CFGNorm": ("strength", "pre_cfg"),
+        "EmptySD3LatentImage": ("width", "height", "batch_size"),
+        "CLIPLoaderGGUF": ("clip_name", "type"),
+        "UnetLoaderGGUF": ("unet_name",),
+        "LoraLoaderModelOnly": ("lora_name", "strength_model"),
+        "VAELoader": ("vae_name",),
+        "KSampler": (
+            "seed", "control_after_generate", "steps", "cfg",
+            "sampler_name", "scheduler", "denoise",
+        ),
+        "VAEDecodeTiled": (
+            "tile_size", "overlap", "temporal_size", "temporal_overlap"
+        ),
+        "SaveImage": ("filename_prefix",),
+    }
+    result: dict[str, Any] = {}
+    for node_id, node in node_by_id.items():
+        class_type = str(node["type"])
+        inputs: dict[str, Any] = {}
+        for ui_input in node.get("inputs", []) or []:
+            if not isinstance(ui_input, dict):
+                continue
+            name = str(ui_input.get("name", ""))
+            link_id = ui_input.get("link")
+            if not name or link_id in (None, ""):
+                continue
+            try:
+                source_id, source_slot, _, _ = links[int(link_id)]
+            except (KeyError, TypeError, ValueError):
+                continue
+            if source_id in node_by_id:
+                inputs[name] = [source_id, source_slot]
+
+        widget_values = list(node.get("widgets_values") or [])
+        names = widget_maps.get(class_type, ())
+        for index, name in enumerate(names):
+            if index >= len(widget_values) or name in inputs:
+                continue
+            inputs[name] = widget_values[index]
+        # Editor JSON often omits widget metadata for newer core nodes. The
+        # explicit map above is the compatibility fallback for those nodes.
+        result[node_id] = {
+            "inputs": inputs,
+            "class_type": class_type,
+            "_meta": {"title": str(node.get("title") or class_type)},
+        }
+    if not any(node.get("class_type") == "SaveImage" for node in result.values()):
+        raise WorkflowError("编辑器工作流中没有启用 SaveImage 输出节点")
+    return result
+
+
+def load_workflow(path: Path) -> dict[str, Any]:
+    """Load either an API workflow or a normal ComfyUI editor workflow."""
+    if not path.is_file():
+        raise WorkflowError(f"工作流不存在：{path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise WorkflowError(f"工作流 JSON 无法读取：{path}") from exc
+    if not isinstance(data, dict):
+        raise WorkflowError("工作流 JSON 顶层必须是对象")
+    if any(isinstance(node, dict) and node.get("class_type") for node in data.values()):
+        return data
+    return convert_ui_workflow(data)
 
 
 def _node(workflow: dict[str, Any], node_id: str) -> dict[str, Any] | None:
@@ -255,6 +399,7 @@ def _apply_mode(workflow: dict[str, Any], mode: str, report: list[str]) -> None:
 def _apply_sampling_sampler(
     workflow: dict[str, Any],
     *,
+    model_name: str,
     steps: int,
     cfg: float,
     seed: int,
@@ -274,19 +419,30 @@ def _apply_sampling_sampler(
         report.append("原工作流缺少文生图采样所需的模型、提示词或 VAE 节点")
         return
 
+    # Anima is a flow model.  KSampler must receive the AuraFlow-adjusted
+    # model; connecting the raw Anima loader directly produces colored noise.
+    sampling_node = "astrbot_anima_model_sampling"
+    workflow[sampling_node] = {
+        "inputs": {
+            "model": ["1071:1075", 0],
+            "shift": 3.0,
+        },
+        "class_type": "ModelSamplingAuraFlow",
+        "_meta": {"title": "Anima AuraFlow 采样适配"},
+    }
     sampler_node = "astrbot_txt2img_sampler"
     decode_node = "astrbot_txt2img_decode"
     workflow[sampler_node] = {
         "inputs": {
-            "model": ["1071:1075", 0],
+            "model": [sampling_node, 0],
             "positive": ["1071:1063", 0],
             "negative": ["1071:1062", 0],
             "latent_image": ["1339:1322", 0],
             "seed": int(seed),
             "steps": max(1, int(steps)),
             "cfg": float(cfg if cfg > 0 else 5.0),
-            "sampler_name": sampler_name or "er_sde",
-            "scheduler": scheduler or "normal",
+            "sampler_name": sampler_name or str(anima_sampling_defaults(model_name)["sampler_name"]),
+            "scheduler": scheduler or str(anima_sampling_defaults(model_name)["scheduler"]),
             "denoise": float(denoise if denoise > 0 else 1.0),
         },
         "class_type": "KSampler",
@@ -300,7 +456,11 @@ def _apply_sampling_sampler(
     output_inputs = _inputs(workflow, "1413")
     if output_inputs is not None:
         output_inputs["input1"] = [decode_node, 0]
-    report.append("已启用原工作流模型链的标准采样支路")
+    report.append(
+        "已启用 Anima AuraFlow 采样适配（2.9B）"
+        if is_anima_29b_model(model_name)
+        else "已启用 Anima AuraFlow 采样适配（Base 1.0）"
+    )
 
 
 def _disable_optional_sage_attention(workflow: dict[str, Any], report: list[str]) -> None:
@@ -311,6 +471,321 @@ def _disable_optional_sage_attention(workflow: dict[str, Any], report: list[str]
     if inputs.get("sage_attention") != "disabled":
         inputs["sage_attention"] = "disabled"
         report.append("已禁用缺少依赖的 SageAttention，改用 ComfyUI 默认注意力")
+
+
+def _qwen_inputs(workflow: dict[str, Any], node_id: str) -> dict[str, Any]:
+    node = _node(workflow, node_id)
+    if node is None:
+        raise WorkflowError(f"Qwen 图生图工作流缺少节点：{node_id}")
+    inputs = node.setdefault("inputs", {})
+    if not isinstance(inputs, dict):
+        inputs = {}
+        node["inputs"] = inputs
+    return inputs
+
+
+def adapt_qwen_img2img(
+    source: dict[str, Any],
+    *,
+    positive: str,
+    negative: str,
+    image_name: str,
+    second_image_name: str = "",
+    unet_name: str,
+    clip_name: str,
+    vae_name: str,
+    lora_name: str = "",
+    lora_strength: float = 0.0,
+    loras: list[str] | None = None,
+    width: int = 512,
+    height: int = 960,
+    steps: int = 4,
+    cfg: float = 1.0,
+    seed: int = 0,
+    sampler_name: str = "euler",
+    scheduler: str = "simple",
+    denoise: float = 1.0,
+    scale_method: str = "lanczos",
+    largest_size: int = 1152,
+    crop: str = "center",
+    reference_method: str = "index_timestep_zero",
+    sampling_shift: float = 3.1,
+    cfg_norm_strength: float = 1.0,
+    pre_cfg: bool = False,
+    tile_size: int = 512,
+    tile_overlap: int = 64,
+    temporal_size: int = 64,
+    temporal_overlap: int = 8,
+    filename_prefix: str = "astrbot/img2img_qwen",
+) -> tuple[dict[str, Any], list[str]]:
+    """Apply the API workflow exported from E:/112121121.json.
+
+    The current Qwen Image Edit workflow uses stable nodes 1/10/11/13/14/
+    30/39/119/138/152/158/160/161/174.  Keep the mapping explicit so the
+    plugin never routes this graph through the old Flux2 or old-Qwen adapter.
+    """
+    workflow = copy.deepcopy(source)
+    report: list[str] = []
+    required = ("1", "10", "11", "13", "14", "30", "39", "119", "138", "152", "158", "160", "161")
+    missing = [node_id for node_id in required if _node(workflow, node_id) is None]
+    if missing:
+        raise WorkflowError(f"Qwen 图生图工作流缺少节点：{', '.join(missing)}")
+    if not image_name.strip():
+        raise WorkflowError("Qwen 图生图没有收到已上传的输入图片")
+
+    _qwen_inputs(workflow, "11")["image"] = image_name
+    _qwen_inputs(workflow, "138").update(
+        image=["11", 0],
+        upscale_method=scale_method or "lanczos",
+        largest_size=max(64, int(largest_size or 1152)),
+    )
+    if _node(workflow, "129") is not None:
+        _qwen_inputs(workflow, "129").update(pixels=["138", 0], vae=["10", 0])
+    if _node(workflow, "130") is not None:
+        _qwen_inputs(workflow, "130").update(samples=["129", 0], vae=["10", 0])
+    if _node(workflow, "132") is not None:
+        _qwen_inputs(workflow, "132")["image"] = ["130", 0]
+    scale_inputs = _qwen_inputs(workflow, "158")
+    scale_inputs.update(
+        image=["11", 0],
+        upscale_method=scale_method or "lanczos",
+        crop=crop or "center",
+    )
+    if width > 0 and height > 0:
+        scale_inputs.update(width=max(64, int(width)), height=max(64, int(height)))
+    else:
+        scale_inputs.update(width=["132", 0], height=["132", 1])
+
+    _qwen_inputs(workflow, "119").update(pixels=["158", 0], vae=["10", 0])
+    positive_inputs = _qwen_inputs(workflow, "1")
+    positive_inputs.update(clip=["161", 0], vae=["10", 0], image1=["158", 0], prompt=positive)
+    _qwen_inputs(workflow, "39").update(clip=["161", 0], vae=["10", 0], prompt=negative or "")
+    # 112121121.json 的 TextEncodeQwenImageEditPlus 只有 image1 输入。
+    # 旧版适配器曾动态添加 image2，这会让 ComfyUI 拒绝整个 API 请求；
+    # 保留参数只是为了兼容旧调用，但不向这个工作流伪造不存在的端口。
+    positive_inputs.pop("image2", None)
+    positive_inputs.pop("image3", None)
+    if second_image_name:
+        report.append("当前 Qwen 工作流只支持一张参考图，已忽略第二参考图")
+
+    _qwen_inputs(workflow, "160")["unet_name"] = unet_name
+    _qwen_inputs(workflow, "161").update(clip_name=clip_name, type="qwen_image")
+    _qwen_inputs(workflow, "10")["vae_name"] = vae_name
+    _qwen_inputs(workflow, "30").update(shift=max(0.0, float(sampling_shift)), model=["174", 0] if _node(workflow, "174") else ["160", 0])
+
+    requested_loras = list(loras or [])
+    if lora_name and float(lora_strength or 0.0) != 0.0 and not loras:
+        requested_loras.insert(0, f"{lora_name}:{float(lora_strength):g}")
+    if _node(workflow, "174") is not None:
+        lora_inputs = _qwen_inputs(workflow, "174")
+        lora_inputs["model"] = ["160", 0]
+        slots = sorted(
+            [key for key, value in lora_inputs.items() if key.startswith("lora_") and isinstance(value, dict)],
+            key=lambda item: int(item.split("_", 1)[1]) if item.split("_", 1)[1].isdigit() else 999,
+        )
+        for key in slots:
+            value = lora_inputs.get(key)
+            if isinstance(value, dict):
+                value["on"] = False
+        parsed = [_parse_lora(item) for item in requested_loras if str(item).strip()]
+        for key, (name, strength) in zip(slots, parsed):
+            lora_inputs[key] = {"on": True, "lora": name, "strength": strength}
+        if len(parsed) > len(slots):
+            report.append(f"Qwen 图生图只有 {len(slots)} 个 LoRA 槽位，剩余 {len(parsed) - len(slots)} 个未应用")
+        if parsed:
+            report.append("Qwen 图生图 LoRA 已写入 Power Lora Loader")
+        else:
+            report.append("Qwen 图生图 LoRA 未启用")
+    elif requested_loras:
+        report.append("Qwen 图生图工作流缺少 Power Lora Loader，LoRA 未应用")
+
+    sampler = _qwen_inputs(workflow, "152")
+    sampler.update(
+        model=["30", 0], positive=["1", 0], negative=["39", 0], latent_image=["119", 0],
+        seed=max(0, int(seed)), steps=max(1, int(steps)), cfg=max(0.0, float(cfg)),
+        sampler_name=sampler_name or "euler", scheduler=scheduler or "simple",
+        denoise=max(0.0, min(1.0, float(denoise))),
+    )
+    _qwen_inputs(workflow, "13").update(samples=["152", 0], vae=["10", 0])
+    _qwen_inputs(workflow, "14").update(images=["13", 0], filename_prefix=filename_prefix)
+    if _node(workflow, "51") is not None:
+        _qwen_inputs(workflow, "51").update(image_a=["11", 0], image_b=["13", 0])
+    if width > 0 and height > 0:
+        report.append(f"Qwen 图生图输出尺寸已写入 ImageScale：{int(width)}x{int(height)}")
+    _ = (reference_method, cfg_norm_strength, pre_cfg, tile_size, tile_overlap, temporal_size, temporal_overlap)
+    return workflow, report
+
+
+def adapt_flux2_img2img(
+    source: dict[str, Any],
+    *,
+    positive: str,
+    negative: str,
+    image_name: str,
+    unet_name: str,
+    clip_name: str,
+    vae_name: str,
+    loras: list[str] | None = None,
+    width: int = 720,
+    height: int = 1280,
+    steps: int = 4,
+    cfg: float = 1.0,
+    seed: int = 0,
+    sampler_name: str = "euler",
+    scale_method: str = "lanczos",
+    megapixels: float = 0.8,
+    resolution_steps: int = 1,
+    filename_prefix: str = "astrbot/img2img_flux2",
+) -> tuple[dict[str, Any], list[str]]:
+    """Enable real Flux.2 Klein reference-image editing on the supplied workflow.
+
+    The supplied ``11111图生图.json`` is the text-to-image state of the same
+    workflow: its EmptyFlux2LatentImage is connected to the sampler and its
+    reference-image branch is absent.  Flux.2 Klein expects the output canvas
+    to remain an empty Flux2 latent, while the source image is VAE encoded and
+    attached to the positive and negative conditionings as reference_latents.
+    """
+    workflow = copy.deepcopy(source)
+    report: list[str] = []
+
+    if not any(
+        isinstance(node, dict) and node.get("class_type") == "EmptyFlux2LatentImage"
+        for node in workflow.values()
+    ):
+        raise WorkflowError("Flux2 图生图工作流缺少 EmptyFlux2LatentImage 输出画布节点")
+    if not image_name.strip():
+        raise WorkflowError("Flux2 图生图没有收到已上传的输入图片")
+
+    # Keep the original node chain as the source of truth.  These IDs are the
+    # stable API nodes in E:\\11111图生图.json; the fallback lookup also makes
+    # an uploaded equivalent workflow usable after a harmless node re-number.
+    def find_node(class_type: str, preferred: str = "") -> str:
+        if preferred and _node(workflow, preferred):
+            return preferred
+        for node_id, node in workflow.items():
+            if isinstance(node, dict) and node.get("class_type") == class_type:
+                return str(node_id)
+        return ""
+
+    positive_id = find_node("CLIPTextEncode", "135")
+    negative_zero_id = find_node("ConditioningZeroOut", "685")
+    clip_loader_id = find_node("CLIPLoaderGGUF", "731")
+    vae_loader_id = find_node("VAELoader", "127")
+    lora_node_ids = _power_lora_nodes(workflow)
+    model_loader_id = find_node("UNETLoader", "126")
+    model_patch_id = find_node("FluxKVCache", "139")
+    guider_id = find_node("CFGGuider", "138")
+    sampler_id = find_node("SamplerCustomAdvanced", "123")
+    noise_id = find_node("RandomNoise", "125")
+    sampler_select_id = find_node("KSamplerSelect", "122")
+    scheduler_id = find_node("Flux2Scheduler", "137")
+    latent_id = find_node("EmptyFlux2LatentImage", "129")
+    decode_id = find_node("VAEDecode", "124")
+    save_id = find_node("SaveImage", "94")
+    required = {
+        "正面提示词": positive_id,
+        "负面条件": negative_zero_id,
+        "文本编码器": clip_loader_id,
+        "VAE": vae_loader_id,
+        "核心模型": model_loader_id,
+        "Flux KV 缓存": model_patch_id,
+        "CFG 引导": guider_id,
+        "采样器": sampler_id,
+        "噪声": noise_id,
+        "采样器选择": sampler_select_id,
+        "Flux2 调度器": scheduler_id,
+        "输出画布": latent_id,
+        "VAE 解码": decode_id,
+        "保存图片": save_id,
+    }
+    missing = [label for label, node_id in required.items() if not node_id]
+    if missing:
+        raise WorkflowError(f"Flux2 图生图工作流缺少节点：{', '.join(missing)}")
+
+    _inputs(workflow, positive_id).update(text=positive, clip=[clip_loader_id, 0])
+
+    _inputs(workflow, model_loader_id)["unet_name"] = unet_name
+    _inputs(workflow, clip_loader_id).update(clip_name=clip_name, type="flux2")
+    _inputs(workflow, vae_loader_id)["vae_name"] = vae_name
+    if loras is not None:
+        _apply_loras(workflow, loras, report)
+
+    # The source workflow's KV cache is the reference-image optimization and
+    # must remain immediately downstream of the model/LoRA chain.
+    model_inputs = _inputs(workflow, model_patch_id)
+    model_inputs["model"] = [lora_node_ids[-1], 0] if lora_node_ids else [model_loader_id, 0]
+    _inputs(workflow, guider_id).update(
+        model=[model_patch_id, 0],
+        positive=["707:703", 0],
+        negative=[negative_zero_id, 0],
+        cfg=max(0.0, float(cfg)),
+    )
+    _inputs(workflow, noise_id)["noise_seed"] = max(0, int(seed))
+    _inputs(workflow, sampler_select_id)["sampler_name"] = sampler_name or "euler"
+    _inputs(workflow, scheduler_id).update(
+        steps=max(1, int(steps)),
+        width=max(16, int(width)),
+        height=max(16, int(height)),
+    )
+    _inputs(workflow, latent_id).update(
+        width=max(16, int(width)),
+        height=max(16, int(height)),
+        batch_size=1,
+    )
+    _inputs(workflow, decode_id)["vae"] = [vae_loader_id, 0]
+    _inputs(workflow, save_id)["filename_prefix"] = filename_prefix
+
+    # This reproduces the enabled-reference branch in E:\\222.json.  Do not
+    # connect this latent to sampler.latent_image: Flux2 Klein uses it as a
+    # reference condition and keeps the EmptyFlux2 latent as the canvas.
+    load_id = "76"
+    size_id = "128"
+    scale_id = "707:130"
+    encode_id = "707:702"
+    positive_ref_id = "707:703"
+    workflow[load_id] = {
+        "inputs": {"image": image_name},
+        "class_type": "LoadImage",
+        "_meta": {"title": "Flux2 图生图输入图片"},
+    }
+    workflow[size_id] = {
+        "inputs": {"image": [scale_id, 0]},
+        "class_type": "GetImageSize",
+        "_meta": {"title": "Flux2 图生图参考图尺寸"},
+    }
+    workflow[scale_id] = {
+        "inputs": {
+            "image": [load_id, 0],
+            "upscale_method": scale_method or "lanczos",
+            "megapixels": max(0.01, min(16.0, float(megapixels or 0.8))),
+            "resolution_steps": max(1, int(resolution_steps or 1)),
+        },
+        "class_type": "ImageScaleToTotalPixels",
+        "_meta": {"title": "Flux2 图生图参考图缩放"},
+    }
+    workflow[encode_id] = {
+        "inputs": {"pixels": [scale_id, 0], "vae": [vae_loader_id, 0]},
+        "class_type": "VAEEncode",
+        "_meta": {"title": "Flux2 图生图参考图编码"},
+    }
+    workflow[positive_ref_id] = {
+        "inputs": {
+            "conditioning": [positive_id, 0],
+            "latent": [encode_id, 0],
+        },
+        "class_type": "ReferenceLatent",
+        "_meta": {"title": "Flux2 正面参考图条件"},
+    }
+    width_inputs = _inputs(workflow, "727")
+    height_inputs = _inputs(workflow, "728")
+    if width_inputs is not None and height_inputs is not None:
+        width_inputs["any_01"] = [size_id, 0]
+        width_inputs["any_02"] = ["725", 0]
+        height_inputs["any_01"] = [size_id, 1]
+        height_inputs["any_02"] = ["726", 0]
+    report.append("已按 222.json 启用 Flux2 Klein 参考图：LoadImage → 缩放 → VAEEncode → ReferenceLatent")
+    report.append("采样器仍使用 EmptyFlux2LatentImage 作为输出画布，输入图不会被当作文生图开关")
+    return workflow, report
 
 
 def adapt_original(
@@ -379,6 +854,7 @@ def adapt_original(
         sampler_defaults = _inputs(workflow, "915:282") or {}
         _apply_sampling_sampler(
             workflow,
+            model_name=model_name,
             steps=steps,
             cfg=cfg,
             seed=seed,
@@ -425,11 +901,12 @@ def copy_and_repair_original(source_path: Path, destination_dir: Path) -> dict[s
             sampler = _inputs(workflow, "915:282") or {}
             _apply_sampling_sampler(
                 workflow,
+                model_name="anima-base-v1.0.safetensors",
                 steps=int(sampler.get("steps", 30) or 30),
                 cfg=5.0,
                 seed=int(sampler.get("seed", 0) or 0),
                 sampler_name="er_sde",
-                scheduler="normal",
+                scheduler="simple",
                 denoise=1.0 if mode == "txt2img" else 0.6,
                 report=report,
             )

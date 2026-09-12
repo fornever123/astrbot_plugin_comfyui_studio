@@ -1,6 +1,6 @@
 # ComfyUI AI 绘画台
 
-[![版本](https://img.shields.io/badge/版本-0.6.8-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-0.8.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 
@@ -9,6 +9,9 @@ ComfyUI AI 绘画台是一个适用于 AstrBot 的本地 ComfyUI 绘图插件。
 ## 功能特性
 
 - 文生图、图生图和高清放大三种绘图模式。
+- 图生图使用独立的 Qwen Image Edit 工作流、UNet GGUF、Qwen 文本编码器、VAE 和专用 LoRA，不读取或覆盖文生图核心模型配置。
+- 图生图默认可按原图宽高比输出；图生图 LLM 的工具调用规则、系统提示词、用户输入模板、编辑知识库和输出格式都可在 WebUI 中查看与修改。
+- 图生图工作流支持从 ComfyUI 编辑器 JSON 自动转换为 API 工作流，并可在独立的“图生图”WebUI 页面调整模型、LoRA、提示词、尺寸、步数、CFG、种子、采样器、调度器、重绘幅度和 AuraFlow 偏移。
 - 基于原始 ComfyUI 工作流生成独立的 API 工作流副本。
 - 支持核心模型、采样步数、CFG、种子、尺寸和重绘幅度等参数。
 - 支持多个 LoRA，能够设置权重、中文昵称、多个旧指令简称、分类和启用状态。
@@ -16,12 +19,16 @@ ComfyUI AI 绘画台是一个适用于 AstrBot 的本地 ComfyUI 绘图插件。
 - 每个 LoRA 独立管理多个指令简称、分类和“指令简称 -> 预设内容”映射，完整模式和简洁模式都可以编辑；原有全局提示词预设继续保留。
 - 支持 LoRA CivitAI 链接、触发词、预览图片、下载、上传和删除。
 - 支持提示词预设和独立的画师串预设。
+- 内置 Anima 提示词工程师：随插件携带 Anima3 提示词模板，按低 token 规则处理普通指令、LLM 绘图和预设翻译；无需另装 Anima 插件。
 - 绘图指令可以同时使用提示词预设和 LoRA 简称；临时 LoRA 只在当前任务中生效。
-- 支持使用 AstrBot 当前 AI 或插件独立 AI 优化提示词。
-- LLM 绘图可选择使用 AstrBot LLM 提取结果，或由插件 AI 根据用户原话重新生成完整提示词；开发者模式可查看输入与最终提示词。
-- LLM 绘图提示词和普通指令翻译分别使用独立的插件 AI 提示词，可在 WebUI 单独修改。
+- 支持使用 AstrBot 当前 AI 或本插件配置的 AI 优化提示词。
+- 文生图 LLM 可选择使用 AstrBot LLM 提取结果，或由本插件 AI 根据用户原话重新生成完整 Anima 提示词；开发者模式可查看输入与最终提示词。
+- 图生图 LLM 使用独立的编辑知识库与插件 AI，只保留用户明确要求改动的内容。例如“把身上衣服换成裙子”会整理为 `change the outfit to a dress`，不会补写角色、背景、镜头或画风；LoRA 指令简称和提示词预设仍会同时生效。
+- LLM 绘图提示词和普通指令翻译分别使用本插件的 AI 提示词，可在 WebUI 单独修改。
 - 支持普通中文提示词的非 AI 翻译，翻译失败时保留原文继续绘图。
 - 支持 AstrBot LLM 通过自然语言调用绘图工具。
+- 支持按用户限制绘图次数和时间窗口，配置的管理员不受限制。
+- 插件管理员可使用 `/comfy打开`、`/comfy关闭` 控制本机 ComfyUI；服务未连接时会提示启动指令。
 - 支持自定义开始绘图提示和完成提示，可使用 AstrBot 当前人格回复。
 - 支持普通图片消息和群聊合并转发两种发送方式。
 - WebUI 分组管理工作流、AI、提示词预设、画师串和 LoRA。
@@ -68,7 +75,7 @@ python -m pip install -r requirements.txt
 /高清放大
 ```
 
-图生图需要在同一条消息中附图或回复图片。高清放大支持附图、回复图片，也可以使用当前会话最近生成的图片。
+图生图需要在同一条消息中附图或回复图片。LLM 图生图会优先保留用户要求的 LoRA 指令简称与提示词预设。高清放大支持附图、回复图片，也可以使用当前会话最近生成的图片。
 
 ### 参数
 
@@ -158,11 +165,22 @@ ComfyUI 地址：http://127.0.0.1:8188
 
 ```text
 workflows/文生图.json
-workflows/图生图.json
+workflows/img2img_qwen.json
 workflows/高清放大.json
 ```
 
-原始工作流使用的自定义节点必须安装在 ComfyUI 中。常见依赖包括 rgthree、Crystools、Anima 相关节点和 Ultimate SD Upscale。核心模型、LoRA 和放大模型也必须存在于 ComfyUI 对应的模型目录。
+原始工作流使用的自定义节点必须安装在 ComfyUI 中。文生图和高清放大沿用所选工作流的依赖；Qwen 图生图需要 ComfyUI-GGUF，以及较新 ComfyUI 内置的 Qwen Image Edit、Flux Kontext、CFGNorm 和 AuraFlow 节点。核心模型、LoRA、文本编码器、VAE 和放大模型也必须存在于 ComfyUI 对应的模型目录。
+
+### Qwen 图生图模型配置
+
+当前版本默认读取以下独立配置项，可以在插件 WebUI 的“图生图”页面中修改：
+
+```text
+img2img_unet_name = Qwen-Rapid-NSFW-v23_Q3_K.gguf
+img2img_clip_name = Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf
+img2img_vae_name = qwen_image_vae.safetensors
+img2img_lora_name = qwen/Qwen-Image-Edit-F2P.safetensors
+```
 
 ## 故障排查
 
@@ -173,6 +191,8 @@ workflows/高清放大.json
 ```text
 /comfy状态
 ```
+
+已在 WebUI 的“绘图限额与 ComfyUI 控制”填写管理员平台用户 ID 时，也可以发送 `/comfy打开` 启动本机服务。
 
 ### 模型或 LoRA 不存在
 
