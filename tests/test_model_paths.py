@@ -545,4 +545,8 @@ def test_frontend_renders_path_source_badge():
 def test_ui_mentions_model_dir_resolution_order():
     for name in ("index.html", "pages/console/index.html"):
         html = _source(name)
-        assert html.count("模型目录来源自动识别") == 2
+        # 解析优先级只在一处说明：文件夹位置面板。各功能页不再重复这段话，
+        # 只留一句指向「文件夹位置」的提示。
+        assert html.count("模型目录的优先级是") == 1
+        assert html.count("模型目录来源自动识别") == 0
+        assert html.count("文件夹位置") >= 3

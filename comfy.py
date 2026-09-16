@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from pathlib import Path
@@ -8,6 +9,13 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+
+try:  # 作为包的一部分导入（AstrBot 运行时）
+    from .workflow import prune_unreachable
+except ImportError:  # 直接以顶层模块导入（单测 / 脚本）
+    from workflow import prune_unreachable
+
+logger = logging.getLogger(__name__)
 
 
 class ComfyError(Exception):
@@ -147,8 +155,26 @@ class ComfyClient:
             "type": str(data.get("type", "input")),
         }
 
+    def prepare_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
+        """返回真正要提交的可执行图。
+
+        ComfyUI 会校验 payload 里的**每一个**节点，包括输出用不到的节点。
+        内置的 Flux2 工作流还带着作者的示例图片名和示例 GGUF 模型名，
+        这些孤儿节点会让「单图参考」这类任务在校验阶段就被拒绝。
+        统一在这里裁剪，任何调用方都不会漏掉。
+        """
+        pruned, removed = prune_unreachable(workflow)
+        if removed:
+            logger.info(
+                "提交前已剔除 %d 个不可达节点（不影响结果，仅避免多余校验）：%s",
+                len(removed),
+                "、".join(removed[:12]) + ("…" if len(removed) > 12 else ""),
+            )
+        return pruned
+
     async def queue(self, workflow: dict[str, Any]) -> str:
-        data = await self.request("POST", "/prompt", json={"prompt": workflow, "client_id": self.client_id})
+        prompt = self.prepare_workflow(workflow)
+        data = await self.request("POST", "/prompt", json={"prompt": prompt, "client_id": self.client_id})
         if not isinstance(data, dict) or not data.get("prompt_id"):
             node_errors = data.get("node_errors") if isinstance(data, dict) else None
             raise ComfyError(f"ComfyUI 拒绝工作流：{node_errors or data}")

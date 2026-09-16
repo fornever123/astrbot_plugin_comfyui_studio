@@ -45,7 +45,7 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v1.0.2" in page
+    assert "版本 v1.1.0" in page
 
 
 @pytest.mark.parametrize(
@@ -318,7 +318,12 @@ def test_console_exposes_reply_and_lora_management() -> None:
     assert 'id="saveTxt2ImgSettings"' in page
     assert 'id="seed"' in page
     assert "initLoraMode" in app
-    assert "sourcePathElement" in app
+    # 旧版在 app.js 里读一个早已从页面移除的元素；这段死代码已清理。
+    assert "sourcePathElement" not in app
+    # 加速 LoRA 管线（界面、保存、提示）已整体移除。
+    assert "img2img_accel_lora_enabled" not in app
+    assert "updateQwenAccelHint" not in app
+    assert 'data-view-tab="paths"' in page
     assert "saveTxt2ImgSettings" in app
     assert "payload.model_name" in app
     assert "请先获取模型列表并测试连接" in app

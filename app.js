@@ -255,11 +255,6 @@ async function load() {
       const label = value && source && source !== "default" ? sourceLabels[source] : "";
       el.textContent = label ? `${value} · ${label}` : (value || "未检测到");
     }
-    const sourcePath = paths.source_workflow || "";
-    const sourcePathElement = document.getElementById("path-source_workflow");
-    if (sourcePathElement) {
-      sourcePathElement.textContent = sourcePath ? sourcePath.replace(/[\\/][^\\/]+$/, "") : "未检测到";
-    }
     fillConfig();
     await Promise.all([loadModels(), loadWorkflows(), loadPresets(), loadArtistPresets(), loadPathSettings()]);
   } catch (error) {
@@ -346,12 +341,7 @@ function fillConfig() {
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
-  setSelectOptions("img2img_accel_lora_name", modelData.img2img_accel_loras || modelData.loras || [], config.img2img_accel_lora_name || "", true);
-  const img2imgAccelEnabled = document.getElementById("img2img_accel_lora_enabled");
-  if (img2imgAccelEnabled) img2imgAccelEnabled.checked = config.img2img_accel_lora_enabled === true || config.img2img_accel_lora_enabled === "true" || config.img2img_accel_lora_enabled === 1;
-  const img2imgPreCfg = document.getElementById("img2img_pre_cfg");
-  if (img2imgPreCfg) img2imgPreCfg.checked = config.img2img_pre_cfg === true || config.img2img_pre_cfg === "true" || config.img2img_pre_cfg === 1;
-  for (const id of ["img2img_lora_strength", "img2img_accel_lora_strength", "img2img_accel_steps", "img2img_accel_cfg", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method", "img2img_largest_size", "img2img_crop", "img2img_megapixels", "img2img_resolution_steps", "img2img_reference_method", "img2img_sampling_shift", "img2img_cfg_norm_strength", "img2img_tile_size", "img2img_tile_overlap", "img2img_temporal_size", "img2img_temporal_overlap", "img2img_default_positive", "img2img_default_negative", "img2img_second_image", "img2img_filename_prefix"]) {
+  for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method", "img2img_largest_size", "img2img_crop", "img2img_sampling_shift", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
     const element = document.getElementById(id);
     if (element) element.value = config[id] ?? "";
   }
@@ -390,7 +380,6 @@ function fillConfig() {
       if (element) element.checked = config[`${mode}_${key}`] === true || config[`${mode}_${key}`] === "true" || config[`${mode}_${key}`] === 1;
     }
   }
-  updateQwenAccelHint();
   updateReplyCustomVisibility();
 }
 
@@ -401,23 +390,6 @@ function setSelectOptions(id, values, selected = "", allowEmpty = false) {
   if (selected && !options.includes(selected)) options.unshift(selected);
   select.innerHTML = `${allowEmpty ? '<option value="">不使用</option>' : ''}${options.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
   select.value = selected || (allowEmpty ? "" : options[0] || "");
-}
-
-function updateQwenAccelHint() {
-  const hint = document.getElementById("img2imgAccelHint");
-  if (!hint) return;
-  const normalSteps = document.getElementById("img2img_steps")?.value || "8";
-  const normalCfg = document.getElementById("img2img_cfg")?.value || "1.0";
-  const accelSteps = document.getElementById("img2img_accel_steps")?.value || "4";
-  const accelCfg = document.getElementById("img2img_accel_cfg")?.value || "1.0";
-  const enabled = document.getElementById("img2img_accel_lora_enabled")?.checked === true;
-  const model = document.getElementById("img2img_unet_name")?.value || "";
-  const isRapid = model.toLowerCase().includes("rapid");
-  const effectiveEnabled = enabled && !isRapid;
-  const rapidWarning = isRapid
-    ? " 当前核心为 Qwen-Rapid，插件会自动跳过标准 Lightning LoRA。"
-    : "";
-  hint.textContent = `普通模式（未启用加速 LoRA）：${normalSteps} 步 / CFG ${normalCfg}；加速模式（启用兼容 Lightning LoRA）：${accelSteps} 步 / CFG ${accelCfg}。当前生效：${effectiveEnabled ? `加速模式 ${accelSteps} 步 / CFG ${accelCfg}` : `普通模式 ${normalSteps} 步 / CFG ${normalCfg}`}。${rapidWarning}`;
 }
 
 function updateModelHint() {
@@ -919,7 +891,6 @@ async function loadModels() {
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
-  setSelectOptions("img2img_accel_lora_name", modelData.img2img_accel_loras || modelData.loras || [], config.img2img_accel_lora_name || "", true);
   setSelectOptions("img2img_flux2_unet_name", modelData.img2img_flux2_models || [], config.img2img_flux2_unet_name || modelData.current_img2img_flux2 || "");
   setSelectOptions("img2img_flux2_clip_name", modelData.img2img_flux2_clip_models || [], config.img2img_flux2_clip_name || modelData.current_img2img_flux2_clip || "");
   setSelectOptions("img2img_flux2_vae_name", modelData.img2img_flux2_vae_models || [], config.img2img_flux2_vae_name || modelData.current_img2img_flux2_vae || "");
@@ -1380,19 +1351,20 @@ async function handleLoraClick(event) {
   } catch (e) { show(e.message); }
 };
 document.getElementById("model").onchange = updateModelHint;
-for (const id of ["img2img_accel_lora_enabled", "img2img_unet_name", "img2img_steps", "img2img_cfg", "img2img_accel_steps", "img2img_accel_cfg"]) {
-  document.getElementById(id)?.addEventListener("input", updateQwenAccelHint);
-  document.getElementById(id)?.addEventListener("change", updateQwenAccelHint);
-}
 document.getElementById("saveWorkflows").onclick = async () => { try { await post(`${API}/config`, {workflow_txt2img: document.getElementById("wf_txt2img").value, workflow_img2img: document.getElementById("wf_img2img").value, workflow_hires: document.getElementById("wf_hires").value}); show("工作流选择已保存"); } catch (e) { show(e.message); } };
-document.getElementById("saveImg2ImgWorkflow").onclick = async () => { try { await post(`${API}/config`, {workflow_img2img: document.getElementById("wf_img2img").value}); show("图生图工作流已保存"); } catch (e) { show(e.message); } };
+document.getElementById("saveImg2ImgWorkflow").onclick = async () => {
+  const payload = {
+    workflow_img2img: document.getElementById("wf_img2img").value,
+    img2img_engine: document.getElementById("img2img_engine").value,
+  };
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("图生图工作流与默认引擎已保存"); } catch (e) { show(e.message); }
+};
 document.getElementById("saveImg2ImgFlux2Workflow").onclick = async () => {
   const payload = {
-    img2img_engine: document.getElementById("img2img_engine").value,
     workflow_img2img_flux2: document.getElementById("wf_img2img_flux2").value,
     img2img_flux2_source_workflow: document.getElementById("img2img_flux2_source_workflow").value,
   };
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图工作流和默认引擎已保存"); }
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图工作流已保存"); }
   catch (e) { show(e.message); }
 };
 function flux2ToolPayload(mode) {
@@ -1523,30 +1495,6 @@ for (const id of ["ai_base_url", "ai_model", "ai_api_key", "civitai_base_url", "
   field.addEventListener("input", () => { aiConnectionTested = false; });
   field.addEventListener("change", () => { aiConnectionTested = false; });
 }
-const saveCivitaiSettingsButton = document.getElementById("saveCivitaiSettings");
-if (saveCivitaiSettingsButton) saveCivitaiSettingsButton.onclick = async () => {
-  const status = document.getElementById("civitaiStatus");
-  const payload = {
-    civitai_base_url: (document.getElementById("civitai_base_url")?.value || config.civitai_base_url || "https://civitai.com").trim(),
-    civitai_token: document.getElementById("civitai_token").value,
-  };
-  try {
-    await post(`${API}/config`, payload);
-    config.civitai_base_url = payload.civitai_base_url;
-    if (payload.civitai_token) config.civitai_token_configured = true;
-    if (status) {
-      status.textContent = `已保存信息源：${payload.civitai_base_url}`;
-      status.className = "muted success-text";
-    }
-    show("CivitAI 兼容站设置已保存");
-  } catch (e) {
-    if (status) {
-      status.textContent = `保存失败：${e.message}`;
-      status.className = "muted error-text";
-    }
-    show(e.message);
-  }
-};
 document.getElementById("saveAi").onclick = async () => {
   if (!aiConnectionTested) {
     show("请先获取模型列表并测试连接，测试成功后再保存 AI 服务设置");
@@ -1563,13 +1511,12 @@ document.getElementById("saveAi").onclick = async () => {
 };
 document.getElementById("saveImg2ImgSettings").onclick = async () => {
   const payload = {};
-  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_accel_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
+  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
     payload[id] = document.getElementById(id).value;
   }
-  for (const id of ["img2img_lora_strength", "img2img_accel_lora_strength", "img2img_accel_steps", "img2img_accel_cfg", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
+  for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
     payload[id] = Number(document.getElementById(id).value);
   }
-  payload.img2img_accel_lora_enabled = document.getElementById("img2img_accel_lora_enabled")?.checked === true;
   payload.img2img_keep_aspect_ratio = document.getElementById("img2img_keep_aspect_ratio")?.checked !== false;
   payload.img2img_match_input_size = document.getElementById("img2img_match_input_size")?.checked !== false;
   payload.img2img_crop = document.getElementById("img2img_crop").value;

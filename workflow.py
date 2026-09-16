@@ -227,6 +227,62 @@ def load_workflow(path: Path, *, preserve_disabled: bool = False) -> dict[str, A
     return convert_ui_workflow(data, preserve_disabled=preserve_disabled)
 
 
+# ComfyUI validates every node inside the submitted ``/prompt`` payload, not
+# only the nodes that the output needs.  A leftover editor node therefore keeps
+# its original file references alive: the bundled Flux2 graphs still carry the
+# author's example PNG names and the example GGUF model names, so a
+# single-reference edit is rejected with "invalid image file" even though that
+# image never takes part in the run.  Submitting exactly the executable graph
+# keeps validation aligned with execution, and it also stops the sampler from
+# allocating VRAM for unused loaders.
+OUTPUT_NODE_TYPES = (
+    "SaveImage",
+    "PreviewImage",
+    "SaveAnimatedWEBP",
+    "SaveAnimatedPNG",
+    "VHS_VideoCombine",
+)
+
+
+def prune_unreachable(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Return the executable subgraph plus the ids that were dropped.
+
+    Only nodes an output depends on are kept.  When the graph exposes no output
+    node at all the mapping is returned untouched, so a malformed workflow still
+    reaches ComfyUI and reports its own error instead of silently submitting an
+    empty prompt.
+    """
+    if not isinstance(workflow, dict) or not workflow:
+        return workflow, []
+    outputs = [
+        node_id
+        for node_id, node in workflow.items()
+        if isinstance(node, dict) and node.get("class_type") in OUTPUT_NODE_TYPES
+    ]
+    if not outputs:
+        return workflow, []
+    keep: set[str] = set()
+    stack: list[str] = list(outputs)
+    while stack:
+        current = stack.pop()
+        if current in keep or current not in workflow:
+            continue
+        keep.add(current)
+        node = workflow.get(current)
+        if not isinstance(node, dict):
+            continue
+        inputs = node.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for value in inputs.values():
+            if isinstance(value, (list, tuple)) and value and isinstance(value[0], str):
+                stack.append(value[0])
+    removed = [node_id for node_id in workflow if node_id not in keep]
+    if not removed:
+        return workflow, []
+    return {node_id: node for node_id, node in workflow.items() if node_id in keep}, removed
+
+
 def _node(workflow: dict[str, Any], node_id: str) -> dict[str, Any] | None:
     value = workflow.get(node_id)
     return value if isinstance(value, dict) else None
@@ -700,177 +756,6 @@ def adapt_qwen_img2img(
     _ = (reference_method, cfg_norm_strength, pre_cfg, tile_size, tile_overlap, temporal_size, temporal_overlap)
     return workflow, report
 
-
-def adapt_flux2_img2img(
-    source: dict[str, Any],
-    *,
-    positive: str,
-    negative: str,
-    image_name: str,
-    unet_name: str,
-    clip_name: str,
-    vae_name: str,
-    loras: list[str] | None = None,
-    width: int = 720,
-    height: int = 1280,
-    steps: int = 4,
-    cfg: float = 1.0,
-    seed: int = 0,
-    sampler_name: str = "euler",
-    scale_method: str = "lanczos",
-    megapixels: float = 0.8,
-    resolution_steps: int = 1,
-    filename_prefix: str = "astrbot/img2img_flux2",
-) -> tuple[dict[str, Any], list[str]]:
-    """Enable real Flux.2 Klein reference-image editing on the supplied workflow.
-
-    The supplied ``11111图生图.json`` is the text-to-image state of the same
-    workflow: its EmptyFlux2LatentImage is connected to the sampler and its
-    reference-image branch is absent.  Flux.2 Klein expects the output canvas
-    to remain an empty Flux2 latent, while the source image is VAE encoded and
-    attached to the positive and negative conditionings as reference_latents.
-    """
-    workflow = copy.deepcopy(source)
-    report: list[str] = []
-
-    if not any(
-        isinstance(node, dict) and node.get("class_type") == "EmptyFlux2LatentImage"
-        for node in workflow.values()
-    ):
-        raise WorkflowError("Flux2 图生图工作流缺少 EmptyFlux2LatentImage 输出画布节点")
-    if not image_name.strip():
-        raise WorkflowError("Flux2 图生图没有收到已上传的输入图片")
-
-    # Keep the original node chain as the source of truth.  These IDs are the
-    # stable API nodes in E:\\11111图生图.json; the fallback lookup also makes
-    # an uploaded equivalent workflow usable after a harmless node re-number.
-    def find_node(class_type: str, preferred: str = "") -> str:
-        if preferred and _node(workflow, preferred):
-            return preferred
-        for node_id, node in workflow.items():
-            if isinstance(node, dict) and node.get("class_type") == class_type:
-                return str(node_id)
-        return ""
-
-    positive_id = find_node("CLIPTextEncode", "135")
-    negative_zero_id = find_node("ConditioningZeroOut", "685")
-    clip_loader_id = find_node("CLIPLoaderGGUF", "731")
-    vae_loader_id = find_node("VAELoader", "127")
-    lora_node_ids = _power_lora_nodes(workflow)
-    model_loader_id = find_node("UNETLoader", "126")
-    model_patch_id = find_node("FluxKVCache", "139")
-    guider_id = find_node("CFGGuider", "138")
-    sampler_id = find_node("SamplerCustomAdvanced", "123")
-    noise_id = find_node("RandomNoise", "125")
-    sampler_select_id = find_node("KSamplerSelect", "122")
-    scheduler_id = find_node("Flux2Scheduler", "137")
-    latent_id = find_node("EmptyFlux2LatentImage", "129")
-    decode_id = find_node("VAEDecode", "124")
-    save_id = find_node("SaveImage", "94")
-    required = {
-        "正面提示词": positive_id,
-        "负面条件": negative_zero_id,
-        "文本编码器": clip_loader_id,
-        "VAE": vae_loader_id,
-        "核心模型": model_loader_id,
-        "Flux KV 缓存": model_patch_id,
-        "CFG 引导": guider_id,
-        "采样器": sampler_id,
-        "噪声": noise_id,
-        "采样器选择": sampler_select_id,
-        "Flux2 调度器": scheduler_id,
-        "输出画布": latent_id,
-        "VAE 解码": decode_id,
-        "保存图片": save_id,
-    }
-    missing = [label for label, node_id in required.items() if not node_id]
-    if missing:
-        raise WorkflowError(f"Flux2 图生图工作流缺少节点：{', '.join(missing)}")
-
-    _inputs(workflow, positive_id).update(text=positive, clip=[clip_loader_id, 0])
-
-    _inputs(workflow, model_loader_id)["unet_name"] = unet_name
-    _inputs(workflow, clip_loader_id).update(clip_name=clip_name, type="flux2")
-    _inputs(workflow, vae_loader_id)["vae_name"] = vae_name
-    if loras is not None:
-        _apply_loras(workflow, loras, report)
-
-    # The source workflow's KV cache is the reference-image optimization and
-    # must remain immediately downstream of the model/LoRA chain.
-    model_inputs = _inputs(workflow, model_patch_id)
-    model_inputs["model"] = [lora_node_ids[-1], 0] if lora_node_ids else [model_loader_id, 0]
-    _inputs(workflow, guider_id).update(
-        model=[model_patch_id, 0],
-        positive=["707:703", 0],
-        negative=[negative_zero_id, 0],
-        cfg=max(0.0, float(cfg)),
-    )
-    _inputs(workflow, noise_id)["noise_seed"] = max(0, int(seed))
-    _inputs(workflow, sampler_select_id)["sampler_name"] = sampler_name or "euler"
-    _inputs(workflow, scheduler_id).update(
-        steps=max(1, int(steps)),
-        width=max(16, int(width)),
-        height=max(16, int(height)),
-    )
-    _inputs(workflow, latent_id).update(
-        width=max(16, int(width)),
-        height=max(16, int(height)),
-        batch_size=1,
-    )
-    _inputs(workflow, decode_id)["vae"] = [vae_loader_id, 0]
-    _inputs(workflow, save_id)["filename_prefix"] = filename_prefix
-
-    # This reproduces the enabled-reference branch in E:\\222.json.  Do not
-    # connect this latent to sampler.latent_image: Flux2 Klein uses it as a
-    # reference condition and keeps the EmptyFlux2 latent as the canvas.
-    load_id = "76"
-    size_id = "128"
-    scale_id = "707:130"
-    encode_id = "707:702"
-    positive_ref_id = "707:703"
-    workflow[load_id] = {
-        "inputs": {"image": image_name},
-        "class_type": "LoadImage",
-        "_meta": {"title": "Flux2 图生图输入图片"},
-    }
-    workflow[size_id] = {
-        "inputs": {"image": [scale_id, 0]},
-        "class_type": "GetImageSize",
-        "_meta": {"title": "Flux2 图生图参考图尺寸"},
-    }
-    workflow[scale_id] = {
-        "inputs": {
-            "image": [load_id, 0],
-            "upscale_method": scale_method or "lanczos",
-            "megapixels": max(0.01, min(16.0, float(megapixels or 0.8))),
-            "resolution_steps": max(1, int(resolution_steps or 1)),
-        },
-        "class_type": "ImageScaleToTotalPixels",
-        "_meta": {"title": "Flux2 图生图参考图缩放"},
-    }
-    workflow[encode_id] = {
-        "inputs": {"pixels": [scale_id, 0], "vae": [vae_loader_id, 0]},
-        "class_type": "VAEEncode",
-        "_meta": {"title": "Flux2 图生图参考图编码"},
-    }
-    workflow[positive_ref_id] = {
-        "inputs": {
-            "conditioning": [positive_id, 0],
-            "latent": [encode_id, 0],
-        },
-        "class_type": "ReferenceLatent",
-        "_meta": {"title": "Flux2 正面参考图条件"},
-    }
-    width_inputs = _inputs(workflow, "727")
-    height_inputs = _inputs(workflow, "728")
-    if width_inputs is not None and height_inputs is not None:
-        width_inputs["any_01"] = [size_id, 0]
-        width_inputs["any_02"] = ["725", 0]
-        height_inputs["any_01"] = [size_id, 1]
-        height_inputs["any_02"] = ["726", 0]
-    report.append("已按 222.json 启用 Flux2 Klein 参考图：LoadImage → 缩放 → VAEEncode → ReferenceLatent")
-    report.append("采样器仍使用 EmptyFlux2LatentImage 作为输出画布，输入图不会被当作文生图开关")
-    return workflow, report
 
 
 def adapt_flux2_klein_img2img(
@@ -1437,11 +1322,15 @@ def adapt_original(
 
 
 def copy_and_repair_original(source_path: Path, destination_dir: Path) -> dict[str, Path]:
-    """把原工作流复制成三份，并只做静态结构修复，不写回源文件。"""
+    """把原工作流复制成所需的副本，并只做静态结构修复，不写回源文件。
+
+    图生图已经改用独立的 Qwen Image Edit 工作流，所以这里不再生成原工作流的
+    图生图副本——过去它会被生成却从不被提交，只是多出一份容易误选的同名文件。
+    """
     source = load_api_workflow(source_path)
     destination_dir.mkdir(parents=True, exist_ok=True)
     result: dict[str, Path] = {}
-    for mode, name in (("txt2img", "文生图.json"), ("img2img", "图生图.json"), ("hires", "高清放大.json")):
+    for mode, name in (("txt2img", "文生图.json"), ("hires", "高清放大.json")):
         workflow = copy.deepcopy(source)
         report: list[str] = []
         _repair_missing_lora_node(workflow, report)

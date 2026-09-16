@@ -13,32 +13,42 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.0.2</p>
+        <p id="version" class="version">版本 v1.1.0</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
-<button class="page-tab active" type="button" data-view-tab="lora"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>LoRA 组</button>
-<button class="page-tab" type="button" data-view-tab="workflow"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流组</button>
-<button class="page-tab" type="button" data-view-tab="paths"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M9 13h6"/><path d="M12 10v6"/></svg>文件夹位置</button>
-<button class="page-tab" type="button" data-view-tab="txt2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>文生图</button>
     <details class="nav-group" open>
-      <summary class="nav-group-head" aria-expanded="true"><span>图生图</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <summary class="nav-group-head" aria-expanded="true"><span>绘制</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
       <div class="nav-group-body">
+        <button class="page-tab" type="button" data-view-tab="txt2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>文生图</button>
         <button class="page-tab" type="button" data-view-tab="img2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>图生图</button>
         <button class="page-tab" type="button" data-view-tab="img2img_flux2"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2</button>
       </div>
     </details>
     <details class="nav-group" open>
-      <summary class="nav-group-head" aria-expanded="true"><span>其他功能</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <summary class="nav-group-head" aria-expanded="true"><span>图像工具</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
       <div class="nav-group-body">
         <button class="page-tab" type="button" data-view-tab="wash"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</button>
         <button class="page-tab" type="button" data-view-tab="outpaint"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</button>
         <button class="page-tab" type="button" data-view-tab="multi_angle"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</button>
       </div>
     </details>
-<button class="page-tab" type="button" data-view-tab="ai"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 与回复</button>
-<button class="page-tab" type="button" data-view-tab="presets"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>提示词预设</button>
-<button class="page-tab" type="button" data-view-tab="artist"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>画师串预设</button>
+    <details class="nav-group" open>
+      <summary class="nav-group-head" aria-expanded="true"><span>LoRA 与预设</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <div class="nav-group-body">
+        <button class="page-tab active" type="button" data-view-tab="lora"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>LoRA 组</button>
+        <button class="page-tab" type="button" data-view-tab="presets"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>提示词预设</button>
+        <button class="page-tab" type="button" data-view-tab="artist"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>画师串预设</button>
+      </div>
+    </details>
+    <details class="nav-group" open>
+      <summary class="nav-group-head" aria-expanded="true"><span>系统</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <div class="nav-group-body">
+        <button class="page-tab" type="button" data-view-tab="workflow"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流组</button>
+        <button class="page-tab" type="button" data-view-tab="paths"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M9 13h6"/><path d="M12 10v6"/></svg>文件夹位置</button>
+        <button class="page-tab" type="button" data-view-tab="ai"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 与回复</button>
+      </div>
+    </details>
       </nav>
     </aside>
     <div class="main">
@@ -63,6 +73,8 @@
 
 <div id="view-lora" class="view-panel" data-view-panel="lora">
 
+    <div class="page-head"><h2>LoRA 组</h2><p>管理 LoRA 文件、分类与 CivitAI 信息。画风 LoRA 与普通 LoRA 的启用列表严格分开。</p></div>
+
     <div class="lora-section-switcher" role="tablist" aria-label="LoRA 模块">
       <button id="normalLoraTab" class="lora-section-tab active" type="button" data-lora-section="normal" role="tab" aria-selected="true">普通 LoRA</button>
       <button id="styleLoraTab" class="lora-section-tab" type="button" data-lora-section="style" role="tab" aria-selected="false">画风 LoRA</button>
@@ -70,7 +82,7 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>LoRA 文件夹</h2><p>LoRA 文件和 CivitAI 信息在本组管理；文生图模型文件夹已移至“文生图”页。模型目录来源自动识别：手动覆盖 → extra_model_paths.yaml → ComfyUI 默认位置。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>LoRA 文件夹</h2><p>LoRA 文件、分类与 CivitAI 信息只在本组管理。目录位置统一在「系统 → 文件夹位置」里改，这里负责文件管理和快速打开。</p></div>
       </div>
       <div class="folder-grid">
         <article class="folder-card"><div><strong>LoRA</strong><code id="path-loras">未检测到</code></div><div class="folder-actions"><button data-open-folder="loras" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入 LoRA<input id="loraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label></div></article>
@@ -133,6 +145,8 @@
     </div>
 <div id="view-workflow" class="view-panel" data-view-panel="workflow" hidden>
 
+    <div class="page-head"><h2>工作流组</h2><p>为各功能选择要提交的 API 工作流，也可以上传自己的 JSON；原文件不会被覆盖。</p></div>
+
     <section class="band">
       <div class="section-head">
         <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流</h2><p>工作流基于原始难工作流的修复副本，原文件不会被覆盖。</p></div>
@@ -152,9 +166,11 @@
     </div>
 <div id="view-txt2img" class="view-panel" data-view-panel="txt2img" hidden>
 
+    <div class="page-head"><h2>文生图</h2><p>核心模型、默认采样参数与文生图专用 AI 设置。指令里显式给出的参数优先于本页默认值。</p></div>
+
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>文生图模型文件夹</h2><p>这里管理文生图使用的核心模型、Checkpoint 和高清放大模型位置。模型目录来源自动识别：手动覆盖 → extra_model_paths.yaml → ComfyUI 默认位置。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>文生图模型文件夹</h2><p>文生图用到的核心模型、Checkpoint 与放大模型目录。要改位置去「系统 → 文件夹位置」，这里提供快捷打开。</p></div>
       </div>
       <div class="folder-grid">
         <article class="folder-card"><div><strong>核心模型</strong><code id="path-diffusion_models">未检测到</code></div><button data-open-folder="diffusion_models" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button></article>
@@ -208,6 +224,8 @@
     </div>
 <div id="view-img2img" class="view-panel" data-view-panel="img2img" hidden>
 
+    <div class="page-head"><h2>图生图（Qwen）</h2><p>独立 Qwen Image Edit 工作流与模型链，不读取文生图的模型和 LoRA；支持 1–2 张参考图。</p></div>
+
     <div class="lora-isolation-notice" role="note">
       <strong>【特别标注】图生图只受「独立 LoRA」影响</strong>
       <span>本页的“独立 LoRA”是图生图唯一长期生效的 LoRA：它不会加载文生图的默认 LoRA 列表，也不会参与画风 LoRA 的随机/全部自动选择。只有你在指令中显式写出的 LoRA 简称才会在本次任务中临时叠加。</span>
@@ -220,6 +238,7 @@
       </div>
       <div class="workflow-grid">
         <label>图生图工作流<select id="wf_img2img" class="select"></select></label>
+        <label>默认图生图引擎<select id="img2img_engine" class="select"><option value="qwen">Qwen 图生图</option><option value="flux2">Flux2 图生图</option></select><small class="field-hint">普通 /图生图 走哪个引擎；/图生图Flux2 始终强制 Flux2。</small></label>
       </div>
     </section>
 
@@ -234,17 +253,11 @@
         <label>独立 VAE<select id="img2img_vae_name" class="select"></select></label>
         <label class="lora-isolated-field">★ 独立 LoRA（图生图唯一长期生效）<select id="img2img_lora_name" class="select"><option value="">不使用</option></select></label>
         <label>LoRA 权重<input id="img2img_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
-        <label class="check"><input id="img2img_accel_lora_enabled" type="checkbox">启用 Qwen Lightning 加速 LoRA</label>
-        <label>Qwen 加速 LoRA<select id="img2img_accel_lora_name" class="select"><option value="">不使用</option></select></label>
-        <label>加速 LoRA 权重<input id="img2img_accel_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
-        <label>启用加速 LoRA 时步数<input id="img2img_accel_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">建议 4 步</small></label>
-        <label>启用加速 LoRA 时 CFG<input id="img2img_accel_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">建议 CFG 1.0</small></label>
-        <p id="img2imgAccelHint" class="field-hint wide">采样参数说明：关闭加速 LoRA 时使用普通模式，当前建议 8 步 / CFG 1.0；开启兼容的 Lightning LoRA 时使用加速模式，建议 4 步 / CFG 1.0。当前 Qwen-Rapid 核心已自带快速采样，插件会自动跳过标准 Lightning LoRA。</p>
         <label>输出宽度<input id="img2img_width" class="input" type="number" min="64" step="8"></label>
         <label>输出高度<input id="img2img_height" class="input" type="number" min="64" step="8"></label>
         <label class="check"><input id="img2img_keep_aspect_ratio" type="checkbox" checked>按原图宽高比输出</label>
-        <label>普通模式步数（未启用加速 LoRA）<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"></label>
-        <label>普通模式 CFG（未启用加速 LoRA）<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+        <label>采样步数<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">Qwen 图生图建议 4 步</small></label>
+        <label>CFG<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">Qwen 图生图建议 CFG 1.0</small></label>
         <label>种子<input id="img2img_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
         <label>采样器<input id="img2img_sampler_name" class="input" type="text"></label>
         <label>调度器<input id="img2img_scheduler" class="input" type="text"></label>
@@ -287,6 +300,8 @@
     </div>
 <div id="view-img2img_flux2" class="view-panel" data-view-panel="img2img_flux2" hidden>
 
+    <div class="page-head"><h2>图生图 Flux2</h2><p>独立 Flux2 Klein 编辑链路，支持 1–3 张参考图，可直接使用中文提示词。</p></div>
+
     <div class="lora-isolation-notice" role="note">
       <strong>【特别标注】Flux2 图生图只受「独立 LoRA」影响</strong>
       <span>本页的“独立 LoRA”是 Flux2 图生图唯一长期生效的 LoRA：它不读取文生图默认 LoRA 列表，也不参与画风 LoRA 的随机/全部自动选择，且不会混入 Qwen 图生图的 LoRA 设置。</span>
@@ -294,12 +309,11 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2 工作流</h2><p>这是独立于 Qwen 图生图的 Flux2 Klein 模块，使用 1 张参考图。保存后，普通“图生图”会按下方引擎选择执行。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2 工作流</h2><p>独立于 Qwen 图生图的 Flux2 Klein 模块，按附图数量自动接入 1–3 张参考图。</p></div>
         <button id="saveImg2ImgFlux2Workflow" class="primary" type="button">保存 Flux2 工作流设置</button>
       </div>
       <div class="workflow-grid">
-        <label>默认图生图引擎<select id="img2img_engine" class="select"><option value="qwen">Qwen 图生图</option><option value="flux2">Flux2 图生图</option></select><small class="field-hint">只影响普通 /图生图；也可以使用 /图生图Flux2 强制调用本模块。</small></label>
-        <label>Flux2 图生图工作流<select id="wf_img2img_flux2" class="select"></select></label>
+                <label>Flux2 图生图工作流<select id="wf_img2img_flux2" class="select"></select></label>
         <label class="wide">Flux2 源工作流位置<input id="img2img_flux2_source_workflow" class="input" type="text"><small class="field-hint">插件会复制源文件到自己的 workflows 目录，不会覆盖源文件。</small></label>
       </div>
     </section>
@@ -328,7 +342,7 @@
         <label class="wide">Flux2 默认负面提示词<textarea id="img2img_flux2_default_negative" class="textarea"></textarea></label>
         <label class="wide">输出文件名前缀<input id="img2img_flux2_filename_prefix" class="input" type="text" placeholder="例如：astrbot/img2img_flux2_klein"></label>
       </div>
-      <p class="field-hint wide">上传 1 张参考图。工作流会按最长边等比例缩放，输出画布沿用原图宽高比；不会拉伸或裁剪成固定比例。</p>
+      <p class="field-hint wide">上传 1–3 张参考图，按顺序接入。工作流按最长边等比例缩放，输出画布沿用原图宽高比，不会拉伸或裁剪成固定比例。</p>
     </section>
 
     <section class="band">
@@ -350,6 +364,8 @@
 
     </div>
 <div id="view-wash" class="view-panel" data-view-panel="wash" hidden>
+
+    <div class="page-head"><h2>洗图</h2><p>只使用第一张输入图片。中文要求直接交给工作流，不调用 AI、翻译或全局 LoRA。</p></div>
       <section class="band tool-panel">
         <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</h2><p>只使用第一张输入图片。中文要求直接交给工作流，不调用 AI、普通翻译、全局 LoRA 或临时 LoRA。</p></div><button id="saveWashSettings" class="primary" type="button">保存洗图设置</button></div>
         <div class="form-grid">
@@ -374,6 +390,8 @@
       </section>
     </div>
 <div id="view-outpaint" class="view-panel" data-view-panel="outpaint" hidden>
+
+    <div class="page-head"><h2>扩图</h2><p>只使用第一张输入图片。扩展方向、边距与羽化边缘在本页设置。</p></div>
       <section class="band tool-panel">
         <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；扩展方向和羽化边缘使用本页设置。</p></div><button id="saveOutpaintSettings" class="primary" type="button">保存扩图设置</button></div>
         <div class="form-grid">
@@ -402,6 +420,8 @@
       </section>
     </div>
 <div id="view-multi_angle" class="view-panel" data-view-panel="multi_angle" hidden>
+
+    <div class="page-head"><h2>多角度</h2><p>只使用第一张输入图片。相机角度与默认镜头提示在本页设置。</p></div>
       <section class="band tool-panel">
         <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；相机角度和默认镜头提示在本页设置。</p></div><button id="saveMultiAngleSettings" class="primary" type="button">保存多角度设置</button></div>
         <div class="form-grid">
@@ -430,6 +450,8 @@
       </section>
     </div>
 <div id="view-ai" class="view-panel" data-view-panel="ai" hidden>
+
+    <div class="page-head"><h2>AI 与回复</h2><p>AI 服务、图片安全审核、回复方式、绘图限额与 ComfyUI 控制。</p></div>
 
     <section class="band">
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 服务设置</h2><p>填写兼容 OpenAI 的服务地址和 API Key，先获取模型并测试连接，成功后再保存。</p></div><button id="saveAi" class="primary">保存设置</button></div>
@@ -495,6 +517,8 @@
     </div>
 <div id="view-presets" class="view-panel" data-view-panel="presets" hidden>
 
+    <div class="page-head"><h2>提示词预设</h2><p>全局提示词预设，例如角色名对应的 Danbooru 标签；LoRA 专属预设只显示在对应卡片里。</p></div>
+
     <section class="band">
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>提示词预设</h2><p>这里显示并编辑全局预设，例如角色名对应的 Danbooru 标签。LoRA 的 CivitAI 自动触发词和专属预设只显示在对应 LoRA 卡片中，不会混入这里。</p></div></div>
       <div class="preset-add"><input id="presetName" class="input" placeholder="名称"><input id="presetContent" class="input" placeholder="标签或中文描述"><button id="addPreset" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>添加预设</button><button id="cancelPreset" class="secondary" hidden>取消编辑</button></div>
@@ -503,6 +527,8 @@
 
     </div>
 <div id="view-artist" class="view-panel" data-view-panel="artist" hidden>
+
+    <div class="page-head"><h2>画师串预设</h2><p>画师串原样拼在提示词前面，不与普通提示词预设混用。</p></div>
 
     <section class="band">
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>画师串预设（独立）</h2><p>画师串不会和普通提示词预设混用，会在绘画提示词前原样拼接。默认预设为“画风001”。</p></div></div>
@@ -518,6 +544,8 @@
     </div>
 
 <div id="view-paths" class="view-panel" data-view-panel="paths" hidden>
+
+    <div class="page-head"><h2>文件夹位置</h2><p>插件用到的每一个目录和文件都能在这里改，留空表示自动解析。</p></div>
 
     <section class="band">
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M9 13h6"/><path d="M12 10v6"/></svg>文件夹位置</h2><p>插件用到的每一个目录和文件都能在这里改。留空表示「自动解析」，保存后立即生效。模型目录的优先级是：手动指定 → extra_model_paths.yaml → 默认位置。</p></div></div>
@@ -551,6 +579,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.0.2"></script>
+  <script src="app.js?v=1.1.0"></script>
 </body>
 </html>

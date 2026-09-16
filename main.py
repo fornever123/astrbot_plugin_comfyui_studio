@@ -80,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.0.2"
+PLUGIN_VERSION = "1.1.0"
 
 
 def _log_path(value: object) -> str:
@@ -203,6 +203,14 @@ MODE_FILES = {
 FLUX2_TOOL_SOURCE_DEFAULTS = {
     mode: LEGACY_AUTHOR_PATH_FINGERPRINTS[mode]
     for mode in ("wash", "outpaint", "multi_angle")
+}
+# 这些名字曾随插件附带，但已经有更好的替代，且不在 MODE_FILES 里。文件已从包内
+# 删除；配置若仍指向它们，启动时统一改回该模式的默认工作流。
+REMOVED_WORKFLOW_FILES = {
+    "图生图.json",
+    "图生图_flux2.json",
+    "img2img_qwen.json",
+    "img2img_flux2.json",
 }
 FLUX2_TOOL_DEFAULT_POSITIVE = {
     "wash": "皮肤白皙，柔和明亮的光线，",
@@ -360,17 +368,16 @@ WRITABLE_CONFIG = {
     "img2img_lora_name", "img2img_lora_strength", "img2img_default_positive", "img2img_default_negative",
     "img2img_width", "img2img_height", "img2img_keep_aspect_ratio", "img2img_steps", "img2img_cfg", "img2img_seed",
     "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method",
-    "img2img_megapixels", "img2img_largest_size", "img2img_crop", "img2img_resolution_steps", "img2img_reference_method", "img2img_sampling_shift",
-    "img2img_cfg_norm_strength", "img2img_pre_cfg", "img2img_tile_size", "img2img_tile_overlap",
-    "img2img_temporal_size", "img2img_temporal_overlap", "img2img_second_image", "img2img_filename_prefix",
+    "img2img_largest_size", "img2img_crop", "img2img_sampling_shift",
+    "img2img_filename_prefix",
     "lora_list", "default_positive", "default_negative", "quality_prefix", "artist_preset", "ai_base_url",
     "style_lora_mode", "style_lora_random_count", "style_lora_list", "style_lora_aliases", "style_lora_weights",
     "ai_api_key", "ai_model", "civitai_base_url", "civitai_token", "civitai_download_mode",
     "width", "height", "steps", "cfg", "seed",
     "sampler_name", "scheduler", "denoise", "hires_scale",
     "hires_steps", "hires_denoise", "hires_upscale_model", "max_concurrent",
-    "anima_teacache", "draw_start_reply", "draw_reply_mode", "draw_reply_custom", "draw_delivery_mode",
-    "draw_reply_timeout", "draw_attach_prompt", "nsfw_group_blacklist",
+    "draw_start_reply", "draw_reply_mode", "draw_reply_custom", "draw_delivery_mode",
+    "draw_attach_prompt", "nsfw_group_blacklist",
     "llm_draw_start_reply_mode", "draw_queue_notice_enabled", "draw_queue_notice_ai",
     "draw_queue_limit_enabled", "draw_queue_limit_count",
     "plain_translate_enabled", "plain_translate_url",
@@ -1018,7 +1025,9 @@ class ComfyUIAIStudio(Star):
         selected = str(
             self._get("workflow_img2img_flux2", FLUX2_IMG2IMG_WORKFLOW_FILE) or ""
         ).strip()
-        if not selected:
+        if not selected or selected.casefold() in REMOVED_WORKFLOW_FILES:
+            # 旧版本随插件附带过几个已废弃的 Flux2 图生图工作流；文件已从包内
+            # 移除，配置指过去只会让 _workflow_path() 静默回退，不如直接改正。
             selected = FLUX2_IMG2IMG_WORKFLOW_FILE
             self._set("workflow_img2img_flux2", selected)
             changed = True

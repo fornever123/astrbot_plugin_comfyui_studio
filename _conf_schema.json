@@ -55,8 +55,14 @@
     "description": "图生图默认引擎",
     "hint": "qwen 使用原 Qwen 图生图；flux2 使用独立 Flux2 Klein 1 到 3 张参考图图生图",
     "default": "qwen",
-    "options": ["qwen", "flux2"],
-    "enum": ["qwen", "flux2"]
+    "options": [
+      "qwen",
+      "flux2"
+    ],
+    "enum": [
+      "qwen",
+      "flux2"
+    ]
   },
   "workflow_hires": {
     "type": "string",
@@ -96,59 +102,271 @@
     "hint": "支持 ComfyUI 编辑器或 API 格式；留空使用插件内置工作流",
     "default": ""
   },
-  "wash_model_name": { "type": "string", "description": "洗图独立核心模型，留空沿用工作流", "default": "" },
-  "wash_clip_name": { "type": "string", "description": "洗图独立文本编码器，留空沿用工作流", "default": "" },
-  "wash_vae_name": { "type": "string", "description": "洗图独立 VAE，留空沿用工作流", "default": "" },
-  "wash_default_positive": { "type": "text", "description": "洗图默认正面提示词", "default": "" },
-  "wash_default_negative": { "type": "text", "description": "洗图默认负面提示词", "default": "" },
-  "wash_steps": { "type": "int", "description": "洗图采样步数", "default": 6 },
-  "wash_cfg": { "type": "float", "description": "洗图 CFG", "default": 1.0 },
-  "wash_seed": { "type": "int", "description": "洗图随机种子，-1 为随机", "default": -1 },
-  "wash_denoise": { "type": "float", "description": "洗图重绘幅度", "default": 0.6 },
-  "wash_sampler_name": { "type": "string", "description": "洗图采样器", "default": "euler" },
-  "wash_scheduler": { "type": "string", "description": "洗图调度器", "default": "simple" },
-  "wash_size": { "type": "int", "description": "洗图工作流缩放长度，0 表示沿用工作流", "default": 0 },
-  "wash_batch": { "type": "int", "description": "洗图批次", "default": 1 },
-  "wash_caption_tokens": { "type": "int", "description": "洗图 Florence2 最大输出 Token", "default": 1024 },
-  "wash_filename_prefix": { "type": "string", "description": "洗图输出文件名前缀", "default": "astrbot/wash" },
-  "outpaint_model_name": { "type": "string", "description": "扩图独立核心模型，留空沿用工作流", "default": "" },
-  "outpaint_clip_name": { "type": "string", "description": "扩图独立文本编码器，留空沿用工作流", "default": "" },
-  "outpaint_vae_name": { "type": "string", "description": "扩图独立 VAE，留空沿用工作流", "default": "" },
-  "outpaint_default_positive": { "type": "text", "description": "扩图默认正面提示词", "default": "" },
-  "outpaint_default_negative": { "type": "text", "description": "扩图默认负面提示词", "default": "" },
-  "outpaint_steps": { "type": "int", "description": "扩图采样步数", "default": 6 },
-  "outpaint_cfg": { "type": "float", "description": "扩图 CFG", "default": 1.0 },
-  "outpaint_seed": { "type": "int", "description": "扩图随机种子，-1 为随机", "default": -1 },
-  "outpaint_denoise": { "type": "float", "description": "扩图重绘幅度", "default": 1.0 },
-  "outpaint_sampler_name": { "type": "string", "description": "扩图采样器", "default": "euler" },
-  "outpaint_scheduler": { "type": "string", "description": "扩图调度器", "default": "simple" },
-  "outpaint_size": { "type": "int", "description": "扩图工作流缩放长度，0 表示沿用工作流", "default": 0 },
-  "outpaint_batch": { "type": "int", "description": "扩图批次", "default": 1 },
-  "outpaint_left": { "type": "int", "description": "扩图左侧边距", "default": 504 },
-  "outpaint_top": { "type": "int", "description": "扩图上侧边距", "default": 0 },
-  "outpaint_right": { "type": "int", "description": "扩图右侧边距", "default": 504 },
-  "outpaint_bottom": { "type": "int", "description": "扩图下侧边距", "default": 0 },
-  "outpaint_feathering": { "type": "int", "description": "扩图羽化边缘", "default": 0 },
-  "outpaint_filename_prefix": { "type": "string", "description": "扩图输出文件名前缀", "default": "astrbot/outpaint" },
-  "multi_angle_model_name": { "type": "string", "description": "多角度独立核心模型，留空沿用工作流", "default": "" },
-  "multi_angle_clip_name": { "type": "string", "description": "多角度独立文本编码器，留空沿用工作流", "default": "" },
-  "multi_angle_vae_name": { "type": "string", "description": "多角度独立 VAE，留空沿用工作流", "default": "" },
-  "multi_angle_default_positive": { "type": "text", "description": "多角度默认正面提示词", "default": "" },
-  "multi_angle_default_negative": { "type": "text", "description": "多角度默认负面提示词", "default": "" },
-  "multi_angle_steps": { "type": "int", "description": "多角度采样步数", "default": 6 },
-  "multi_angle_cfg": { "type": "float", "description": "多角度 CFG", "default": 1.0 },
-  "multi_angle_seed": { "type": "int", "description": "多角度随机种子，-1 为随机", "default": -1 },
-  "multi_angle_denoise": { "type": "float", "description": "多角度重绘幅度", "default": 1.0 },
-  "multi_angle_sampler_name": { "type": "string", "description": "多角度采样器", "default": "euler" },
-  "multi_angle_scheduler": { "type": "string", "description": "多角度调度器", "default": "simple" },
-  "multi_angle_size": { "type": "int", "description": "多角度工作流缩放长度，0 表示沿用工作流", "default": 0 },
-  "multi_angle_batch": { "type": "int", "description": "多角度批次", "default": 1 },
-  "multi_angle_horizontal_angle": { "type": "int", "description": "多角度水平角度", "default": 71 },
-  "multi_angle_vertical_angle": { "type": "int", "description": "多角度垂直角度", "default": 42 },
-  "multi_angle_zoom": { "type": "float", "description": "多角度缩放", "default": 4.5 },
-  "multi_angle_default_prompts": { "type": "bool", "description": "多角度使用节点默认镜头提示", "default": true },
-  "multi_angle_camera_view": { "type": "bool", "description": "多角度启用相机视角描述", "default": false },
-  "multi_angle_filename_prefix": { "type": "string", "description": "多角度输出文件名前缀", "default": "astrbot/multi_angle" },
+  "wash_model_name": {
+    "type": "string",
+    "description": "洗图独立核心模型，留空沿用工作流",
+    "default": ""
+  },
+  "wash_clip_name": {
+    "type": "string",
+    "description": "洗图独立文本编码器，留空沿用工作流",
+    "default": ""
+  },
+  "wash_vae_name": {
+    "type": "string",
+    "description": "洗图独立 VAE，留空沿用工作流",
+    "default": ""
+  },
+  "wash_default_positive": {
+    "type": "text",
+    "description": "洗图默认正面提示词",
+    "default": ""
+  },
+  "wash_default_negative": {
+    "type": "text",
+    "description": "洗图默认负面提示词",
+    "default": ""
+  },
+  "wash_steps": {
+    "type": "int",
+    "description": "洗图采样步数",
+    "default": 6
+  },
+  "wash_cfg": {
+    "type": "float",
+    "description": "洗图 CFG",
+    "default": 1.0
+  },
+  "wash_seed": {
+    "type": "int",
+    "description": "洗图随机种子，-1 为随机",
+    "default": -1
+  },
+  "wash_denoise": {
+    "type": "float",
+    "description": "洗图重绘幅度",
+    "default": 0.6
+  },
+  "wash_sampler_name": {
+    "type": "string",
+    "description": "洗图采样器",
+    "default": "euler"
+  },
+  "wash_scheduler": {
+    "type": "string",
+    "description": "洗图调度器",
+    "default": "simple"
+  },
+  "wash_size": {
+    "type": "int",
+    "description": "洗图工作流缩放长度，0 表示沿用工作流",
+    "default": 0
+  },
+  "wash_batch": {
+    "type": "int",
+    "description": "洗图批次",
+    "default": 1
+  },
+  "wash_caption_tokens": {
+    "type": "int",
+    "description": "洗图 Florence2 最大输出 Token",
+    "default": 1024
+  },
+  "wash_filename_prefix": {
+    "type": "string",
+    "description": "洗图输出文件名前缀",
+    "default": "astrbot/wash"
+  },
+  "outpaint_model_name": {
+    "type": "string",
+    "description": "扩图独立核心模型，留空沿用工作流",
+    "default": ""
+  },
+  "outpaint_clip_name": {
+    "type": "string",
+    "description": "扩图独立文本编码器，留空沿用工作流",
+    "default": ""
+  },
+  "outpaint_vae_name": {
+    "type": "string",
+    "description": "扩图独立 VAE，留空沿用工作流",
+    "default": ""
+  },
+  "outpaint_default_positive": {
+    "type": "text",
+    "description": "扩图默认正面提示词",
+    "default": ""
+  },
+  "outpaint_default_negative": {
+    "type": "text",
+    "description": "扩图默认负面提示词",
+    "default": ""
+  },
+  "outpaint_steps": {
+    "type": "int",
+    "description": "扩图采样步数",
+    "default": 6
+  },
+  "outpaint_cfg": {
+    "type": "float",
+    "description": "扩图 CFG",
+    "default": 1.0
+  },
+  "outpaint_seed": {
+    "type": "int",
+    "description": "扩图随机种子，-1 为随机",
+    "default": -1
+  },
+  "outpaint_denoise": {
+    "type": "float",
+    "description": "扩图重绘幅度",
+    "default": 1.0
+  },
+  "outpaint_sampler_name": {
+    "type": "string",
+    "description": "扩图采样器",
+    "default": "euler"
+  },
+  "outpaint_scheduler": {
+    "type": "string",
+    "description": "扩图调度器",
+    "default": "simple"
+  },
+  "outpaint_size": {
+    "type": "int",
+    "description": "扩图工作流缩放长度，0 表示沿用工作流",
+    "default": 0
+  },
+  "outpaint_batch": {
+    "type": "int",
+    "description": "扩图批次",
+    "default": 1
+  },
+  "outpaint_left": {
+    "type": "int",
+    "description": "扩图左侧边距",
+    "default": 504
+  },
+  "outpaint_top": {
+    "type": "int",
+    "description": "扩图上侧边距",
+    "default": 0
+  },
+  "outpaint_right": {
+    "type": "int",
+    "description": "扩图右侧边距",
+    "default": 504
+  },
+  "outpaint_bottom": {
+    "type": "int",
+    "description": "扩图下侧边距",
+    "default": 0
+  },
+  "outpaint_feathering": {
+    "type": "int",
+    "description": "扩图羽化边缘",
+    "default": 0
+  },
+  "outpaint_filename_prefix": {
+    "type": "string",
+    "description": "扩图输出文件名前缀",
+    "default": "astrbot/outpaint"
+  },
+  "multi_angle_model_name": {
+    "type": "string",
+    "description": "多角度独立核心模型，留空沿用工作流",
+    "default": ""
+  },
+  "multi_angle_clip_name": {
+    "type": "string",
+    "description": "多角度独立文本编码器，留空沿用工作流",
+    "default": ""
+  },
+  "multi_angle_vae_name": {
+    "type": "string",
+    "description": "多角度独立 VAE，留空沿用工作流",
+    "default": ""
+  },
+  "multi_angle_default_positive": {
+    "type": "text",
+    "description": "多角度默认正面提示词",
+    "default": ""
+  },
+  "multi_angle_default_negative": {
+    "type": "text",
+    "description": "多角度默认负面提示词",
+    "default": ""
+  },
+  "multi_angle_steps": {
+    "type": "int",
+    "description": "多角度采样步数",
+    "default": 6
+  },
+  "multi_angle_cfg": {
+    "type": "float",
+    "description": "多角度 CFG",
+    "default": 1.0
+  },
+  "multi_angle_seed": {
+    "type": "int",
+    "description": "多角度随机种子，-1 为随机",
+    "default": -1
+  },
+  "multi_angle_denoise": {
+    "type": "float",
+    "description": "多角度重绘幅度",
+    "default": 1.0
+  },
+  "multi_angle_sampler_name": {
+    "type": "string",
+    "description": "多角度采样器",
+    "default": "euler"
+  },
+  "multi_angle_scheduler": {
+    "type": "string",
+    "description": "多角度调度器",
+    "default": "simple"
+  },
+  "multi_angle_size": {
+    "type": "int",
+    "description": "多角度工作流缩放长度，0 表示沿用工作流",
+    "default": 0
+  },
+  "multi_angle_batch": {
+    "type": "int",
+    "description": "多角度批次",
+    "default": 1
+  },
+  "multi_angle_horizontal_angle": {
+    "type": "int",
+    "description": "多角度水平角度",
+    "default": 71
+  },
+  "multi_angle_vertical_angle": {
+    "type": "int",
+    "description": "多角度垂直角度",
+    "default": 42
+  },
+  "multi_angle_zoom": {
+    "type": "float",
+    "description": "多角度缩放",
+    "default": 4.5
+  },
+  "multi_angle_default_prompts": {
+    "type": "bool",
+    "description": "多角度使用节点默认镜头提示",
+    "default": true
+  },
+  "multi_angle_camera_view": {
+    "type": "bool",
+    "description": "多角度启用相机视角描述",
+    "default": false
+  },
+  "multi_angle_filename_prefix": {
+    "type": "string",
+    "description": "多角度输出文件名前缀",
+    "default": "astrbot/multi_angle"
+  },
   "img2img_source_workflow": {
     "type": "string",
     "description": "Qwen Image Edit 图生图源工作流位置",
@@ -195,8 +413,14 @@
     "description": "图生图 AI 来源",
     "hint": "plugin 使用插件独立 AI；astrbot 使用 AstrBot 当前 AI。二者共用统一图生图编辑规则。",
     "default": "plugin",
-    "options": ["plugin", "astrbot"],
-    "enum": ["plugin", "astrbot"]
+    "options": [
+      "plugin",
+      "astrbot"
+    ],
+    "enum": [
+      "plugin",
+      "astrbot"
+    ]
   },
   "img2img_ai_system_prompt": {
     "type": "text",
@@ -324,61 +548,10 @@
     "hint": "默认 disabled，保持原图完整画布；需要裁剪时再填写 center",
     "default": "disabled"
   },
-  "img2img_megapixels": {
-    "type": "float",
-    "description": "图生图输入目标像素",
-    "default": 1.0
-  },
-  "img2img_resolution_steps": {
-    "type": "int",
-    "description": "图生图分辨率对齐步长",
-    "default": 1
-  },
-  "img2img_reference_method": {
-    "type": "string",
-    "description": "Qwen 图生图参考图方法（由工作流固定）",
-    "default": ""
-  },
   "img2img_sampling_shift": {
     "type": "float",
     "description": "Qwen 工作流不使用该参数，保留以兼容旧配置",
     "default": 0
-  },
-  "img2img_cfg_norm_strength": {
-    "type": "float",
-    "description": "Qwen 工作流不使用该参数，保留以兼容旧配置",
-    "default": 0
-  },
-  "img2img_pre_cfg": {
-    "type": "bool",
-    "description": "图生图 CFGNorm 预 CFG",
-    "hint": "对应 Qwen 工作流 CFGNorm 节点的 pre_cfg 输入",
-    "default": true
-  },
-  "img2img_tile_size": {
-    "type": "int",
-    "description": "图生图分块解码尺寸",
-    "default": 512
-  },
-  "img2img_tile_overlap": {
-    "type": "int",
-    "description": "图生图分块重叠尺寸",
-    "default": 64
-  },
-  "img2img_temporal_size": {
-    "type": "int",
-    "description": "图生图时间分块尺寸",
-    "default": 64
-  },
-  "img2img_temporal_overlap": {
-    "type": "int",
-    "description": "图生图时间分块重叠",
-    "default": 8
-  },
-  "img2img_second_image": {
-    "type": "string",
-    "description": "图生图第二参考图路径，可留空",
-    "default": ""
   },
   "img2img_filename_prefix": {
     "type": "string",
@@ -437,8 +610,14 @@
     "description": "Flux2 图生图 AI 来源",
     "hint": "plugin 使用插件 AI；astrbot 使用 AstrBot 当前 AI",
     "default": "plugin",
-    "options": ["plugin", "astrbot"],
-    "enum": ["plugin", "astrbot"]
+    "options": [
+      "plugin",
+      "astrbot"
+    ],
+    "enum": [
+      "plugin",
+      "astrbot"
+    ]
   },
   "img2img_flux2_ai_system_prompt": {
     "type": "text",
@@ -534,8 +713,16 @@
     "description": "画风 LoRA 自动使用方式",
     "hint": "random 每次文生图随机使用指定数量；all 使用全部；off 关闭自动画风 LoRA",
     "default": "random",
-    "options": ["random", "all", "off"],
-    "enum": ["random", "all", "off"]
+    "options": [
+      "random",
+      "all",
+      "off"
+    ],
+    "enum": [
+      "random",
+      "all",
+      "off"
+    ]
   },
   "style_lora_random_count": {
     "type": "int",
@@ -616,16 +803,30 @@
     "description": "C 站下载方式",
     "hint": "auto 先免 API Key 解析、失败再退回 API；nokey 全程免 API Key（直链或解析模型页）；token 始终使用 CivitAI API。免 API 方式支持直链下载地址和模型页链接，公共 LoRA 无需任何密钥。",
     "default": "auto",
-    "options": ["auto", "nokey", "token"],
-    "enum": ["auto", "nokey", "token"]
+    "options": [
+      "auto",
+      "nokey",
+      "token"
+    ],
+    "enum": [
+      "auto",
+      "nokey",
+      "token"
+    ]
   },
   "llm_prompt_source": {
     "type": "string",
     "description": "LLM 绘图提示词来源",
     "hint": "astrbot 使用 AstrBot LLM 已提取的提示词；plugin 使用本插件 AI 根据用户原话重新整理提示词",
     "default": "astrbot",
-    "options": ["astrbot", "plugin"],
-    "enum": ["astrbot", "plugin"]
+    "options": [
+      "astrbot",
+      "plugin"
+    ],
+    "enum": [
+      "astrbot",
+      "plugin"
+    ]
   },
   "plugin_ai_command_system_prompt": {
     "type": "text",
@@ -662,22 +863,28 @@
     "description": "绘图完成后的回复方式：LLM 人格或固定回复",
     "hint": "custom 使用固定回复；astrbot 使用当前会话 LLM 人格，并准确说明绘图模式和图片数量",
     "default": "astrbot",
-    "options": ["custom", "astrbot"],
-    "enum": ["custom", "astrbot"]
+    "options": [
+      "custom",
+      "astrbot"
+    ],
+    "enum": [
+      "custom",
+      "astrbot"
+    ]
   },
   "draw_delivery_mode": {
     "type": "string",
     "description": "绘图结果的发送方式",
     "hint": "normal 普通消息；forward 使用群聊合并转发，图片会出现在聊天记录节点中",
     "default": "normal",
-    "options": ["normal", "forward"],
-    "enum": ["normal", "forward"]
-  },
-  "draw_reply_timeout": {
-    "type": "float",
-    "description": "AstrBot 人格完成回复最长等待秒数",
-    "hint": "超时后立即发送图片和固定回复；设为 0 可关闭人格完成回复等待",
-    "default": 6
+    "options": [
+      "normal",
+      "forward"
+    ],
+    "enum": [
+      "normal",
+      "forward"
+    ]
   },
   "draw_attach_prompt": {
     "type": "bool",
@@ -790,8 +997,14 @@
     "description": "LLM 绘图开始回复方式",
     "hint": "ai 使用当前 AstrBot 人格先回复一句；fixed 使用固定中文开始回复",
     "default": "ai",
-    "options": ["ai", "fixed"],
-    "enum": ["ai", "fixed"]
+    "options": [
+      "ai",
+      "fixed"
+    ],
+    "enum": [
+      "ai",
+      "fixed"
+    ]
   },
   "draw_queue_notice_enabled": {
     "type": "bool",
@@ -923,10 +1136,5 @@
     "description": "Anima 提示词模板路径",
     "hint": "可填写模板文件或所在目录；留空使用插件内置 knowledge/提示词模版.txt",
     "default": ""
-  },
-  "anima_teacache": {
-    "type": "bool",
-    "description": "是否启用原工作流中的 Anima TeaCache",
-    "default": true
   }
 }

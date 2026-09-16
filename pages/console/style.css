@@ -2701,3 +2701,27 @@ button .ui-ic, label.upload-button .ui-ic { width: 14px; height: 14px; }
   cursor: pointer;
 }
 .path-browser-item:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+/* ---------- 页面头部：每个功能页统一的一行定位说明 ---------- */
+.page-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 14px;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.page-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: .01em;
+  color: var(--text);
+}
+.page-head p {
+  margin: 0;
+  max-width: 78ch;
+  font-size: 13px;
+  line-height: 1.62;
+  color: var(--muted);
+}
