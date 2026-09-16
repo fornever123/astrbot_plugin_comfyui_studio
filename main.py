@@ -47,12 +47,16 @@ from .moderation import (
 )
 from .paths import (
     MODEL_CATEGORIES,
+    MODEL_CATEGORY_LABELS,
+    MODEL_CATEGORY_SUFFIXES,
     ModelDir,
     category_aliases,
     detect_comfyui_root,
     find_extra_model_paths_file,
     read_extra_model_paths,
+    SOURCE_LABELS,
     resolve_model_dirs,
+    scan_path,
 )
 from .prompting import (
     DrawParams,
@@ -76,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.0.1"
+PLUGIN_VERSION = "1.0.2"
 
 
 def _log_path(value: object) -> str:
@@ -268,6 +272,63 @@ LLM_TOOL_NAMES = {
     "upscale": "comfyui_ai_studio_upscale",
     "presets": "comfyui_ai_studio_presets",
 }
+PATH_SETTING_GROUPS: tuple[dict[str, Any], ...] = (
+    {
+        "group": "ComfyUI 核心",
+        "note": "留空时自动探测。根目录是默认模型位置的基准；配置文件指向 ComfyUI 的 extra_model_paths.yaml。",
+        "entries": (
+            {"id": "comfyui_root", "label": "ComfyUI 根目录", "kind": "dir", "config_key": "comfyui_root"},
+            {"id": "extra_model_paths_file", "label": "额外模型路径配置文件", "kind": "file", "config_key": "extra_model_paths_file"},
+        ),
+    },
+    {
+        "group": "模型目录",
+        "note": "留空时按「手动覆盖 → extra_model_paths.yaml → 默认位置」解析。填写后该类别优先用你指定的目录，导入/删除也落在那里。",
+        "entries": tuple(
+            {
+                "id": f"model:{category}",
+                "label": MODEL_CATEGORY_LABELS.get(category, category),
+                "kind": "model",
+                "category": category,
+                "suffixes": MODEL_CATEGORY_SUFFIXES.get(category, ()),
+            }
+            for category in MODEL_CATEGORIES
+        ),
+    },
+    {
+        "group": "工作流",
+        "note": "指向你自己维护的工作流 JSON；留空时使用插件内置副本，不会覆盖你的原文件。",
+        "entries": (
+            {"id": "workflow_dir", "label": "可切换 API 工作流目录", "kind": "dir", "config_key": "workflow_dir"},
+            {"id": "source_workflow", "label": "原始工作流文件", "kind": "file", "config_key": "source_workflow"},
+        ),
+    },
+    {
+        "group": "字体与模板",
+        "note": "留空时自动探测系统字体、使用插件内置提示词模板。",
+        "entries": (
+            {"id": "image_font_regular", "label": "常规字体文件", "kind": "file", "config_key": "image_font_regular"},
+            {"id": "image_font_bold", "label": "粗体字体文件", "kind": "file", "config_key": "image_font_bold"},
+            {"id": "anima_template_path", "label": "Anima 提示词模板", "kind": "file", "config_key": "anima_template_path"},
+        ),
+    },
+    {
+        "group": "脚本",
+        "note": "留空时在 ComfyUI 根目录及上一层寻找 run_nvidia_gpu.bat / run.bat。",
+        "entries": (
+            {"id": "comfyui_start_script", "label": "ComfyUI 启动脚本", "kind": "file", "config_key": "comfyui_start_script"},
+        ),
+    },
+    {
+        "group": "运行时目录（只读）",
+        "note": "由插件根据数据目录派生，不支持在此修改。",
+        "entries": (
+            {"id": "output_dir", "label": "图片输出目录", "kind": "dir", "readonly": True},
+            {"id": "data_dir", "label": "插件数据目录", "kind": "dir", "readonly": True},
+        ),
+    },
+)
+
 WRITABLE_CONFIG = {
     "comfyui_url", "comfyui_root", "source_workflow", "workflow_dir", "model_name",
     "workflow_txt2img", "workflow_img2img", "workflow_img2img_flux2", "workflow_hires",
@@ -849,6 +910,7 @@ class ComfyUIAIStudio(Star):
             ("models", self.api_models, ["GET"], "读取核心模型、LoRA 和放大模型"),
             ("workflows", self.api_workflows, ["GET"], "读取和切换工作流"),
             ("config", self.api_config, ["GET", "POST"], "读取和保存绘画配置"),
+            ("paths", self.api_path_settings, ["GET", "POST"], "读取并修改各类文件夹位置"),
             ("ai_models", self.api_ai_models, ["GET", "POST"], "获取 AI 模型并测试连接"),
             ("moderation_test", self.api_moderation_test, ["GET", "POST"], "测试图片安全审核链路"),
             ("presets", self.api_presets, ["GET", "POST"], "管理提示词预设"),
@@ -5352,6 +5414,260 @@ class ComfyUIAIStudio(Star):
             lines.append(f"{title}（{entry.label}）：{entry.path}")
         return lines
 
+
+    # ------------------------------------------------------- 路径设置面板 --
+    def _path_setting_targets(self) -> dict[str, tuple[str, str]]:
+        """把 UI 条目 id 映射到写入目标：("config", 配置键) 或 ("model", 类别)。"""
+        targets: dict[str, tuple[str, str]] = {}
+        for group in PATH_SETTING_GROUPS:
+            for entry in group["entries"]:
+                if entry.get("readonly"):
+                    continue
+                if entry["kind"] == "model":
+                    targets[str(entry["id"])] = ("model", str(entry["category"]))
+                else:
+                    targets[str(entry["id"])] = ("config", str(entry["config_key"]))
+        return targets
+
+    def _path_entry_value(self, entry: dict[str, Any]) -> str:
+        """读取某个条目当前「手动填写」的值。"""
+        if entry.get("kind") == "model":
+            return str(self._model_dir_overrides().get(str(entry.get("category")), "") or "")
+        return str(self._get(str(entry.get("config_key")), "") or "")
+
+    def _resolve_path_entry(self, entry: dict[str, Any]) -> dict[str, Any]:
+        """把一个条目解析成 UI 需要的完整信息：当前路径、来源、检测结果。"""
+        entry_id = str(entry["id"])
+        kind = str(entry["kind"])
+        configured = self._path_entry_value(entry)
+        resolved = ""
+        source = "none"
+        fallbacks: list[str] = []
+
+        if kind == "model":
+            entries = self._model_dirs(str(entry["category"]))
+            if entries:
+                resolved = str(entries[0].path)
+                source = entries[0].source
+                fallbacks = [str(item.path) for item in entries[1:]]
+        elif entry_id == "comfyui_root":
+            detected = detect_comfyui_root(configured)
+            resolved = detected or (configured if Path(configured).is_dir() else "")
+            source = "override" if (configured and resolved) else ("auto" if resolved else "none")
+        elif entry_id == "extra_model_paths_file":
+            found, _ = self._extra_model_paths_sections()
+            resolved = found
+            source = "override" if (configured and found) else ("auto" if found else "none")
+        elif entry_id == "workflow_dir":
+            resolved = str(self._workflow_dir())
+            source = "override" if configured else "builtin"
+        elif entry_id == "source_workflow":
+            resolved = configured
+            source = "override" if configured else "builtin"
+        elif entry_id in {"image_font_regular", "image_font_bold"}:
+            regular, bold = image_font_candidates(
+                str(self._get("image_font_regular", "") or ""),
+                str(self._get("image_font_bold", "") or ""),
+            )
+            candidates = regular if entry_id == "image_font_regular" else bold
+            found = next((item for item in candidates if Path(item).is_file()), "")
+            resolved = configured or found
+            source = "override" if configured else ("auto" if found else "none")
+        elif entry_id == "anima_template_path":
+            template = find_template_path(self.plugin_dir, configured)
+            resolved = configured or (str(template) if template else "")
+            source = "override" if configured else ("builtin" if template else "none")
+        elif entry_id == "comfyui_start_script":
+            script = self._comfyui_start_script()
+            resolved = configured or (str(script) if script else "")
+            source = "override" if configured else ("auto" if script else "none")
+        elif entry_id == "output_dir":
+            resolved = str(self.output_dir)
+            source = "runtime"
+        elif entry_id == "data_dir":
+            resolved = str(self.data_dir)
+            source = "runtime"
+
+        exists, files = scan_path(
+            resolved,
+            kind="file" if kind == "file" else "dir",
+            suffixes=tuple(entry.get("suffixes") or ()),
+        )
+        return {
+            "id": entry_id,
+            "label": str(entry["label"]),
+            "kind": kind,
+            "readonly": bool(entry.get("readonly")),
+            "configured": configured,
+            "resolved": resolved,
+            "source": source,
+            "source_label": SOURCE_LABELS.get(source, source),
+            "exists": exists,
+            "files": files,
+            "fallbacks": fallbacks,
+            "suffixes": list(entry.get("suffixes") or ()),
+        }
+
+    def path_settings_payload(self) -> dict[str, Any]:
+        """路径设置面板的完整数据。"""
+        groups = [
+            {
+                "group": str(group["group"]),
+                "note": str(group.get("note", "")),
+                "entries": [self._resolve_path_entry(entry) for entry in group["entries"]],
+            }
+            for group in PATH_SETTING_GROUPS
+        ]
+        return {
+            "ok": True,
+            "groups": groups,
+            "writable_ids": sorted(self._path_setting_targets()),
+            "extra_model_paths_file": self._extra_model_paths_sections()[0],
+            "comfyui_root": detect_comfyui_root(str(self._get("comfyui_root", "") or "")),
+        }
+
+    @staticmethod
+    def normalize_path_value(value: Any) -> str:
+        """把用户填的路径归一化成字符串（Windows 反斜杠原样保留）。"""
+        if value is None:
+            return ""
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else ""
+        return str(value).strip().strip('"').strip("'")
+
+    def save_path_settings(self, values: dict[str, Any]) -> dict[str, Any]:
+        """保存路径设置；空值表示清除覆盖、恢复自动解析。"""
+        targets = self._path_setting_targets()
+        overrides = dict(self._model_dir_overrides())
+        changed: list[str] = []
+        skipped: list[str] = []
+        for raw_id, raw_value in (values or {}).items():
+            entry_id = str(raw_id)
+            target = targets.get(entry_id)
+            if target is None:
+                skipped.append(entry_id)
+                continue
+            scope, name = target
+            value = self.normalize_path_value(raw_value)
+            if scope == "model":
+                if value:
+                    overrides[name] = value
+                else:
+                    overrides.pop(name, None)
+            else:
+                self._set(name, value)
+            changed.append(entry_id)
+        if any(targets[item][0] == "model" for item in changed):
+            self._set("model_dir_overrides", overrides)
+        # 配置文件或覆盖变了，缓存必须失效
+        self._extra_model_paths_cache = None
+        self._save_config()
+        payload = {"ok": True, "changed": changed, "skipped": skipped}
+        payload.update(self.path_settings_payload())
+        return payload
+
+    def reset_path_settings(self) -> dict[str, Any]:
+        """把所有可写的路径设置恢复为「自动」。"""
+        targets = self._path_setting_targets()
+        cleared: list[str] = []
+        for entry_id, (scope, name) in targets.items():
+            if scope == "config":
+                self._set(name, "")
+            cleared.append(entry_id)
+        self._set("model_dir_overrides", {})
+        self._extra_model_paths_cache = None
+        self._save_config()
+        payload = {"ok": True, "cleared": sorted(cleared)}
+        payload.update(self.path_settings_payload())
+        return payload
+
+    def check_path_settings(self, values: dict[str, Any] | None = None) -> dict[str, Any]:
+        """检测路径：给了值就检查填的值，没给就检查当前解析结果。"""
+        values = values or {}
+        results: dict[str, Any] = {}
+        for group in PATH_SETTING_GROUPS:
+            for entry in group["entries"]:
+                entry_id = str(entry["id"])
+                if values and entry_id not in values:
+                    continue
+                text = self.normalize_path_value(values.get(entry_id))
+                if not text:
+                    text = self._resolve_path_entry(entry)["resolved"]
+                kind = "file" if entry["kind"] == "file" else "dir"
+                suffixes = tuple(entry.get("suffixes") or ())
+                exists, files = scan_path(text, kind=kind, suffixes=suffixes)
+                results[entry_id] = {
+                    "path": text,
+                    "exists": exists,
+                    "files": files,
+                    "kind": kind,
+                    "suffixes": list(suffixes),
+                }
+        return {"ok": True, "results": results}
+
+    @staticmethod
+    def browse_path(raw_path: str = "") -> dict[str, Any]:
+        """路径面板用的极简目录浏览：列出子目录、上级与可用根。"""
+        text = str(raw_path or "").strip().strip('"').strip("'")
+        roots: list[str] = []
+        if os.name == "nt":
+            for letter in "CDEFGH":
+                drive = f"{letter}:\\"
+                if Path(drive).is_dir():
+                    roots.append(drive)
+        else:
+            roots.append("/")
+
+        current = Path(text).expanduser() if text else None
+        if current is None or not current.is_dir():
+            current = Path(roots[0]) if roots else Path.home()
+        try:
+            children = sorted(
+                (
+                    {"name": item.name, "path": str(item)}
+                    for item in current.iterdir()
+                    if item.is_dir() and not item.name.startswith(".")
+                ),
+                key=lambda item: item["name"].casefold(),
+            )
+        except OSError:
+            children = []
+        return {
+            "ok": True,
+            "path": str(current),
+            "parent": str(current.parent) if str(current) not in roots else "",
+            "roots": roots,
+            "entries": children,
+        }
+
+    async def api_path_settings(self):
+        from astrbot.api.web import json_response, request
+
+        if request.method == "GET":
+            return json_response(self.path_settings_payload())
+        data = await self._request_json(request, {})
+        if not isinstance(data, dict):
+            return json_response({"error": "请求体必须是对象"}, status_code=400)
+        action = str(data.get("action", "save") or "save").strip().lower()
+        values = data.get("values")
+        if not isinstance(values, dict):
+            values = {}
+        try:
+            if action == "save":
+                payload = self.save_path_settings(values)
+            elif action == "reset":
+                payload = self.reset_path_settings()
+            elif action == "check":
+                payload = self.check_path_settings(values)
+            elif action == "browse":
+                payload = self.browse_path(str(data.get("path", "") or ""))
+            else:
+                return json_response({"error": f"未知操作：{action}"}, status_code=400)
+        except (OSError, UsageError, ValueError) as exc:
+            return json_response({"error": str(exc)}, status_code=400)
+        payload.update(self.path_settings_payload())
+        return json_response(payload)
+
     def _model_folder_path(self, kind: str) -> Path:
         kind = str(kind or "").strip()
         if kind in MODEL_CATEGORIES:
@@ -5807,14 +6123,23 @@ class ComfyUIAIStudio(Star):
             return json_response({"error": str(exc)}, status_code=400)
 
     async def api_open_folder(self):
+        """打开文件夹：既支持按类别（kind），也支持直接传本地路径（path）。"""
         from astrbot.api.web import json_response, request
 
         data = await self._request_json(request, {})
         if not isinstance(data, dict):
             return json_response({"error": "请求体必须是对象"}, status_code=400)
         try:
-            path = self._model_folder_path(str(data.get("kind", "")))
-            path.mkdir(parents=True, exist_ok=True)
+            raw_path = str(data.get("path", "") or "").strip()
+            if raw_path:
+                path = Path(raw_path).expanduser()
+                if path.is_file():
+                    path = path.parent
+                if not path.is_dir():
+                    raise UsageError(f"目录不存在：{path}")
+            else:
+                path = self._model_folder_path(str(data.get("kind", "")))
+                path.mkdir(parents=True, exist_ok=True)
             startfile = getattr(os, "startfile", None)
             if callable(startfile):
                 startfile(str(path))

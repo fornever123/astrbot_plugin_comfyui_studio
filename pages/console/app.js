@@ -261,7 +261,7 @@ async function load() {
       sourcePathElement.textContent = sourcePath ? sourcePath.replace(/[\\/][^\\/]+$/, "") : "未检测到";
     }
     fillConfig();
-    await Promise.all([loadModels(), loadWorkflows(), loadPresets(), loadArtistPresets()]);
+    await Promise.all([loadModels(), loadWorkflows(), loadPresets(), loadArtistPresets(), loadPathSettings()]);
   } catch (error) {
     document.getElementById("status").textContent = "控制台接口异常";
     document.getElementById("status").className = "status bad";
@@ -1824,3 +1824,314 @@ load();
   }, true);
 })();
 
+/* ============================ 文件夹位置（路径设置） ============================ */
+
+let pathSettingsGroups = [];
+let pathBrowserEntryId = "";
+let pathBrowserParent = "";
+let pathBrowserRootValues = [];
+
+function findPathEntry(id) {
+  for (const group of pathSettingsGroups) {
+    for (const entry of group.entries || []) {
+      if (entry.id === id) return entry;
+    }
+  }
+  return null;
+}
+
+function pathEntryStatusHtml(entry) {
+  if (entry.readonly) return '<span class="path-chip readonly">只读</span>';
+  if (!entry.resolved) return '<span class="path-chip bad">未填写</span>';
+  if (!entry.exists) return '<span class="path-chip bad">路径不存在</span>';
+  if (entry.files < 0) return '<span class="path-chip ok">目录存在</span>';
+  if (!entry.files) return '<span class="path-chip warn">目录里没有匹配文件</span>';
+  return `<span class="path-chip ok">${entry.files} 个文件</span>`;
+}
+
+function pathEntryRowHtml(entry) {
+  const locked = entry.readonly ? " disabled" : "";
+  const readonlyAttr = entry.readonly ? " readonly" : "";
+  const resolved = entry.resolved
+    ? `<code class="path-resolved" title="${escapeHtml(entry.resolved)}">${escapeHtml(entry.resolved)}</code>`
+    : '<code class="path-resolved empty">未检测到，可手动填写</code>';
+  const fallbacks = (entry.fallbacks || []).length
+    ? `<p class="path-fallback">同时还会扫描：${entry.fallbacks.map(escapeHtml).join(" · ")}</p>`
+    : "";
+  const badge = entry.source && entry.source !== "default"
+    ? `<span class="path-source">${escapeHtml(entry.source_label || entry.source)}</span>`
+    : "";
+  return `
+  <article class="path-setting-row" data-entry="${escapeHtml(entry.id)}">
+    <div class="path-setting-head">
+      <strong>${escapeHtml(entry.label)}</strong>
+      ${badge}
+      <span class="path-chip-slot">${pathEntryStatusHtml(entry)}</span>
+    </div>
+    <div class="path-setting-body">
+      ${resolved}
+      <div class="path-setting-actions">
+        <button type="button" class="secondary" data-path-check>检测</button>
+        <button type="button" class="secondary" data-path-browse${locked}>浏览</button>
+        <button type="button" class="secondary" data-path-open>打开</button>
+        <button type="button" class="secondary" data-path-clear${locked}>恢复自动</button>
+      </div>
+    </div>
+    <input class="path-setting-input" type="text" spellcheck="false" autocomplete="off"
+      value="${escapeHtml(entry.configured || "")}"
+      placeholder="${entry.readonly ? "（只读，不支持修改）" : "留空 = 自动解析"}"${readonlyAttr}>
+    ${fallbacks}
+  </article>`;
+}
+
+function renderPathSettings() {
+  const host = document.getElementById("pathSettings");
+  if (!host) return;
+  if (!pathSettingsGroups.length) {
+    host.innerHTML = '<p class="field-hint">没有读到任何路径配置。</p>';
+    return;
+  }
+  host.innerHTML = pathSettingsGroups.map(group => `
+    <section class="path-group">
+      <div class="path-group-head">
+        <h3>${escapeHtml(group.group)}</h3>
+        <button type="button" class="secondary" data-check-group="${escapeHtml(group.group)}">检测本组</button>
+      </div>
+      ${group.note ? `<p class="field-hint">${escapeHtml(group.note)}</p>` : ""}
+      <div class="path-setting-list">
+        ${(group.entries || []).map(pathEntryRowHtml).join("")}
+      </div>
+    </section>`).join("");
+  host.querySelectorAll(".path-setting-row").forEach(bindPathRow);
+  host.querySelectorAll("[data-check-group]").forEach(btn => {
+    btn.onclick = () => checkPathGroup(btn.dataset.checkGroup);
+  });
+  updatePathSaveState();
+}
+
+function bindPathRow(row) {
+  const id = row.dataset.entry;
+  const input = row.querySelector(".path-setting-input");
+  const entry = findPathEntry(id);
+  const original = (entry && entry.configured) || "";
+  if (input && !input.readOnly) {
+    input.addEventListener("input", () => {
+      row.classList.toggle("dirty", input.value.trim() !== original);
+      row.classList.remove("checked");
+      updatePathSaveState();
+    });
+  }
+  const check = row.querySelector("[data-path-check]");
+  if (check) check.onclick = () => checkPathEntry(id, input ? input.value : "");
+  const browse = row.querySelector("[data-path-browse]");
+  if (browse) browse.onclick = () => openPathBrowser(id, input && input.value.trim()
+    ? input.value.trim()
+    : (entry && entry.resolved) || "");
+  const open = row.querySelector("[data-path-open]");
+  if (open) open.onclick = () => openPathTarget(input && input.value.trim()
+    ? input.value.trim()
+    : (entry && entry.resolved) || "");
+  const clear = row.querySelector("[data-path-clear]");
+  if (clear) clear.onclick = () => {
+    if (!input) return;
+    input.value = "";
+    row.classList.toggle("dirty", original !== "");
+    updatePathSaveState();
+  };
+}
+
+function pathDirtyValues() {
+  const values = {};
+  document.querySelectorAll("#pathSettings .path-setting-row").forEach(row => {
+    const input = row.querySelector(".path-setting-input");
+    if (!input || input.readOnly) return;
+    const entry = findPathEntry(row.dataset.entry);
+    const original = (entry && entry.configured) || "";
+    const value = input.value.trim();
+    if (value !== original) values[row.dataset.entry] = value;
+  });
+  return values;
+}
+
+function updatePathSaveState() {
+  const count = Object.keys(pathDirtyValues()).length;
+  const button = document.getElementById("pathSave");
+  if (!button) return;
+  button.disabled = count === 0;
+  button.textContent = count ? `保存修改（${count}）` : "保存修改";
+}
+
+async function loadPathSettings() {
+  const host = document.getElementById("pathSettings");
+  if (host && !pathSettingsGroups.length) host.innerHTML = '<p class="field-hint">正在读取路径…</p>';
+  try {
+    const result = await get(`${API}/paths`);
+    pathSettingsGroups = result.groups || [];
+    renderPathSettings();
+  } catch (error) {
+    if (host) host.innerHTML = `<p class="field-hint">读取失败：${escapeHtml(error.message || "未知错误")}</p>`;
+  }
+}
+
+async function savePathSettings() {
+  const values = pathDirtyValues();
+  if (!Object.keys(values).length) { show("没有需要保存的修改"); return; }
+  try {
+    const result = await post(`${API}/paths`, {action: "save", values});
+    pathSettingsGroups = result.groups || [];
+    renderPathSettings();
+    show(result.skipped && result.skipped.length
+      ? `已保存 ${(result.changed || []).length} 项，忽略 ${result.skipped.length} 项`
+      : `已保存 ${(result.changed || []).length} 项`);
+    await load();
+  } catch (error) { show(error.message); }
+}
+
+function applyPathCheck(id, info) {
+  const row = document.querySelector(`#pathSettings .path-setting-row[data-entry="${id}"]`);
+  if (!row) return;
+  const slot = row.querySelector(".path-chip-slot");
+  if (!slot) return;
+  if (!info || !info.path) {
+    slot.innerHTML = '<span class="path-chip bad">未填写路径</span>';
+  } else if (!info.exists) {
+    slot.innerHTML = `<span class="path-chip bad">路径不存在</span>`;
+  } else if (info.files < 0) {
+    slot.innerHTML = '<span class="path-chip ok">目录存在</span>';
+  } else if (!info.files) {
+    slot.innerHTML = '<span class="path-chip warn">目录里没有匹配文件</span>';
+  } else {
+    slot.innerHTML = `<span class="path-chip ok">${info.files} 个文件</span>`;
+  }
+  row.classList.add("checked");
+}
+
+async function checkPathEntry(id, value) {
+  try {
+    const result = await post(`${API}/paths`, {action: "check", values: {[id]: (value || "").trim()}});
+    applyPathCheck(id, (result.results || {})[id]);
+  } catch (error) { show(error.message); }
+}
+
+async function checkPathGroup(groupName) {
+  const group = pathSettingsGroups.find(item => item.group === groupName);
+  if (!group) return;
+  try {
+    const result = await post(`${API}/paths`, {action: "check", values: {}});
+    const results = result.results || {};
+    (group.entries || []).forEach(entry => applyPathCheck(entry.id, results[entry.id]));
+    show(`已检测「${groupName}」`);
+  } catch (error) { show(error.message); }
+}
+
+async function checkAllPaths() {
+  try {
+    const result = await post(`${API}/paths`, {action: "check", values: {}});
+    const results = result.results || {};
+    Object.keys(results).forEach(id => applyPathCheck(id, results[id]));
+    show(`已检测 ${Object.keys(results).length} 项`);
+  } catch (error) { show(error.message); }
+}
+
+async function resetAllPaths() {
+  if (!window.confirm("把所有文件夹位置恢复为「自动解析」？手动填写的内容会被清空。")) return;
+  try {
+    const result = await post(`${API}/paths`, {action: "reset"});
+    pathSettingsGroups = result.groups || [];
+    renderPathSettings();
+    show(`已恢复 ${(result.cleared || []).length} 项为自动`);
+    await load();
+  } catch (error) { show(error.message); }
+}
+
+async function openPathTarget(path) {
+  if (!path) { show("请先填写或选择一个路径"); return; }
+  try {
+    const result = await post(`${API}/open_folder`, {path});
+    show(`已打开：${result.path}`);
+  } catch (error) { show(error.message); }
+}
+
+async function openPathBrowser(entryId, startPath) {
+  pathBrowserEntryId = entryId;
+  const dialog = document.getElementById("pathBrowser");
+  if (dialog) dialog.hidden = false;
+  await renderPathBrowser(startPath || "");
+}
+
+function closePathBrowser() {
+  const dialog = document.getElementById("pathBrowser");
+  if (dialog) dialog.hidden = true;
+}
+
+async function renderPathBrowser(path) {
+  const list = document.getElementById("pathBrowserList");
+  try {
+    const result = await post(`${API}/paths`, {action: "browse", path: path || ""});
+    pathBrowserParent = result.parent || "";
+    pathBrowserRootValues = result.roots || [];
+    const pathEl = document.getElementById("pathBrowserPath");
+    if (pathEl) pathEl.textContent = result.path || "";
+    const rootsEl = document.getElementById("pathBrowserRoots");
+    if (rootsEl) {
+      const current = (result.path || "").slice(0, 3).toUpperCase();
+      rootsEl.innerHTML = pathBrowserRootValues
+        .map(item => `<option value="${escapeHtml(item)}"${item.toUpperCase() === current ? " selected" : ""}>${escapeHtml(item)}</option>`)
+        .join("");
+    }
+    const up = document.getElementById("pathBrowserUp");
+    if (up) up.disabled = !pathBrowserParent;
+    if (!list) return;
+    const entries = result.entries || [];
+    list.innerHTML = entries.length
+      ? entries.map(item => `<button type="button" class="path-browser-item" data-browse-to="${escapeHtml(item.path)}">${escapeHtml(item.name)}</button>`).join("")
+      : '<p class="field-hint">这个目录下没有子文件夹，可以直接选择它。</p>';
+    list.querySelectorAll("[data-browse-to]").forEach(button => {
+      button.onclick = () => renderPathBrowser(button.dataset.browseTo);
+    });
+  } catch (error) {
+    if (list) list.innerHTML = `<p class="field-hint">读取失败：${escapeHtml(error.message || "未知错误")}</p>`;
+  }
+}
+
+function pickPathBrowser() {
+  const pathEl = document.getElementById("pathBrowserPath");
+  const row = document.querySelector(`#pathSettings .path-setting-row[data-entry="${pathBrowserEntryId}"]`);
+  const input = row ? row.querySelector(".path-setting-input") : null;
+  if (input && pathEl && pathEl.textContent) {
+    input.value = pathEl.textContent;
+    const entry = findPathEntry(pathBrowserEntryId);
+    row.classList.toggle("dirty", input.value.trim() !== ((entry && entry.configured) || ""));
+    updatePathSaveState();
+    show("已填入，记得点保存修改");
+  }
+  closePathBrowser();
+}
+
+function initPathSettings() {
+  const bind = (id, handler) => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = handler;
+  };
+  bind("pathSave", savePathSettings);
+  bind("pathCheckAll", checkAllPaths);
+  bind("pathReload", () => loadPathSettings());
+  bind("pathResetAll", resetAllPaths);
+  bind("pathBrowserClose", closePathBrowser);
+  bind("pathBrowserUp", () => renderPathBrowser(pathBrowserParent || ""));
+  bind("pathBrowserPick", pickPathBrowser);
+  const roots = document.getElementById("pathBrowserRoots");
+  if (roots) roots.onchange = () => renderPathBrowser(roots.value);
+  const dialog = document.getElementById("pathBrowser");
+  if (dialog) {
+    dialog.addEventListener("click", event => { if (event.target === dialog) closePathBrowser(); });
+  }
+  document.querySelectorAll('[data-view-tab="paths"]').forEach(tab => {
+    tab.addEventListener("click", () => loadPathSettings());
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape") closePathBrowser();
+  });
+}
+
+initPathSettings();

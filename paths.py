@@ -82,8 +82,97 @@ SOURCE_LABELS = {
     "override": "手动指定",
     "extra": "额外路径",
     "default": "默认位置",
+    "auto": "自动探测",
+    "builtin": "内置副本",
+    "runtime": "运行时",
+    "none": "未找到",
 }
 
+
+# 各类别的中文名，供控制台「路径设置」展示（顺序与 MODEL_CATEGORIES 一致）。
+MODEL_CATEGORY_LABELS: dict[str, str] = {
+    "diffusion_models": "核心大模型（diffusion_models）",
+    "checkpoints": "Checkpoint",
+    "loras": "LoRA",
+    "upscale_models": "放大模型",
+    "unet": "UNet",
+    "text_encoders": "文本编码器（text_encoders）",
+    "vae": "VAE",
+    "controlnet": "ControlNet",
+    "ipadapter": "IPAdapter",
+    "clip_vision": "CLIP Vision",
+}
+
+# 各类别的模型文件后缀，用于「检测」时统计目录里到底有没有可用模型。
+MODEL_CATEGORY_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "diffusion_models": (".safetensors", ".sft", ".ckpt", ".pt", ".gguf", ".bin"),
+    "checkpoints": (".safetensors", ".sft", ".ckpt", ".pt", ".bin"),
+    "loras": (".safetensors", ".sft", ".pt", ".ckpt", ".bin"),
+    "upscale_models": (".safetensors", ".pth", ".pt", ".ckpt", ".onnx", ".bin"),
+    "unet": (".safetensors", ".sft", ".pt", ".gguf", ".bin"),
+    "text_encoders": (".safetensors", ".sft", ".pt", ".bin"),
+    "vae": (".safetensors", ".pt", ".ckpt", ".bin"),
+    "controlnet": (".safetensors", ".pth", ".pt", ".ckpt", ".bin"),
+    "ipadapter": (".safetensors", ".bin", ".pt"),
+    "clip_vision": (".safetensors", ".bin", ".pt"),
+}
+
+# 未统计文件数时的占位值（大目录不做全量遍历，避免面板卡住）。
+UNKNOWN_FILE_COUNT = -1
+
+
+def scan_path(
+    path: str | Path,
+    *,
+    kind: str = "dir",
+    suffixes: tuple[str, ...] = (),
+    limit: int = 20000,
+) -> tuple[bool, int]:
+    """检测一个路径是否可用，返回（是否存在，命中文件数）。
+
+    - ``kind="file"``：只看单个文件，存在即计 1。
+    - ``kind="dir"``：给了 ``suffixes`` 才递归统计匹配文件；没给后缀说明只是
+      「要一个目录」，直接返回 ``UNKNOWN_FILE_COUNT``，不做全量遍历。
+    """
+    try:
+        text = str(path or "").strip()
+    except (TypeError, ValueError):
+        return False, 0
+    if not text:
+        return False, 0
+    try:
+        target = Path(text).expanduser()
+    except (TypeError, ValueError):
+        return False, 0
+
+    if kind == "file":
+        try:
+            return (True, 1) if target.is_file() else (False, 0)
+        except OSError:
+            return False, 0
+
+    try:
+        if not target.is_dir():
+            return False, 0
+    except OSError:
+        return False, 0
+
+    wanted = tuple(str(item).lower() for item in suffixes if str(item).strip())
+    if not wanted:
+        return True, UNKNOWN_FILE_COUNT
+
+    count = 0
+    for _current, dirs, files in os.walk(target, onerror=lambda _exc: None):
+        dirs[:] = [name for name in dirs if not name.startswith(".")]
+        for name in files:
+            if name.startswith("."):
+                continue
+            if not name.lower().endswith(wanted):
+                continue
+            count += 1
+            if count >= limit:
+                return True, count
+    return True, count
 
 @dataclass(frozen=True)
 class ModelDir:
