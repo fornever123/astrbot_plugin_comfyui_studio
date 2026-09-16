@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import sys
@@ -44,7 +45,192 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v0.8.0" in page
+    assert "版本 v1.0.0" in page
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "你有什么功能",
+        "你有什么画图功能",
+        "这个插件能做什么",
+        "机器人会画什么",
+        "画图功能有哪些",
+    ],
+)
+def test_feature_query_uses_one_sentence_summary(message: str) -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    class Event:
+        message_str = message
+
+    class Request:
+        system_prompt = "当前人格"
+
+    request = Request()
+    asyncio.run(ComfyUIAIStudio.on_llm_request(object.__new__(ComfyUIAIStudio), Event(), request))
+    assert "只回复这一句" in request.system_prompt
+    assert "支持文生图、图生图、高清放大、洗图、扩图、多角度处理" in request.system_prompt
+    assert "Qwen/Flux2" not in request.system_prompt
+
+
+def test_llm_draw_sends_start_reply_without_event_result() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Event:
+        def __init__(self) -> None:
+            self.results: list[str] = []
+            self.sent: list[str] = []
+
+        def plain_result(self, text: str) -> str:
+            return text
+
+        def set_result(self, result: str) -> None:
+            self.results.append(result)
+
+        async def send(self, result: str) -> None:
+            self.sent.append(result)
+
+    async def never_finishes(*args, **kwargs):
+        await asyncio.Future()
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {"draw_start_reply": "{mode}开始：{prompt}"}
+    star._get = lambda key, default="": star.config.get(key, default)
+    star._tasks = set()
+    star._run = never_finishes
+    event = Event()
+
+    async def run() -> None:
+        await star._llm_draw(event, DrawParams(prompt="一只猫"), "txt2img")
+        await asyncio.sleep(0)
+        for task in list(star._tasks):
+            task.cancel()
+        if star._tasks:
+            await asyncio.gather(*list(star._tasks), return_exceptions=True)
+
+    asyncio.run(run())
+    assert event.results == []
+    assert event.sent == ["文生图开始：一只猫"]
+
+
+def test_llm_tool_arguments_are_unwrapped_and_prompt_can_fall_back_to_event() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Event:
+        message_str = "帮我画一只猫"
+
+    star = object.__new__(ComfyUIAIStudio)
+    captured: dict[str, object] = {}
+    star._event_has_image_hint = lambda event: False
+    star._looks_like_edit_request = lambda event, prompt: False
+
+    def fake_llm_params(prompt, mode, **kwargs):
+        captured["prompt"] = prompt
+        captured["mode"] = mode
+        captured["kwargs"] = kwargs
+        return DrawParams(prompt=str(prompt))
+
+    async def fake_llm_execute(event, params, mode, *, require_image):
+        captured["require_image"] = require_image
+        return "已提交"
+
+    star._llm_params = fake_llm_params
+    star._llm_execute = fake_llm_execute
+
+    result = asyncio.run(
+        star.llm_generate(
+            Event(),
+            arguments='{"arguments": {"prompt": "一只猫", "steps": 12}}',
+        )
+    )
+    assert result == "已提交"
+    assert captured["prompt"] == "一只猫"
+    assert captured["mode"] == "txt2img"
+    assert captured["kwargs"]["steps"] == 12
+
+    asyncio.run(star.llm_generate(Event(), arguments={}))
+    assert captured["prompt"] == "帮我画一只猫"
+
+
+def test_structured_llm_prompt_never_runs_txt2img_ai_a_second_time() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_llm_prompt_guard_") as root:
+        from astrbot_plugin_comfyui_ai_studio.prompting import PresetStore
+
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(root) / "presets.json")
+        star.artist_presets = PresetStore(Path(root) / "artists.json")
+        star._get = lambda key, default="": {
+            "artist_preset": "无",
+            "default_positive": "",
+            "default_negative": "",
+        }.get(key, default)
+
+        params = star._llm_params("夏空在海边", "txt2img", ai=True)
+        assert params.ai is False
+        assert params.llm_invocation is True
+        # 模拟上游模型错误保留 ai=true；结构化 LLM 标记仍必须阻止二次 AI。
+        params.ai = True
+
+        async def unexpected_ai(*args, **kwargs):
+            raise AssertionError("结构化 LLM 绘图不应再次调用文生图 AI")
+
+        star._translate_prompt = unexpected_ai
+        positive, _, _ = asyncio.run(star._prompt_text(None, params, mode="txt2img"))
+        assert "夏空在海边" in positive
+
+
+def test_all_llm_tools_accept_hidden_arguments_compatibility_parameter() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    for method_name in (
+        "llm_status",
+        "llm_presets",
+        "llm_generate",
+        "llm_edit",
+        "llm_edit_flux2",
+        "llm_upscale",
+    ):
+        signature = inspect.signature(getattr(ComfyUIAIStudio, method_name))
+        assert "arguments" in signature.parameters
+        doc = getattr(ComfyUIAIStudio, method_name).__doc__ or ""
+        assert "arguments(object)" not in doc
+
+
+def test_img2img_command_path_yields_fixed_start_reply_before_background_task() -> None:
+    source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    marker = 'async def _command_img2img_mode('
+    start = source.index(marker)
+    end = source.index('\n    @filter.command("图生图"', start)
+    command_body = source[start:end]
+    assert 'start_reply = await self._draw_start_reply_for_command(event, params, mode)' in command_body
+    assert 'yield event.plain_result(start_reply)' in command_body
+    assert command_body.index('yield event.plain_result(start_reply)') < command_body.index('self._schedule_draw(')
+
+
+def test_draw_completion_reply_is_fixed_and_does_not_call_ai() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "draw_reply_mode": "astrbot",
+        "draw_reply_custom": "{mode}已完成，共 {count} 张。",
+    }
+    star._get = lambda key, default="": star.config.get(key, default)
+
+    async def unexpected_ai_call(*args, **kwargs):
+        raise AssertionError("完成回复不应再次调用 AI")
+
+    star._astrbot_generate = unexpected_ai_call
+    params = DrawParams(prompt="一只猫")
+    result = asyncio.run(star._draw_reply(None, params, "txt2img", 1))
+
+    assert result == "文生图已完成，共 1 张。"
 
 
 def test_anima_prompt_engineer_is_built_into_comfyui_plugin() -> None:
@@ -138,6 +324,31 @@ def test_console_exposes_reply_and_lora_management() -> None:
     assert "请先获取模型列表并测试连接" in app
 
 
+def test_console_separates_normal_and_style_lora_regions() -> None:
+    for relative_page, relative_app, relative_css in (
+        ("index.html", "app.js", "style.css"),
+        ("pages/console/index.html", "pages/console/app.js", "pages/console/style.css"),
+    ):
+        page = (PLUGIN_DIR / relative_page).read_text(encoding="utf-8")
+        app = (PLUGIN_DIR / relative_app).read_text(encoding="utf-8")
+        css = (PLUGIN_DIR / relative_css).read_text(encoding="utf-8")
+
+        normal_start = page.index('<section class="band lora-management-band">')
+        style_start = page.index('<section class="band style-lora-band">')
+        assert normal_start < style_start
+        normal_region = page[normal_start:page.index("</section>", normal_start)]
+        # 标题内嵌了图标 svg，因此只校验标题文案本身，避免图标改动误伤这里。
+        assert "普通 LoRA</h2>" in normal_region
+        assert "style-lora-band" not in normal_region
+
+        assert 'const normalItems = allItems.filter(item => (item.category || "未分类") !== "画风");' in app
+        assert 'const styleCandidates = items.filter(item => (item.category || "未分类") === "画风");' in app
+        # 卡片改为“简洁/展开”两态布局后，普通和画风各自使用独立的网格容器。
+        assert ".lora-grid {" in css and "display: grid;" in css
+        assert ".lora-card {" in css and "flex-direction: column;" in css
+        assert ".style-lora-grid {" in css
+
+
 def test_help_image_and_download_order_are_available() -> None:
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     requirements = (PLUGIN_DIR / "requirements.txt").read_text(encoding="utf-8")
@@ -146,7 +357,9 @@ def test_help_image_and_download_order_are_available() -> None:
     assert "def _save_lora_download_order" in source
     assert "lora_download_order[filename]" in source
     assert "pillow>=10" in requirements.lower()
-    assert "AstrBot-ComfyUI-AI-Studio/0.8.0" in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
+    assert "AstrBot-Anima-Studio/1.0.0" in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
+    assert "/洗图" in source and "/扩图" in source and "/多角度" in source
+    assert "其余忽略" in source
 
 
 def test_config_and_delete_paths_are_stateful_and_windows_safe() -> None:
@@ -154,6 +367,67 @@ def test_config_and_delete_paths_are_stateful_and_windows_safe() -> None:
     assert '"lora_list": list(self._get("lora_list", []) or [])' in source
     assert 'normalized_filename = raw_filename.replace("\\\\", "/")' in source
     assert 'async def api_delete_lora(self)' in source
+
+
+def test_style_random_mode_falls_back_to_classified_loras() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "style_lora_list": [],
+        "style_lora_aliases": {
+            "style_a.safetensors": "画风1",
+            "style_b.safetensors": "画风2",
+        },
+        "style_lora_weights": {},
+        "style_lora_mode": "random",
+        "style_lora_random_count": 1,
+    }
+    star.lora_categories = {
+        "style_a.safetensors": "画风",
+        "style_b.safetensors": "画风",
+    }
+    star.lora_category_entries = {"画风": True}
+    star.lora_download_order = {}
+    available = ["style_a.safetensors", "style_b.safetensors"]
+
+    star._set = lambda key, value: star.config.__setitem__(key, value)
+    star._save_config = lambda: None
+
+    classified = star._style_lora_entries(available, selected_only=False)
+    candidates = star._style_lora_candidates_without_persistent(
+        classified,
+        [],
+        available,
+        classified,
+    )
+
+    assert {item["file_name"] for item in candidates} == set(available)
+    assert len(star._select_style_loras(candidates)) == 1
+
+
+def test_style_usage_text_reports_random_selection_source() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    star = object.__new__(ComfyUIAIStudio)
+    text = star._style_lora_usage_text(
+        DrawParams(
+            style_loras_used=[
+                {
+                    "alias": "画风2",
+                    "display_name": "示例画风",
+                    "file_name": "style_b.safetensors",
+                    "source": "随机选择",
+                    "weight": 0.8,
+                }
+            ]
+        )
+    )
+
+    assert "画风2" in text
+    assert "示例画风" in text
+    assert "随机选择" in text
 
 
 def test_commands_do_not_use_legacy_suffix() -> None:
@@ -331,6 +605,198 @@ def test_lora_preset_alias_is_dynamic_and_civitai_words_are_not_prompt_values() 
     assert star._resolve_lora("新简称", ["demo.safetensors"]) == "demo.safetensors"
 
 
+def test_llm_fuzzy_lora_alias_keeps_private_preset_and_command_exactness() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Presets:
+        items = {}
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "style_lora_list": [],
+        "style_lora_aliases": {},
+        "style_lora_weights": {},
+    }
+    star.lora_aliases = {}
+    star.lora_categories = {}
+    star.lora_category_entries = {}
+    star.lora_command_aliases = {
+        "character.safetensors": [],
+        "style-4.safetensors": ["画风4"],
+        "style-5.safetensors": ["画风5"],
+    }
+    star.lora_presets = {
+        "character.safetensors": [
+            {"tag": "小小爱", "content": "little Aemeath (WuWa)"},
+        ],
+    }
+    star.presets = Presets()
+
+    async def available(*, force=False):
+        return [
+            "character.safetensors",
+            "style-4.safetensors",
+            "style-5.safetensors",
+        ]
+
+    star._available_loras = available
+
+    fuzzy_params = DrawParams(prompt="a girl")
+    asyncio.run(
+        star._extract_inline_loras(
+            fuzzy_params,
+            "帮我画小小艾",
+            allow_fuzzy=True,
+        )
+    )
+    assert fuzzy_params.loras == ["character.safetensors:0.8"]
+    assert fuzzy_params.lora_preset_tags == {
+        "character.safetensors": ["小小爱"],
+    }
+
+    exact_params = DrawParams(prompt="a girl")
+    asyncio.run(
+        star._extract_inline_loras(
+            exact_params,
+            "请使用画风4绘图",
+            allow_fuzzy=True,
+        )
+    )
+    assert exact_params.loras == ["style-4.safetensors:0.8"]
+
+    command_params = DrawParams(prompt="a girl")
+    asyncio.run(
+        star._extract_inline_loras(
+            command_params,
+            "帮我画小小艾",
+        )
+    )
+    assert command_params.loras == []
+
+
+def test_llm_fuzzy_alias_handles_multiword_english_without_partial_word_match() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    matches = ComfyUIAIStudio._fuzzy_lora_alias_matches(
+        "please draw little Aemeat in a scene",
+        [("little Aemeath", "character.safetensors")],
+    )
+    assert matches and matches[0][1] == "character.safetensors"
+    assert ComfyUIAIStudio._fuzzy_lora_alias_matches(
+        "please draw artist in a scene",
+        [("art", "style.safetensors")],
+    ) == []
+
+
+def test_style_lora_candidates_are_limited_to_style_category() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "style_lora_list": [
+            "style.safetensors:0.7",
+            "character.safetensors:0.8",
+            "unclassified.safetensors:0.9",
+        ],
+        "style_lora_weights": {},
+    }
+    star.lora_categories = {
+        "style.safetensors": "画风",
+        "character.safetensors": "鸣潮角色",
+    }
+    star.lora_category_entries = {"画风": True, "鸣潮角色": True}
+
+    entries = star._style_lora_entries(
+        ["style.safetensors", "character.safetensors", "unclassified.safetensors"]
+    )
+    assert entries == [{"file_name": "style.safetensors", "weight": 0.7}]
+
+
+def test_style_lora_alias_is_triggerable_even_when_not_random_candidate() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "style_lora_list": [],
+        "style_lora_aliases": {"style.safetensors": "画风4"},
+        "style_lora_weights": {},
+    }
+    star.lora_categories = {"style.safetensors": "画风"}
+    star.lora_category_entries = {"画风": True}
+    star.lora_aliases = {}
+    star.lora_command_aliases = {"style.safetensors": []}
+    star.lora_presets = {
+        "style.safetensors": [{"tag": "画风预设", "content": "style trigger"}],
+    }
+
+    available = ["style.safetensors", "other.safetensors"]
+    assert star._style_lora_entries(available) == []
+    assert star._style_lora_entries(available, selected_only=False) == [
+        {"file_name": "style.safetensors", "weight": 0.8}
+    ]
+    assert star._resolve_lora("画风4", available) == "style.safetensors"
+    assert star._resolve_lora("画风预设", available) == "style.safetensors"
+
+
+def test_style_disable_control_is_per_task_and_does_not_match_keep_style_text() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    star = object.__new__(ComfyUIAIStudio)
+    params = DrawParams(prompt="不用画风 夏空")
+    assert star._extract_style_lora_disable(params, params.prompt) is True
+    assert params.style_lora_disabled is True
+    assert params.prompt == "夏空"
+
+    keep_params = DrawParams(prompt="不要改变画风")
+    assert star._extract_style_lora_disable(keep_params, keep_params.prompt) is False
+    assert keep_params.style_lora_disabled is False
+    assert keep_params.prompt == "不要改变画风"
+
+
+def test_persistent_style_lora_does_not_consume_random_style_count() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    entries = [
+        {"file_name": "persistent.safetensors", "weight": 0.8},
+        {"file_name": "candidate-a.safetensors", "weight": 0.8},
+        {"file_name": "candidate-b.safetensors", "weight": 0.8},
+    ]
+    available = [item["file_name"] for item in entries]
+    pool = star._style_lora_candidates_without_persistent(
+        entries,
+        ["persistent.safetensors:0.8"],
+        available,
+        entries,
+    )
+    assert [item["file_name"] for item in pool] == [
+        "candidate-a.safetensors",
+        "candidate-b.safetensors",
+    ]
+
+
+def test_explicit_lora_alias_only_injects_the_matching_private_preset() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.lora_presets = {
+        "style.safetensors": [
+            {"tag": "画风预设", "content": "style trigger"},
+            {"tag": "另一个预设", "content": "unrelated trigger"},
+        ],
+    }
+    params = DrawParams(mode="txt2img", prompt="画风简称")
+    star._remember_lora_preset_match(params, "style.safetensors", "画风简称")
+    assert params.lora_preset_tags == {"style.safetensors": []}
+    assert star._lora_prompt_values_for_task(params, "style.safetensors") == []
+
+    star._remember_lora_preset_match(params, "style.safetensors", "画风预设")
+    assert star._lora_prompt_values_for_task(params, "style.safetensors") == ["style trigger"]
+
+
 def test_legacy_civitai_preset_fragments_are_removed_but_global_content_survives() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
 
@@ -411,6 +877,522 @@ def test_input_image_is_cached_before_temp_file_cleanup() -> None:
     asyncio.run(run())
 
 
+def test_duplicate_structured_and_raw_image_segments_are_deduplicated() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_duplicate_input_test_") as root:
+            base = Path(root)
+            source = base / "same-image.png"
+            source.write_bytes(b"same-image-data")
+            segment = {"type": "image", "data": {"file": str(source)}}
+
+            class Message:
+                raw_message = {"message": [segment]}
+
+            class Event:
+                message_obj = Message()
+
+                def get_messages(self):
+                    return [segment]
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            images = await star._extract_images(Event())
+
+            assert len(images) == 1
+            assert len(list(star.input_cache_dir.iterdir())) == 1
+
+    asyncio.run(run())
+
+
+def test_forward_component_is_fetched_for_img2img() -> None:
+    from astrbot.api.message_components import Forward
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_forward_input_test_") as root:
+            base = Path(root)
+            source = base / "forward.png"
+            source.write_bytes(b"fake-forward-image-data")
+
+            class Api:
+                calls: list[tuple[str, dict[str, object]]] = []
+
+                async def call_action(self, action: str, **params):
+                    self.calls.append((action, params))
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "sender": {"nickname": "绘图机器人"},
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(source)}}
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                def __init__(self):
+                    self.api = Api()
+
+            class Event:
+                bot = Bot()
+
+                def get_messages(self):
+                    return [Forward(id="forward-message-1")]
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            event = Event()
+            assert star._event_has_image_hint(event) is True
+            images = await star._extract_images(event)
+
+            assert len(images) == 1
+            assert Path(images[0]).is_file()
+            assert Path(images[0]).read_bytes() == source.read_bytes()
+            assert event.bot.api.calls[0][0] == "get_forward_msg"
+
+    asyncio.run(run())
+
+
+def test_reply_forward_is_fetched_when_adapter_keeps_only_reply_id() -> None:
+    from astrbot.api.message_components import Reply
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_reply_forward_test_") as root:
+            base = Path(root)
+            source = base / "reply-forward.jpg"
+            source.write_bytes(b"reply-forward-image-data")
+
+            class Api:
+                calls: list[str] = []
+
+                async def call_action(self, action: str, **params):
+                    self.calls.append(action)
+                    if action == "get_msg":
+                        return {
+                            "data": {
+                                "message": [
+                                    {"type": "forward", "data": {"id": "forward-2"}}
+                                ]
+                            }
+                        }
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "sender": {"nickname": "绘图机器人"},
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(source)}}
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                def __init__(self):
+                    self.api = Api()
+
+            class Event:
+                bot = Bot()
+
+                def get_messages(self):
+                    return [Reply(id="quoted-message-1", chain=[])]
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            event = Event()
+
+            assert star._event_has_image_hint(event) is True
+            images = await star._extract_images(event)
+
+            assert len(images) == 1
+            assert Path(images[0]).read_bytes() == source.read_bytes()
+            assert event.bot.api.calls[:2] == ["get_msg", "get_forward_msg"]
+
+    asyncio.run(run())
+
+
+def test_explicit_reply_forward_wins_over_a_different_direct_image() -> None:
+    from astrbot.api.message_components import Image, Reply
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_reply_priority_test_") as root:
+            base = Path(root)
+            referenced = base / "referenced.jpg"
+            wrong_attachment = base / "wrong-attachment.jpg"
+            referenced.write_bytes(b"the-image-inside-the-quoted-forward")
+            wrong_attachment.write_bytes(b"a-different-current-attachment")
+
+            class Api:
+                async def call_action(self, action: str, **params):
+                    if action == "get_msg":
+                        return {
+                            "data": {
+                                "message": [
+                                    {"type": "forward", "data": {"id": "forward-target"}}
+                                ]
+                            }
+                        }
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "sender": {"nickname": "ComfyUI 绘图"},
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(referenced)}}
+                                    ],
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                api = Api()
+
+            class Event:
+                bot = Bot()
+
+                def get_messages(self):
+                    return [
+                        Reply(id="quoted-message", chain=[]),
+                        Image(file=str(wrong_attachment)),
+                    ]
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            event = Event()
+
+            images = await star._extract_images(event)
+
+            assert len(images) == 1
+            assert Path(images[0]).read_bytes() == referenced.read_bytes()
+            assert Path(images[0]).read_bytes() != wrong_attachment.read_bytes()
+
+    asyncio.run(run())
+
+
+def test_llm_edit_never_uses_recent_image_when_explicit_reference_cannot_be_read() -> None:
+    from astrbot.api.message_components import Reply
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Event:
+        message_str = "把引用的图换成白色裙子"
+
+        def get_messages(self):
+            return [Reply(id="missing-quoted-message", chain=[])]
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_no_recent_fallback_test_") as root:
+            recent = Path(root) / "recent.png"
+            recent.write_bytes(b"recent-output")
+            star = object.__new__(ComfyUIAIStudio)
+            star.config = {}
+            star.last_images = {"origin": str(recent)}
+            star._get = lambda key, default="": default
+            star._origin = lambda event: "origin"
+            star._extract_inline_presets = lambda params, text="": None
+
+            async def fake_loras(params, text="", allow_fuzzy=False):
+                return None
+
+            async def fake_reserve(event, params):
+                return None
+
+            async def fake_prepare(event, params, original_text, mode):
+                return None
+
+            async def fake_queue(params, mode, event=None):
+                return None
+
+            async def should_not_draw(*args, **kwargs):
+                raise AssertionError("不应在引用图片读取失败时提交绘图")
+
+            star._extract_inline_loras = fake_loras
+            star._reserve_draw_limit = fake_reserve
+            star._prepare_llm_prompt = fake_prepare
+            star._check_draw_queue = fake_queue
+            star._extract_images = lambda event: _empty_images()
+            star._llm_draw = should_not_draw
+
+            result = await star._llm_execute(
+                Event(),
+                DrawParams(mode="img2img", prompt="换成白色裙子"),
+                "img2img",
+                require_image=True,
+            )
+            assert "未能读取你引用的图片" in str(result)
+            assert "最近出图" not in str(result)
+
+    async def _empty_images():
+        return []
+
+    asyncio.run(run())
+
+
+def test_llm_img2img_requires_current_message_image_instead_of_recent_output() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Event:
+        message_str = "把衣服换成白色裙子"
+
+        def get_messages(self):
+            return []
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_no_implicit_img2img_test_") as root:
+            recent = Path(root) / "recent.png"
+            recent.write_bytes(b"recent-output")
+            star = object.__new__(ComfyUIAIStudio)
+            star.config = {}
+            star.last_images = {"origin": str(recent)}
+            star._get = lambda key, default="": default
+            star._origin = lambda event: "origin"
+            star._extract_inline_presets = lambda params, text="": None
+
+            async def fake_loras(params, text="", allow_fuzzy=False):
+                return None
+
+            async def should_not_reserve(*args, **kwargs):
+                raise AssertionError("没有当前消息图片时不应进入绘图限额或后台任务")
+
+            star._extract_inline_loras = fake_loras
+            star._extract_images = lambda event: _empty_images()
+            star._reserve_draw_limit = should_not_reserve
+
+            result = await star._llm_execute(
+                Event(),
+                DrawParams(mode="img2img", prompt="把衣服换成白色裙子"),
+                "img2img",
+                require_image=True,
+            )
+            assert "同一条消息附图" in str(result)
+            assert "最近出图" not in str(result)
+
+    async def _empty_images():
+        return []
+
+    asyncio.run(run())
+
+
+def test_raw_onebot_reply_forward_is_used_when_components_are_missing() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_raw_forward_test_") as root:
+            base = Path(root)
+            source = base / "raw-forward.webp"
+            source.write_bytes(b"raw-forward-image")
+
+            class Api:
+                async def call_action(self, action: str, **params):
+                    if action == "get_msg":
+                        return {
+                            "data": {
+                                "message": [
+                                    {"type": "forward", "data": {"id": "raw-forward-id"}}
+                                ]
+                            }
+                        }
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(source)}}
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                api = Api()
+
+            class Message:
+                raw_message = {
+                    "message": [
+                        {"type": "reply", "data": {"id": "raw-quoted-message"}}
+                    ]
+                }
+
+            class Event:
+                bot = Bot()
+                message_obj = Message()
+
+                def get_messages(self):
+                    return []
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            event = Event()
+
+            assert star._event_has_image_hint(event) is True
+            images = await star._extract_images(event)
+
+            assert len(images) == 1
+            assert Path(images[0]).read_bytes() == source.read_bytes()
+
+    asyncio.run(run())
+
+
+def test_event_level_reply_forward_is_used_for_img2img() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_event_reply_forward_test_") as root:
+            base = Path(root)
+            source = base / "event-reply-forward.png"
+            source.write_bytes(b"event-level-reply-forward-image")
+
+            class Api:
+                calls: list[str] = []
+
+                async def call_action(self, action: str, **params):
+                    self.calls.append(action)
+                    if action == "get_msg":
+                        return {
+                            "data": {
+                                "message": [
+                                    {"type": "forward", "data": {"id": "event-forward"}}
+                                ]
+                            }
+                        }
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(source)}}
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                def __init__(self):
+                    self.api = Api()
+
+            class Event:
+                bot = Bot()
+                # Some adapters expose the reply target on the event instead
+                # of adding a Reply component to get_messages().
+                reply = {"id": "event-reply"}
+
+                def get_messages(self):
+                    return []
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            event = Event()
+
+            assert star._event_has_image_hint(event) is True
+            assert star._event_has_explicit_image_reference(event) is True
+            images = await star._extract_images(event)
+
+            assert len(images) == 1
+            assert Path(images[0]).read_bytes() == source.read_bytes()
+            assert event.bot.api.calls[:2] == ["get_msg", "get_forward_msg"]
+
+    asyncio.run(run())
+
+
+def test_quoted_forward_image_is_added_to_the_astrbot_llm_request() -> None:
+    from astrbot.api.message_components import Forward
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    async def run() -> None:
+        with tempfile.TemporaryDirectory(prefix="astrbot_llm_forward_image_test_") as root:
+            base = Path(root)
+            source = base / "llm-forward.png"
+            source.write_bytes(b"llm-forward-image")
+
+            class Api:
+                async def call_action(self, action: str, **params):
+                    return {
+                        "data": {
+                            "messages": [
+                                {
+                                    "content": [
+                                        {"type": "image", "data": {"file": str(source)}}
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+
+            class Bot:
+                api = Api()
+
+            class Event:
+                bot = Bot()
+
+                def get_messages(self):
+                    return [Forward(id="llm-forward-id")]
+
+            class Request:
+                image_urls: list[str] = []
+
+            star = object.__new__(ComfyUIAIStudio)
+            star.input_cache_dir = base / "input_cache"
+            star.input_cache_dir.mkdir()
+            request = Request()
+
+            added = await star._inject_event_images_to_llm_request(Event(), request)
+
+            assert len(added) == 1
+            assert len(request.image_urls) == 1
+            assert Path(request.image_urls[0]).read_bytes() == source.read_bytes()
+
+    asyncio.run(run())
+
+
+def test_quoted_forward_send_falls_back_without_retrying_empty_reply() -> None:
+    from astrbot.api.message_components import Nodes, Plain, Reply, Node
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    class Event:
+        def __init__(self):
+            self.sent: list[list[object]] = []
+
+        def chain_result(self, chain):
+            return chain
+
+        async def send(self, chain):
+            self.sent.append(chain)
+            if len(self.sent) == 1:
+                raise TimeoutError("WebSocket API call timeout")
+
+    star = object.__new__(ComfyUIAIStudio)
+    event = Event()
+    chain = [
+        Reply(id="original-message"),
+        Nodes([Node(uin="1", name="ComfyUI 绘图", content=[Plain("结果")])]),
+    ]
+
+    asyncio.run(star._send_forward_chain(event, chain))
+
+    assert len(event.sent) == 1
+    assert len(event.sent[0]) == 1
+    assert isinstance(event.sent[0][0], Nodes)
+    assert all(not isinstance(item, Reply) for sent in event.sent for item in sent)
+
+
 def test_forward_delivery_builds_merge_forward_nodes() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
     from astrbot.api.message_components import Image, Nodes, Plain
@@ -464,6 +1446,72 @@ def test_completion_forward_quotes_original_message_and_puts_text_last() -> None
     assert isinstance(chain[1], Nodes)
     assert isinstance(chain[1].nodes[0].content[0], Image)
     assert isinstance(chain[1].nodes[-1].content[0], Plain)
+
+
+def test_forward_run_places_prompt_attachment_after_images() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+    from astrbot.api.message_components import Image, Nodes, Plain
+
+    class Event:
+        def get_self_id(self):
+            return "123456"
+
+    class Config:
+        def get(self, key, default=None):
+            return {
+                "draw_delivery_mode": "forward",
+                "draw_attach_prompt": True,
+            }.get(key, default)
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = Config()
+    star.semaphore = None
+    params = DrawParams(prompt="海边的少女")
+    params.generated_positive = "masterpiece, seaside girl"
+    params.generated_negative = "low quality"
+
+    async def fake_generate(*args, **kwargs):
+        return [Path("one.png")]
+
+    star._generate = fake_generate
+    chain = asyncio.run(star._run(Event(), params, "txt2img"))
+
+    assert len(chain) == 1
+    assert isinstance(chain[0], Nodes)
+    assert isinstance(chain[0].nodes[0].content[0], Image)
+    assert isinstance(chain[0].nodes[-1].content[0], Plain)
+    assert "本次绘图提示词" in chain[0].nodes[-1].content[0].text
+
+
+def test_completion_reply_uses_fixed_template_without_llm() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Config:
+        def get(self, key, default=None):
+            return {
+                "draw_reply_mode": "astrbot",
+                "draw_reply_custom": "{mode}已完成，共 {count} 张。",
+            }.get(key, default)
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = Config()
+
+    async def unexpected_ai_call(*args, **kwargs):
+        raise AssertionError("固定完成回复不应调用 AI")
+
+    star._astrbot_generate = unexpected_ai_call
+    params = DrawParams(prompt="夏空在海边")
+    result = asyncio.run(star._draw_reply(None, params, "txt2img", 2))
+
+    assert result == "文生图已完成，共 2 张。"
+
+
+def test_completion_llm_reply_rejects_wrong_status() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    assert ComfyUIAIStudio._normalize_draw_reply("正在生成，请稍候", "txt2img", 1) == ""
 
 
 def test_civitai_trigger_words_sync_method_is_now_a_noop() -> None:
@@ -545,12 +1593,50 @@ def test_civitai_download_links_and_windows_filename_are_supported() -> None:
     assert ComfyUIAIStudio._civitai_reference(
         "https://civitai.com/api/download/models/789012?fileId=9"
     ) == ("", "789012")
+    assert ComfyUIAIStudio._civitai_reference(
+        "https://civitai.red/models/123456?modelVersionId=789012"
+    ) == ("123456", "789012")
+    assert ComfyUIAIStudio._civitai_reference(
+        "https://civital.red/api/download/models/789012"
+    ) == ("", "789012")
     assert ComfyUIAIStudio._safe_lora_filename(
         "bad:name?.safetensors", "fallback.safetensors"
     ) == "bad_name_.safetensors"
     assert ComfyUIAIStudio._safe_lora_filename(
         "CON.safetensors", "fallback.safetensors"
     ) == "_CON.safetensors"
+
+
+def test_civitai_compatible_site_configuration_and_search_url() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {"civitai_base_url": "https://civitai.red/api/v1/"}
+    star._get = lambda key, default="": star.config.get(key, default)
+
+    assert star._civitai_base_url() == "https://civitai.red"
+    assert star._civitai_search_url("demo_lora.safetensors") == (
+        "https://civitai.red/search/models?query=demo_lora"
+    )
+    assert star._civitai_headers("application/json")["Referer"] == "https://civitai.red/"
+    assert star._civitai_link_api_base("https://civitai.red/models/123") == "https://civitai.red"
+
+    star.config["civitai_base_url"] = "https://models.example.test/civitai"
+    assert star._civitai_base_url() == "https://models.example.test/civitai"
+    assert star._civitai_link_api_base(
+        "https://models.example.test/civitai/models/123"
+    ) == "https://models.example.test/civitai"
+    assert ComfyUIAIStudio._civitai_reference(
+        "https://models.example.test/civitai/models/123",
+        {"models.example.test"},
+    ) == ("123", "")
+
+
+def test_image_reference_key_does_not_depend_on_urlunparse_symbol() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    value = ComfyUIAIStudio._image_ref_key("HTTPS://Example.com:443/assets/a.png?x=1#preview")
+    assert value == "https://example.com:443/assets/a.png?x=1#preview"
 
 
 def test_llm_plugin_prompt_keeps_original_action_and_debug_output() -> None:
@@ -581,6 +1667,95 @@ def test_llm_plugin_prompt_keeps_original_action_and_debug_output() -> None:
     assert "夏空" in received[0]
     assert translated == params.prompt == "ciaccona, bathing, in bathtub, wet hair"
     assert "bathing" in star._llm_debug_reply("任务已提交", translated)
+
+
+def test_txt2img_plugin_ai_strips_reasoning_quality_words_and_duplicates() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "youhu，loli, petite, youhu, loli, petite, "
+        "(masterpiece, best quality, amazing quality, very aesthetic, extremely detailed, "
+        "absurdres, highres, score_9, score_8, year 2024), "
+        "1. **分析用户请求**：输入‘一字马’。目标：转换为英文标签。"
+    )
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "youhu, loli, petite"
+
+
+def test_txt2img_plugin_ai_recovers_explicit_quoted_action_tag() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "youhu, loli, petite, 1. **分析用户请求**：用户要求一字马。"
+        "核心标签是 `split`，不要输出解释。"
+    )
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "youhu, loli, petite, split"
+
+
+def test_txt2img_plugin_ai_keeps_action_and_reads_final_field() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "1. 分析用户请求：用户想要一字马。\n"
+        "2. 确定核心标签：split。\n"
+        "最终提示词：youhu, split, legs spread, split"
+    )
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "youhu, split, legs spread"
+
+
+def test_txt2img_prompt_cuts_chinese_reasoning_after_tag_prefix() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "verina, loli, petite, verina, "
+        "(masterpiece, best quality, score_9), 用户要求输出一行英文 Danbooru 标签。"
+        "需要包含：倒立、被绳子吊挂、劈叉。"
+    )
+
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "verina, loli, petite"
+
+
+def test_txt2img_prompt_cuts_the_reported_long_reasoning_response() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "verina, loli, petite, verina, "
+        "(masterpiece, best quality, amazing quality, very aesthetic, extremely detailed, "
+        "very detailed, absurdres, newest, highres, score_9, score_8, year 2024, newest,), "
+        "用户要求输出一行英文 Danbooru 标签。需要包含：倒立、被绳子吊挂、劈叉、白色过膝袜。"
+    )
+
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "verina, loli, petite"
+
+
+def test_txt2img_prompt_removes_think_block_and_keeps_final_line() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "<think>分析用户要求并选择标签 split</think>\n"
+        "verina, split, legs spread"
+    )
+
+    assert ComfyUIAIStudio._clean_txt2img_prompt(raw) == "verina, split, legs spread"
+
+
+def test_llm_txt2img_sanitizer_falls_back_to_original_request() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = "分析用户请求：无法生成有效标签。"
+    fallback = "帮我画一张海边的夏空"
+
+    assert (
+        ComfyUIAIStudio._sanitize_llm_txt2img_prompt(raw, fallback)
+        == fallback
+    )
+
+
+def test_txt2img_plugin_ai_rejects_reasoning_without_final_prompt() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import AIError, ComfyUIAIStudio
+
+    raw = "分析用户请求：需要转换动作。核心标签：split。让我继续检查标签。"
+    with pytest.raises(AIError):
+        ComfyUIAIStudio._clean_txt2img_prompt(raw)
 
 
 def test_console_exposes_separate_llm_and_command_ai_prompts() -> None:
@@ -622,7 +1797,7 @@ def test_img2img_uses_a_separate_llm_editor_and_preserves_explicit_controls() ->
     params = DrawParams(mode="img2img", prompt="换成裙子", presets=["维里奈"])
     translated = asyncio.run(star._prepare_llm_prompt(Event(), params, Event.message_str, "img2img"))
 
-    assert translated == "change the outfit to a dress"
+    assert translated == "把身上衣服换成裙子，其他内容保持原图不变"
     assert params.img2img_edit_instruction_ready is True
     assert "换成裙子" in received[0]
     assert params.presets == ["维里奈"]
@@ -668,11 +1843,24 @@ def test_img2img_astrbot_llm_source_also_generates_an_edit_instruction() -> None
     params = DrawParams(mode="img2img", prompt="把衣服换成裙子", presets=["维里奈"])
     translated = asyncio.run(star._prepare_llm_prompt(Event(), params, Event.message_str, "img2img"))
 
-    assert translated == params.prompt == "change the outfit to a dress"
+    assert translated == params.prompt == "把身上衣服换成裙子，其他内容保持原图不变"
     assert params.img2img_edit_instruction_ready is True
-    assert received and "用户对已有图片的编辑要求" in received[0][0]
+    assert received and "用户的图生图编辑要求" in received[0][0]
     assert "Qwen Image Edit" in received[0][1]
-    assert received[0][2] == 96
+    assert received[0][2] == 256
+
+
+def test_img2img_editor_keeps_concrete_pose_details() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    result = ComfyUIAIStudio._clean_img2img_edit_instruction(
+        "EDIT: make her stand in a relaxed contrapposto pose, one hand touching her hair, "
+        "the other arm resting naturally, looking toward the viewer"
+    )
+
+    assert "contrapposto" in result
+    assert "touching her hair" in result
+    assert "looking toward the viewer" in result
 
 
 def test_img2img_editor_strips_reasoning_and_keeps_only_instruction() -> None:
@@ -783,8 +1971,89 @@ def test_img2img_final_prompt_uses_locked_edit_instruction() -> None:
         )
         positive, _, _ = asyncio.run(star._prompt_text(None, params, mode="img2img"))
 
-    assert positive == "base edit quality, change the outfit to a dress"
+    assert positive == (
+        "base edit quality, change the outfit to a dress; preserve the original "
+        "character identity, face, hair, body proportions, pose, background, camera, "
+        "composition, lighting and art style"
+    )
     assert "原始长画面描述" not in positive
+
+
+def test_plain_img2img_command_keeps_original_prompt_without_ai_or_translation() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams, PresetStore
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_plain_img2img_command_test_") as temp:
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(temp) / "presets.json")
+        star.artist_presets = PresetStore(Path(temp) / "artist_presets.json")
+        star.config = {
+            "img2img_default_positive": "base edit quality",
+            "img2img_default_negative": "",
+            "artist_preset": "无",
+            "img2img_plain_translate_enabled": True,
+        }
+
+        async def unexpected_ai(*args, **kwargs):
+            raise AssertionError("普通图生图命令不应调用 AI")
+
+        async def unexpected_translation(*args, **kwargs):
+            raise AssertionError("普通图生图命令不应调用翻译")
+
+        star._translate_prompt = unexpected_ai
+        star._plain_translate_prompt = unexpected_translation
+        params = DrawParams(
+            mode="img2img",
+            prompt="把衣服换成白色连衣裙",
+            command_invocation=True,
+        )
+        positive, _, _ = asyncio.run(star._prompt_text(None, params, mode="img2img"))
+
+    assert "把衣服换成白色连衣裙" in positive
+    assert "base edit quality" in positive
+
+
+def test_img2img_editor_drops_user_and_astrbot_metadata() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    raw = (
+        "User's original words: Take off their clothes, other unchanged "
+        "AstrBot LLM picture description: same two girls, pink long hair girl "
+        "with purple eyes, orange twin braids girl with green eyes, masterpiece, "
+        "best quality, highly detailed, anime style"
+    )
+
+    assert ComfyUIAIStudio._clean_img2img_edit_instruction(raw) == "Take off their clothes"
+    final = ComfyUIAIStudio._finalize_img2img_instruction(
+        ComfyUIAIStudio._clean_img2img_edit_instruction(raw)
+    )
+    assert final.startswith("Take off their clothes;")
+    assert "User's original words" not in final
+    assert "AstrBot LLM picture description" not in final
+    assert "same two girls" not in final
+    assert "masterpiece" not in final
+
+
+def test_img2img_input_size_keeps_ratio_and_caps_oversized_source() -> None:
+    from PIL import Image as PILImage
+
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin._bool_config = lambda key, default=False: default
+    with tempfile.TemporaryDirectory(prefix="astrbot_img2img_size_test_") as temp:
+        image_path = Path(temp) / "source.png"
+        PILImage.new("RGB", (2048, 1024), (20, 40, 60)).save(image_path)
+
+        width, height = plugin._img2img_output_size(
+            str(image_path),
+            512,
+            960,
+            use_input_size=True,
+            max_edge=1152,
+        )
+
+    assert (width, height) == (1152, 576)
 
 
 def test_draw_limit_counts_images_and_skips_configured_admins() -> None:
@@ -1003,6 +2272,32 @@ def test_plugin_import_and_registration() -> None:
         assert structured.ai is False
         assert structured.auto_ai is False
 
+        # LoRA 简称可以通过 preset 参数传入，但没有同名全局预设时，
+        # 不应在 _prompt_text 中报“预设不存在”；它应只临时加载 LoRA。
+        star.lora_command_aliases["first.safetensors"] = []
+        star.lora_presets["first.safetensors"] = [
+            {"tag": "画风4", "content": "style four"},
+        ]
+        lora_alias_only = star._llm_params(
+            "海边少女",
+            "txt2img",
+            preset="画风4",
+        )
+        asyncio.run(star._extract_inline_loras(lora_alias_only))
+        assert lora_alias_only.loras == ["first.safetensors:0.8"]
+        assert lora_alias_only.presets == []
+
+        # 如果同名全局预设存在，简称和普通预设必须继续同时生效。
+        star.presets.add("画风4", "artist-defined style")
+        both_alias_and_preset = star._llm_params(
+            "海边少女",
+            "txt2img",
+            preset="画风4",
+        )
+        asyncio.run(star._extract_inline_loras(both_alias_and_preset))
+        assert both_alias_and_preset.loras == ["first.safetensors:0.8"]
+        assert both_alias_and_preset.presets == ["画风4"]
+
         star.lora_command_aliases["first.safetensors"] = ["1号lora", "夏空"]
         both = star._llm_params(
             "使用夏空画风和夏空 LoRA 画海边少女",
@@ -1110,7 +2405,7 @@ def test_txt2img_and_img2img_use_sampling_output() -> None:
 def test_qwen_img2img_uses_the_standalone_api_workflow() -> None:
     from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
 
-    source_path = Path(r"E:\112121121.json")
+    source_path = Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json")
     source = load_workflow(source_path)
     adapted, report = adapt_qwen_img2img(
         source,
@@ -1147,6 +2442,361 @@ def test_qwen_img2img_uses_the_standalone_api_workflow() -> None:
     assert isinstance(report, list)
 
 
+def test_qwen_rollback_ignores_acceleration_and_keeps_content_lora() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
+
+    source = load_workflow(Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json"))
+    adapted, report = adapt_qwen_img2img(
+        source,
+        positive="保持人物并更换服装",
+        negative="低质量",
+        image_name="input.png",
+        unet_name="Qwen-Image-Edit-2511-Q4_K_M.gguf",
+        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
+        vae_name="qwen_image_vae.safetensors",
+        loras=["qwen/Qwen-Image-Edit-F2P.safetensors:0.7"],
+        steps=4,
+        cfg=1.0,
+    )
+
+    assert adapted["174"]["inputs"]["lora_1"]["on"] is True
+    assert adapted["30"]["inputs"]["model"] == ["174", 0]
+    assert "astrbot_qwen_accel_lora" not in adapted
+    assert any("无加速 LoRA" in item for item in report)
+
+
+def test_qwen_rollback_uses_regular_sampling_parameters() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
+
+    source = load_workflow(Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json"))
+    adapted, report = adapt_qwen_img2img(
+        source,
+        positive="保持原图",
+        negative="",
+        image_name="input.png",
+        unet_name="Qwen-Rapid-NSFW-v23_Q3_K.gguf",
+        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
+        vae_name="qwen_image_vae.safetensors",
+        steps=8,
+        cfg=1.25,
+    )
+
+    assert "astrbot_qwen_accel_lora" not in adapted
+    assert adapted["30"]["inputs"]["model"] == ["174", 0]
+    assert adapted["152"]["inputs"]["steps"] == 8
+    assert adapted["152"]["inputs"]["cfg"] == 1.25
+    assert any("无加速 LoRA" in item for item in report)
+
+
+def test_flux2_img2img_uses_the_single_reference_source_workflow() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import (
+        FLUX2_IMG2IMG_WORKFLOW_FILE,
+        MODE_NAMES,
+        WRITABLE_CONFIG,
+    )
+    from astrbot_plugin_comfyui_ai_studio.workflow import (
+        WorkflowError,
+        adapt_flux2_klein_img2img,
+        load_workflow,
+    )
+
+    assert MODE_NAMES["img2img_flux2"] == "图生图 Flux2"
+    assert "img2img_flux2_unet_name" in WRITABLE_CONFIG
+    assert "img2img_flux2_lora_name" in WRITABLE_CONFIG
+    assert "img2img_flux2_prompt_template" in WRITABLE_CONFIG
+    assert (PLUGIN_DIR / "workflows" / FLUX2_IMG2IMG_WORKFLOW_FILE).is_file()
+
+    source = load_workflow(PLUGIN_DIR / "workflows" / FLUX2_IMG2IMG_WORKFLOW_FILE)
+    assert not any(
+        node.get("class_type") == "Fast Groups Bypasser (rgthree)"
+        for node in source.values()
+    )
+    adapted, report = adapt_flux2_klein_img2img(
+        source,
+        positive="中文编辑要求",
+        negative="低质量",
+        image_names=["image.png"],
+        unet_name="flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
+        clip_name="qwen_3_8b_fp8mixed.safetensors",
+        vae_name="flux2-vae.safetensors",
+        lora_name="flux-2-klein\\flux-2-klein-NSFW.safetensors",
+        lora_strength=0.7,
+        size=1024,
+        steps=8,
+        cfg=1.2,
+        seed=123,
+        sampler_name="euler",
+        scheduler="simple",
+        denoise=0.6,
+        batch=2,
+        filename_prefix="astrbot/test-flux2",
+    )
+
+    assert adapted["19"]["inputs"]["text"] == "中文编辑要求"
+    assert adapted["19"]["inputs"]["clip"] == ["14", 0]
+    assert adapted["13"]["inputs"]["unet_name"] == "flux-2-klein\\flux-2-klein-9b-fp8.safetensors"
+    assert adapted["14"]["inputs"]["clip_name"] == "qwen_3_8b_fp8mixed.safetensors"
+    assert adapted["10"]["inputs"]["vae_name"] == "flux2-vae.safetensors"
+    assert adapted["38"]["inputs"]["lora_name"] == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
+    assert adapted["38"]["inputs"]["strength_model"] == 0.7
+    assert adapted["95"]["inputs"]["model"] == ["38", 0]
+    assert not any(
+        node.get("_meta", {}).get("title") == "Flux2 加速 LoRA"
+        for node in adapted.values()
+    )
+    assert not any(
+        node.get("class_type") in {"FluxKVCache", "Fast Groups Bypasser (rgthree)"}
+        for node in adapted.values()
+    )
+    assert adapted["95"]["inputs"]["positive"] == ["74", 0]
+    assert adapted["95"]["inputs"]["negative"] == ["73", 0]
+    assert adapted["95"]["inputs"]["latent_image"] == ["83", 0]
+    assert adapted["95"]["inputs"]["steps"] == 8
+    assert adapted["95"]["inputs"]["cfg"] == 1.2
+    assert adapted["95"]["inputs"]["seed"] == 123
+    assert adapted["95"]["inputs"]["denoise"] == 0.6
+    assert adapted["83"]["inputs"]["batch_size"] == 2
+    assert adapted["62"]["inputs"]["filename_prefix"] == "astrbot/test-flux2"
+    assert adapted["63"]["inputs"]["image"] == "image.png"
+    assert adapted["90"]["inputs"]["缩放长度"] == 1024
+    assert adapted["75"]["inputs"]["pixels"] == ["90", 0]
+    assert adapted["74"]["inputs"]["latent"] == ["75", 0]
+    assert adapted["73"]["inputs"]["latent"] == ["75", 0]
+    assert any("最长边等比例缩放" in item for item in report)
+
+    adapted_two, _ = adapt_flux2_klein_img2img(
+        source,
+        positive="中文编辑要求",
+        negative="",
+        image_names=["one.png", "two.png"],
+        unet_name="model.safetensors",
+        clip_name="clip.safetensors",
+        vae_name="vae.safetensors",
+    )
+    assert adapted_two["64"]["inputs"]["image"] == "two.png"
+    assert adapted_two["95"]["inputs"]["positive"] == ["85", 0]
+    assert adapted_two["95"]["inputs"]["negative"] == ["86", 0]
+
+    adapted_three, _ = adapt_flux2_klein_img2img(
+        source,
+        positive="中文编辑要求",
+        negative="",
+        image_names=["one.png", "two.png", "three.png"],
+        unet_name="model.safetensors",
+        clip_name="clip.safetensors",
+        vae_name="vae.safetensors",
+    )
+    assert adapted_three["61"]["inputs"]["image"] == "three.png"
+    assert adapted_three["95"]["inputs"]["positive"] == ["80", 0]
+    assert adapted_three["95"]["inputs"]["negative"] == ["79", 0]
+
+    with pytest.raises(WorkflowError, match="最多支持 3"):
+        adapt_flux2_klein_img2img(
+            source,
+            positive="中文编辑要求",
+            negative="",
+            image_names=["one.png", "two.png", "three.png", "four.png"],
+            unet_name="model.safetensors",
+            clip_name="clip.safetensors",
+            vae_name="vae.safetensors",
+        )
+
+
+def test_flux2_uses_source_model_chain_without_acceleration_nodes() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_klein_img2img, load_workflow
+
+    source = load_workflow(PLUGIN_DIR / "workflows" / "图生图_flux2_klein.json")
+    adapted, report = adapt_flux2_klein_img2img(
+        source,
+        positive="保持原图",
+        negative="",
+        image_names=["image.png"],
+        unet_name="flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
+        clip_name="qwen_3_8b_fp8mixed.safetensors",
+        vae_name="flux2-vae.safetensors",
+    )
+
+    assert adapted["95"]["inputs"]["model"] == ["13", 0]
+    assert adapted["95"]["inputs"]["denoise"] == 1.0
+    assert not any(
+        node.get("_meta", {}).get("title") == "Flux2 加速 LoRA"
+        for node in adapted.values()
+    )
+    assert any("不添加加速 LoRA 或 KV Cache" in item for item in report)
+
+
+def test_flux2_does_not_inject_kv_cache() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_klein_img2img, load_workflow
+
+    source = load_workflow(PLUGIN_DIR / "workflows" / "图生图_flux2_klein.json")
+    adapted, report = adapt_flux2_klein_img2img(
+        source,
+        positive="保持人物和构图",
+        negative="",
+        image_names=["image.png"],
+        unet_name="flux-2-klein-9b-kv-fp8.safetensors",
+        clip_name="qwen_3_8b_fp8mixed.safetensors",
+        vae_name="flux2-vae.safetensors",
+        steps=4,
+        cfg=1.0,
+    )
+
+    assert adapted["95"]["inputs"]["model"] == ["13", 0]
+    assert not any(node.get("class_type") == "FluxKVCache" for node in adapted.values())
+    assert adapted["95"]["inputs"]["positive"] == ["74", 0]
+    assert any("不添加加速 LoRA 或 KV Cache" in item for item in report)
+
+
+def test_flux2_configuration_does_not_use_qwen_values() -> None:
+    source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
+
+    assert "img2img_flux2" in source
+    assert "img2img_flux2_output_format" in schema
+    assert schema["img2img_engine"]["enum"] == ["qwen", "flux2"]
+    assert 'self._get("img2img_lora_name", "")' in source
+    assert 'self._get("img2img_flux2_lora_name", FLUX2_IMG2IMG_LORA_DEFAULT)' in source
+    assert 'f"{img2img_config_prefix}_default_positive"' in source
+
+
+def test_flux2_tool_workflows_keep_default_loras_and_write_tool_inputs() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_tool, load_workflow
+
+    workflow_dir = PLUGIN_DIR / "workflows"
+    tool_files = {
+        "wash": next(workflow_dir.glob("*.json")),
+        "outpaint": next(path for path in workflow_dir.glob("*.json") if "扩图" in path.name),
+        "multi_angle": next(path for path in workflow_dir.glob("*.json") if "多角度" in path.name),
+    }
+    wash_path = next(path for path in workflow_dir.glob("*.json") if "洗图" in path.name)
+    tool_files["wash"] = wash_path
+
+    for mode, path in tool_files.items():
+        source = load_workflow(path)
+        adapted, report = adapt_flux2_tool(
+            source,
+            tool=mode,
+            positive="用户中文要求",
+            negative="低质量",
+            image_name="input.png",
+            size=768,
+            steps=9,
+            cfg=1.5,
+            seed=123,
+            denoise=0.5,
+            sampler_name="euler",
+            scheduler="simple",
+            filename_prefix="astrbot/test",
+            left=16,
+            top=24,
+            right=32,
+            bottom=40,
+            feathering=8,
+            horizontal_angle=12,
+            vertical_angle=-5,
+            zoom=2.2,
+            batch=1,
+            caption_tokens=256,
+        )
+
+        load_nodes = [
+            node for node in adapted.values()
+            if node.get("class_type") == "LoadImage"
+        ]
+        save_nodes = [
+            node for node in adapted.values()
+            if node.get("class_type") == "SaveImage"
+        ]
+        assert load_nodes and load_nodes[0]["inputs"]["image"] == "input.png"
+        assert save_nodes and save_nodes[0]["inputs"]["filename_prefix"] == "astrbot/test"
+        assert any(node.get("class_type") == "KSampler" for node in adapted.values())
+        assert all(node.get("class_type") for node in adapted.values())
+        assert any("不使用全局 LoRA" in item for item in report)
+
+        if mode in {"outpaint", "multi_angle"}:
+            latent_nodes = [
+                node for node in adapted.values()
+                if node.get("class_type") == "EmptyFlux2LatentImage"
+            ]
+            assert latent_nodes and latent_nodes[0]["inputs"]["batch_size"] == 1
+
+        if mode == "wash":
+            assert any(
+                node.get("class_type") == "Florence2Run"
+                and node["inputs"].get("max_new_tokens") == 256
+                for node in adapted.values()
+            )
+        elif mode == "outpaint":
+            pad = next(node for node in adapted.values() if node.get("class_type") == "ImagePadForOutpaint")
+            assert pad["inputs"]["left"] == 16
+            assert pad["inputs"]["top"] == 24
+            assert pad["inputs"]["right"] == 32
+            assert pad["inputs"]["bottom"] == 40
+            assert pad["inputs"]["feathering"] == 8
+        else:
+            camera = next(node for node in adapted.values() if node.get("class_type") == "QwenMultiangleCameraNode")
+            assert camera["inputs"]["horizontal_angle"] == 12
+            assert camera["inputs"]["vertical_angle"] == -5
+            assert camera["inputs"]["zoom"] == 2.2
+
+
+def test_flux2_tool_workflow_source_conversion_preserves_disabled_lora() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import load_workflow
+
+    for path in (
+        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-图生图洗图流.json"),
+        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-图像扩展流.json"),
+        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-多角度转换流.json"),
+    ):
+        if not path.is_file():
+            pytest.skip(f"源工作流不存在：{path}")
+        workflow = load_workflow(path)
+        assert all(
+            not (
+                node.get("class_type") == "LoraLoaderModelOnly"
+                and node.get("inputs", {}).get("lora_name") == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
+            )
+            for node in workflow.values()
+        )
+
+
+def test_img2img_edit_ai_rejects_literal_horse_translation() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    repaired = ComfyUIAIStudio._repair_img2img_edit_instruction(
+        "Make her stand on a horse",
+        "让她站立一字马",
+    )
+    assert repaired == "让人物站立完成一字马（劈叉）动作，其他内容保持原图不变"
+
+    repaired = ComfyUIAIStudio._repair_img2img_edit_instruction(
+        "change her outfit to a dress",
+        "把她的衣服换成白色连衣裙",
+    )
+    assert repaired == "把她的衣服换成白色连衣裙，其他内容保持原图不变"
+
+
+def test_qwen_img2img_connects_second_reference_image() -> None:
+    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
+
+    source = load_workflow(Path(r"E:\112121121.json"))
+    adapted, report = adapt_qwen_img2img(
+        source,
+        positive="把衣服换成参考图中的服装",
+        negative="low quality",
+        image_name="source.png",
+        second_image_name="clothes.png",
+        unet_name="Qwen-Rapid-NSFW-v23_Q3_K.gguf",
+        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
+        vae_name="qwen_image_vae.safetensors",
+    )
+
+    assert adapted["astrbot_img2img_second_input"]["inputs"]["image"] == "clothes.png"
+    assert adapted["1"]["inputs"]["image2"] == ["astrbot_img2img_second_input", 0]
+    assert adapted["39"]["inputs"]["image2"] == ["astrbot_img2img_second_input", 0]
+    assert any("第二张" in item for item in report)
+
+
 def test_ai_and_comfy_compatibility_fallbacks() -> None:
     from astrbot_plugin_comfyui_ai_studio.ai import AITranslator
     from astrbot_plugin_comfyui_ai_studio.comfy import ComfyClient
@@ -1164,3 +2814,250 @@ def test_ai_and_comfy_compatibility_fallbacks() -> None:
     }
     assert ComfyClient.models_from_object_info(object_info, "loras") == ["qwen\\edit.safetensors"]
     assert ComfyClient.models_from_object_info(object_info, "unet_gguf") == ["qwen.gguf"]
+
+
+def test_environment_keeps_flux2_text_encoders_separate_from_qwen_gguf() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin._lora_names_cache = None
+    plugin._order_loras = lambda names: list(names)
+
+    class _Client:
+        async def object_info(self):
+            return {}
+
+        async def models(self, category):
+            values = {
+                "diffusion_models": [],
+                "checkpoints": [],
+                "loras": [],
+                "upscale_models": [],
+                "clip_gguf": ["Qwen2.5-VL.Q4_K_M.gguf"],
+                "vae": [],
+                "unet_gguf": [],
+                "controlnet": [],
+                "ipadapter": [],
+                "clip_vision": [],
+                "text_encoders": ["qwen_3_8b_fp8mixed.safetensors"],
+            }
+            return values[category]
+
+    environment = asyncio.run(plugin._environment(_Client()))
+
+    assert environment["flux2_text_encoders"] == ["qwen_3_8b_fp8mixed.safetensors"]
+    assert environment["clip_gguf"] == ["Qwen2.5-VL.Q4_K_M.gguf"]
+    assert set(environment["text_encoders"]) == {
+        "qwen_3_8b_fp8mixed.safetensors",
+        "Qwen2.5-VL.Q4_K_M.gguf",
+    }
+
+
+def test_lora_resolver_accepts_saved_backslash_path_against_api_slash_path() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.lora_aliases = {}
+    plugin.lora_command_aliases = {}
+    plugin.lora_presets = {}
+
+    available = ["flux-2-klein/flux-2-klein-NSFW.safetensors"]
+
+    assert (
+        plugin._resolve_lora(
+            r"flux-2-klein\flux-2-klein-NSFW.safetensors",
+            available,
+        )
+        == available[0]
+    )
+
+
+def test_flux2_model_resolver_preserves_comfyui_returned_separator() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    available = [r"flux-2-klein\flux-2-klein-9b-fp8.safetensors"]
+
+    assert (
+        ComfyUIAIStudio._resolve_flux2_model(
+            "flux-2-klein/flux-2-klein-9b-fp8.safetensors",
+            available,
+            "核心模型",
+        )
+        == available[0]
+    )
+
+
+def test_lora_order_preserves_comfyui_returned_separator() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.lora_download_order = {}
+    available = [r"flux-2-klein\flux-2-klein-NSFW.safetensors"]
+
+    assert plugin._order_loras(available) == available
+
+
+def test_comfy_queue_info_reads_running_and_pending_entries() -> None:
+    from astrbot_plugin_comfyui_ai_studio.comfy import ComfyClient
+
+    client = ComfyClient("http://127.0.0.1:8188")
+
+    async def fake_request(method, path, **kwargs):
+        assert method == "GET"
+        assert path == "/queue"
+        return {"queue_running": [[1, "running", {}]], "queue_pending": [[2, "pending", {}]]}
+
+    client.request = fake_request
+    result = asyncio.run(client.queue_info())
+
+    assert len(result["queue_running"]) == 1
+    assert len(result["queue_pending"]) == 1
+
+
+def test_queue_snapshot_estimates_batch_images_and_formats_notice() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.config = {"draw_queue_notice_enabled": True}
+    plugin._get = lambda key, default="": plugin.config.get(key, default)
+
+    async def fake_snapshot():
+        return {
+            "available": True,
+            "running_tasks": 1,
+            "pending_tasks": 2,
+            "running_images": 2,
+            "pending_images": 3,
+            "queued_tasks": 3,
+            "queued_images": 5,
+        }
+
+    plugin._queue_snapshot = fake_snapshot
+    params = DrawParams(batch=2)
+    asyncio.run(plugin._check_draw_queue(params, "txt2img"))
+
+    assert params.queue_available is True
+    assert params.queue_images_before == 5
+    assert params.queue_tasks_before == 3
+    assert "当前前面已有 5 张图排队" in params.queue_notice_text
+    assert "运行中 2 张" in params.queue_notice_text
+    assert "等待中 3 张" in params.queue_notice_text
+
+
+def test_queue_limit_rejects_when_existing_queue_plus_batch_is_too_large() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams, UsageError
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.config = {
+        "draw_queue_notice_enabled": True,
+        "draw_queue_limit_enabled": True,
+        "draw_queue_limit_count": 3,
+    }
+    plugin._get = lambda key, default="": plugin.config.get(key, default)
+
+    async def fake_snapshot():
+        return {
+            "available": True,
+            "running_tasks": 1,
+            "pending_tasks": 1,
+            "running_images": 1,
+            "pending_images": 1,
+            "queued_tasks": 2,
+            "queued_images": 2,
+        }
+
+    plugin._queue_snapshot = fake_snapshot
+    with pytest.raises(UsageError, match="超过允许的最多排队 3 张"):
+        asyncio.run(plugin._check_draw_queue(DrawParams(batch=2), "txt2img"))
+
+
+def test_queue_limit_allows_configured_admin() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class AdminEvent:
+        def get_sender_id(self) -> str:
+            return "admin-1"
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.config = {
+        "draw_queue_notice_enabled": True,
+        "draw_queue_limit_enabled": True,
+        "draw_queue_limit_count": 1,
+        "draw_limit_admin_ids": "admin-1",
+    }
+    plugin._get = lambda key, default="": plugin.config.get(key, default)
+
+    async def fake_snapshot():
+        return {
+            "available": True,
+            "running_tasks": 2,
+            "pending_tasks": 2,
+            "running_images": 2,
+            "pending_images": 2,
+            "queued_tasks": 4,
+            "queued_images": 4,
+        }
+
+    plugin._queue_snapshot = fake_snapshot
+    params = DrawParams(batch=1)
+    asyncio.run(plugin._check_draw_queue(params, "txt2img", AdminEvent()))
+
+    assert params.queue_images_before == 4
+    assert "当前前面已有 4 张图排队" in params.queue_notice_text
+
+
+def test_llm_start_reply_uses_persona_and_keeps_exact_queue_notice() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.config = {"draw_queue_notice_enabled": True}
+    plugin._get = lambda key, default="": plugin.config.get(key, default)
+
+    async def fake_generate(*args, **kwargs):
+        assert kwargs["use_event_context"] is True
+        return "我来准备这张图啦！"
+
+    plugin._astrbot_generate = fake_generate
+    params = DrawParams(
+        mode="txt2img",
+        prompt="海边的夏空",
+        queue_available=True,
+        queue_images_before=4,
+        queue_tasks_before=2,
+        queue_running_images=1,
+        queue_pending_images=3,
+    )
+    result = asyncio.run(plugin._ai_draw_start_reply(object(), params, "txt2img"))
+
+    assert result.startswith("我来准备这张图啦")
+    assert "当前前面已有 4 张图排队" in result
+
+
+def test_llm_start_reply_does_not_treat_an_unrelated_number_as_queue_notice() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin.config = {"draw_queue_notice_enabled": True}
+    plugin._get = lambda key, default="": plugin.config.get(key, default)
+
+    async def fake_generate(*args, **kwargs):
+        return "我会在第 4 步开始处理这张图。"
+
+    plugin._astrbot_generate = fake_generate
+    params = DrawParams(
+        mode="txt2img",
+        prompt="海边的夏空",
+        queue_available=True,
+        queue_images_before=5,
+        queue_tasks_before=2,
+        queue_running_images=2,
+        queue_pending_images=3,
+    )
+    result = asyncio.run(plugin._ai_draw_start_reply(object(), params, "txt2img"))
+
+    assert result.endswith("当前前面已有 5 张图排队（运行中 2 张，等待中 3 张，共 2 个任务）。")

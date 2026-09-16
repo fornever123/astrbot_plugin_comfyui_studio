@@ -41,6 +41,11 @@ class DrawParams:
     # LLM 工具可以把自然语言交给当前 AstrBot 内置 AI 优化；普通指令不使用这两个字段。
     ai_source: str = ""
     auto_ai: bool = False
+    # 结构化 LLM 工具已经完成了绘图提示词整理。即使上游错误传入
+    # ai=true，也不能在后台 _prompt_text 中再次调用文生图 AI。
+    llm_invocation: bool = False
+    # 普通斜杠命令必须保留用户原话；LLM 工具和显式 ai 指令不设置此标记。
+    command_invocation: bool = False
     width: int = 0
     height: int = 0
     steps: int = 0
@@ -62,6 +67,27 @@ class DrawParams:
     draw_limit_user_id: str = ""
     draw_limit_token: str = ""
     draw_limit_cost: int = 0
+    # 提交前读取的 ComfyUI 队列快照。只用于回复和队列限制，不写入工作流。
+    queue_available: bool | None = None
+    queue_running_tasks: int = 0
+    queue_pending_tasks: int = 0
+    queue_running_images: int = 0
+    queue_pending_images: int = 0
+    queue_images_before: int = 0
+    queue_tasks_before: int = 0
+    queue_requested_images: int = 1
+    queue_notice_text: str = ""
+    # 本次文生图实际使用的画风 LoRA。它必须记录最终解析结果，不能在
+    # 完成回复时再次随机，否则用户看到的名称可能和工作流实际使用的不一致。
+    style_loras_used: list[dict[str, Any]] = field(default_factory=list)
+    # 本次任务显式要求不使用画风时，跳过常态画风和随机画风。
+    style_lora_disabled: bool = False
+    # 图生图独立 LoRA 的「特别标注」。图生图只受独立 LoRA 影响，该文案会
+    # 出现在开始回复中，提醒用户文生图 LoRA 列表不会串入图生图。
+    lora_isolation_notice: str = ""
+    # 图片安全审核在输入或输出端命中后置位：只回传警告，跳过“生成完成”回复。
+    moderation_blocked: bool = False
+    moderation_blocked_reason: str = ""
 
 
 def _tokens(text: str) -> list[str]:

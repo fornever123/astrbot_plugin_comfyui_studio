@@ -1,7 +1,7 @@
 """ComfyUI 插件内置的 Anima 提示词工程师规则。
 
 模板随本插件发布，绘图插件的命令翻译、LLM 绘图和预设翻译都使用同一份
-精简规则。保留旧的外部模板路径只是为了兼容已有安装，不再依赖另一个插件。
+精简规则。模板路径可在 WebUI 中覆盖，默认使用插件内置的 knowledge 目录。
 """
 
 from __future__ import annotations
@@ -25,16 +25,25 @@ def _section(text: str, start_title: str, end_title: str) -> str:
     return text[start:] if end < 0 else text[start:end]
 
 
-def _template_candidates(plugin_dir: Path) -> list[Path]:
-    return [
-        plugin_dir / "knowledge" / "提示词模版.txt",
-        Path(r"E:\【1】Anima3\提示词模版.txt"),
-    ]
+def _template_candidates(plugin_dir: Path, extra_path: str = "") -> list[Path]:
+    """用户配置的模板优先；未配置或读不到时回退到插件内置模板。"""
+    candidates: list[Path] = []
+    text = str(extra_path or "").strip()
+    if text:
+        custom = Path(text)
+        try:
+            is_dir = custom.is_dir()
+        except OSError:
+            is_dir = False
+        # 允许直接指向文件，也允许指向存放「提示词模版.txt」的目录。
+        candidates.extend([custom / "提示词模版.txt", custom] if is_dir else [custom])
+    candidates.append(plugin_dir / "knowledge" / "提示词模版.txt")
+    return candidates
 
 
-def find_template_path(plugin_dir: Path) -> Path | None:
-    """Locate the bundled template, with a legacy external fallback."""
-    for path in _template_candidates(plugin_dir):
+def find_template_path(plugin_dir: Path, extra_path: str = "") -> Path | None:
+    """定位已配置的模板，其次使用随插件发布的模板。"""
+    for path in _template_candidates(plugin_dir, extra_path):
         try:
             if path.is_file():
                 return path
@@ -43,10 +52,10 @@ def find_template_path(plugin_dir: Path) -> Path | None:
     return None
 
 
-def build_context(plugin_dir: Path, maximum: int = 2600) -> str:
+def build_context(plugin_dir: Path, maximum: int = 2600, extra_path: str = "") -> str:
     """返回内置 Anima 模板的精简上下文，读取失败时仍返回核心规则。"""
     source = ""
-    path = find_template_path(plugin_dir)
+    path = find_template_path(plugin_dir, extra_path)
     if path:
         try:
             source = path.read_text(encoding="utf-8")

@@ -14,8 +14,8 @@
   "source_workflow": {
     "type": "string",
     "description": "原始工作流位置",
-    "hint": "本插件不会覆盖原始文件，每次加载会从这里刷新默认工作流副本",
-    "default": "E:\\难工作流.json"
+    "hint": "留空使用插件内置 workflows 目录；填写后本插件不会覆盖原始文件，每次加载会从这里刷新默认工作流副本",
+    "default": ""
   },
   "workflow_dir": {
     "type": "string",
@@ -33,16 +33,115 @@
     "description": "图生图工作流文件名",
     "default": "图生图_qwen_edit.json"
   },
+  "workflow_img2img_flux2": {
+    "type": "string",
+    "description": "Flux2 图生图工作流文件名",
+    "default": "图生图_flux2_klein.json"
+  },
+  "img2img_engine": {
+    "type": "string",
+    "description": "图生图默认引擎",
+    "hint": "qwen 使用原 Qwen 图生图；flux2 使用独立 Flux2 Klein 1 到 3 张参考图图生图",
+    "default": "qwen",
+    "options": ["qwen", "flux2"],
+    "enum": ["qwen", "flux2"]
+  },
   "workflow_hires": {
     "type": "string",
     "description": "高清放大工作流文件名",
     "default": "高清放大.json"
   },
+  "workflow_wash": {
+    "type": "string",
+    "description": "洗图工作流文件名",
+    "default": "洗图.json"
+  },
+  "workflow_outpaint": {
+    "type": "string",
+    "description": "扩图工作流文件名",
+    "default": "扩图.json"
+  },
+  "workflow_multi_angle": {
+    "type": "string",
+    "description": "多角度工作流文件名",
+    "default": "多角度.json"
+  },
+  "wash_source_workflow": {
+    "type": "string",
+    "description": "洗图源工作流位置",
+    "hint": "支持 ComfyUI 编辑器或 API 格式；留空使用插件内置工作流",
+    "default": ""
+  },
+  "outpaint_source_workflow": {
+    "type": "string",
+    "description": "扩图源工作流位置",
+    "hint": "支持 ComfyUI 编辑器或 API 格式；留空使用插件内置工作流",
+    "default": ""
+  },
+  "multi_angle_source_workflow": {
+    "type": "string",
+    "description": "多角度源工作流位置",
+    "hint": "支持 ComfyUI 编辑器或 API 格式；留空使用插件内置工作流",
+    "default": ""
+  },
+  "wash_model_name": { "type": "string", "description": "洗图独立核心模型，留空沿用工作流", "default": "" },
+  "wash_clip_name": { "type": "string", "description": "洗图独立文本编码器，留空沿用工作流", "default": "" },
+  "wash_vae_name": { "type": "string", "description": "洗图独立 VAE，留空沿用工作流", "default": "" },
+  "wash_default_positive": { "type": "text", "description": "洗图默认正面提示词", "default": "" },
+  "wash_default_negative": { "type": "text", "description": "洗图默认负面提示词", "default": "" },
+  "wash_steps": { "type": "int", "description": "洗图采样步数", "default": 6 },
+  "wash_cfg": { "type": "float", "description": "洗图 CFG", "default": 1.0 },
+  "wash_seed": { "type": "int", "description": "洗图随机种子，-1 为随机", "default": -1 },
+  "wash_denoise": { "type": "float", "description": "洗图重绘幅度", "default": 0.6 },
+  "wash_sampler_name": { "type": "string", "description": "洗图采样器", "default": "euler" },
+  "wash_scheduler": { "type": "string", "description": "洗图调度器", "default": "simple" },
+  "wash_size": { "type": "int", "description": "洗图工作流缩放长度，0 表示沿用工作流", "default": 0 },
+  "wash_batch": { "type": "int", "description": "洗图批次", "default": 1 },
+  "wash_caption_tokens": { "type": "int", "description": "洗图 Florence2 最大输出 Token", "default": 1024 },
+  "wash_filename_prefix": { "type": "string", "description": "洗图输出文件名前缀", "default": "astrbot/wash" },
+  "outpaint_model_name": { "type": "string", "description": "扩图独立核心模型，留空沿用工作流", "default": "" },
+  "outpaint_clip_name": { "type": "string", "description": "扩图独立文本编码器，留空沿用工作流", "default": "" },
+  "outpaint_vae_name": { "type": "string", "description": "扩图独立 VAE，留空沿用工作流", "default": "" },
+  "outpaint_default_positive": { "type": "text", "description": "扩图默认正面提示词", "default": "" },
+  "outpaint_default_negative": { "type": "text", "description": "扩图默认负面提示词", "default": "" },
+  "outpaint_steps": { "type": "int", "description": "扩图采样步数", "default": 6 },
+  "outpaint_cfg": { "type": "float", "description": "扩图 CFG", "default": 1.0 },
+  "outpaint_seed": { "type": "int", "description": "扩图随机种子，-1 为随机", "default": -1 },
+  "outpaint_denoise": { "type": "float", "description": "扩图重绘幅度", "default": 1.0 },
+  "outpaint_sampler_name": { "type": "string", "description": "扩图采样器", "default": "euler" },
+  "outpaint_scheduler": { "type": "string", "description": "扩图调度器", "default": "simple" },
+  "outpaint_size": { "type": "int", "description": "扩图工作流缩放长度，0 表示沿用工作流", "default": 0 },
+  "outpaint_batch": { "type": "int", "description": "扩图批次", "default": 1 },
+  "outpaint_left": { "type": "int", "description": "扩图左侧边距", "default": 504 },
+  "outpaint_top": { "type": "int", "description": "扩图上侧边距", "default": 0 },
+  "outpaint_right": { "type": "int", "description": "扩图右侧边距", "default": 504 },
+  "outpaint_bottom": { "type": "int", "description": "扩图下侧边距", "default": 0 },
+  "outpaint_feathering": { "type": "int", "description": "扩图羽化边缘", "default": 0 },
+  "outpaint_filename_prefix": { "type": "string", "description": "扩图输出文件名前缀", "default": "astrbot/outpaint" },
+  "multi_angle_model_name": { "type": "string", "description": "多角度独立核心模型，留空沿用工作流", "default": "" },
+  "multi_angle_clip_name": { "type": "string", "description": "多角度独立文本编码器，留空沿用工作流", "default": "" },
+  "multi_angle_vae_name": { "type": "string", "description": "多角度独立 VAE，留空沿用工作流", "default": "" },
+  "multi_angle_default_positive": { "type": "text", "description": "多角度默认正面提示词", "default": "" },
+  "multi_angle_default_negative": { "type": "text", "description": "多角度默认负面提示词", "default": "" },
+  "multi_angle_steps": { "type": "int", "description": "多角度采样步数", "default": 6 },
+  "multi_angle_cfg": { "type": "float", "description": "多角度 CFG", "default": 1.0 },
+  "multi_angle_seed": { "type": "int", "description": "多角度随机种子，-1 为随机", "default": -1 },
+  "multi_angle_denoise": { "type": "float", "description": "多角度重绘幅度", "default": 1.0 },
+  "multi_angle_sampler_name": { "type": "string", "description": "多角度采样器", "default": "euler" },
+  "multi_angle_scheduler": { "type": "string", "description": "多角度调度器", "default": "simple" },
+  "multi_angle_size": { "type": "int", "description": "多角度工作流缩放长度，0 表示沿用工作流", "default": 0 },
+  "multi_angle_batch": { "type": "int", "description": "多角度批次", "default": 1 },
+  "multi_angle_horizontal_angle": { "type": "int", "description": "多角度水平角度", "default": 71 },
+  "multi_angle_vertical_angle": { "type": "int", "description": "多角度垂直角度", "default": 42 },
+  "multi_angle_zoom": { "type": "float", "description": "多角度缩放", "default": 4.5 },
+  "multi_angle_default_prompts": { "type": "bool", "description": "多角度使用节点默认镜头提示", "default": true },
+  "multi_angle_camera_view": { "type": "bool", "description": "多角度启用相机视角描述", "default": false },
+  "multi_angle_filename_prefix": { "type": "string", "description": "多角度输出文件名前缀", "default": "astrbot/multi_angle" },
   "img2img_source_workflow": {
     "type": "string",
     "description": "Qwen Image Edit 图生图源工作流位置",
-    "hint": "支持 ComfyUI API 格式；如果填写编辑器格式，插件会在启动时兼容转换",
-    "default": "E:\\112121121.json"
+    "hint": "留空使用插件内置工作流；支持 ComfyUI API 格式，填写编辑器格式时插件会在启动时兼容转换",
+    "default": ""
   },
   "img2img_unet_name": {
     "type": "string",
@@ -81,22 +180,28 @@
   },
   "img2img_llm_prompt_source": {
     "type": "string",
-    "description": "图生图 LLM 编辑提示词来源",
-    "hint": "plugin 使用插件独立 AI 将要求整理为精简编辑指令；astrbot 直接使用 AstrBot LLM 传入的编辑要求",
+    "description": "图生图 AI 来源",
+    "hint": "plugin 使用插件独立 AI；astrbot 使用 AstrBot 当前 AI。二者共用统一图生图编辑规则。",
     "default": "plugin",
     "options": ["plugin", "astrbot"],
     "enum": ["plugin", "astrbot"]
   },
+  "img2img_ai_system_prompt": {
+    "type": "text",
+    "description": "统一图生图 AI 系统提示词",
+    "hint": "留空使用内置规则。这里控制 LLM 图生图和 /图生图 ai 的中文短编辑句生成。",
+    "default": ""
+  },
   "img2img_plugin_ai_llm_system_prompt": {
     "type": "text",
-    "description": "图生图插件 AI：LLM 编辑提示词",
-    "hint": "留空使用内置规则，只输出用户明确要求的编辑内容",
+    "description": "旧版兼容：图生图插件 AI 提示词",
+    "hint": "已由统一图生图 AI 系统提示词接管；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_plugin_ai_knowledge": {
     "type": "text",
-    "description": "图生图编辑知识库",
-    "hint": "留空使用内置的保留原图规则；可补充你自己的编辑约束",
+    "description": "图生图补充编辑知识",
+    "hint": "可选补充规则；留空使用内置规则。",
     "default": ""
   },
   "img2img_plugin_ai_debug": {
@@ -107,32 +212,32 @@
   },
   "img2img_llm_tool_prompt": {
     "type": "text",
-    "description": "图生图 AstrBot 工具规则",
-    "hint": "AstrBot LLM 判断使用图生图工具时的规则；留空使用内置规则。",
+    "description": "旧版兼容：图生图 AstrBot 工具规则",
+    "hint": "已改为内置工具调用规则；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_astrbot_llm_system_prompt": {
     "type": "text",
-    "description": "图生图 AstrBot LLM 系统提示词",
-    "hint": "使用 AstrBot LLM 时的完整系统提示词；留空使用内置规则。",
+    "description": "旧版兼容：图生图 AstrBot LLM 系统提示词",
+    "hint": "已由统一图生图 AI 系统提示词接管；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_astrbot_user_prompt_template": {
     "type": "text",
-    "description": "图生图 AstrBot LLM 用户输入模板",
-    "hint": "支持 {request}、{用户要求} 或 {用户原话} 占位符；留空使用内置模板。",
+    "description": "旧版兼容：图生图 AstrBot LLM 用户输入模板",
+    "hint": "已改为内置输入模板；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_plugin_ai_user_prompt_template": {
     "type": "text",
-    "description": "图生图插件 AI 用户输入模板",
-    "hint": "支持 {request}、{用户要求} 或 {用户原话} 占位符；留空使用内置模板。",
+    "description": "旧版兼容：图生图插件 AI 用户输入模板",
+    "hint": "已改为内置输入模板；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_plugin_ai_output_format": {
     "type": "text",
-    "description": "图生图 AI 输出格式要求",
-    "hint": "插件 AI 和 AstrBot LLM 共用；留空使用内置 EDIT 格式要求。",
+    "description": "旧版兼容：图生图 AI 输出格式要求",
+    "hint": "已改为内置中文短编辑句输出要求；保留仅用于兼容旧配置。",
     "default": ""
   },
   "img2img_width": {
@@ -151,14 +256,22 @@
     "hint": "开启后以宽度和高度作为最大外框，自动保持原图比例",
     "default": true
   },
+  "img2img_match_input_size": {
+    "type": "bool",
+    "description": "图生图默认沿用输入图尺寸",
+    "hint": "开启时保持原图宽高比，并以“参考图最大边”为上限；小图不放大，超大图按比例缩小；指令明确填写宽高时仍以指令为准",
+    "default": true
+  },
   "img2img_steps": {
     "type": "int",
-    "description": "图生图采样步数",
+    "description": "Qwen 图生图采样步数",
+    "hint": "始终使用此普通采样参数；当前回退版本不使用加速 LoRA",
     "default": 4
   },
   "img2img_cfg": {
     "type": "float",
-    "description": "图生图 CFG",
+    "description": "Qwen 图生图 CFG",
+    "hint": "始终使用此普通采样参数；当前回退版本不使用加速 LoRA",
     "default": 1.0
   },
   "img2img_seed": {
@@ -179,6 +292,7 @@
   "img2img_denoise": {
     "type": "float",
     "description": "图生图重绘幅度",
+    "hint": "回退到提供的 Qwen 工作流默认值 1.0；数值越高，越容易改变原图人物和构图",
     "default": 1.0
   },
   "img2img_scale_method": {
@@ -189,12 +303,14 @@
   "img2img_largest_size": {
     "type": "int",
     "description": "图生图参考图最大边",
+    "hint": "用于控制 Qwen 编码前的参考图尺寸；8GB 显存建议 1024-1152，数值越大越慢但细节更多",
     "default": 1152
   },
   "img2img_crop": {
     "type": "string",
     "description": "图生图参考图裁剪方式",
-    "default": "center"
+    "hint": "默认 disabled，保持原图完整画布；需要裁剪时再填写 center",
+    "default": "disabled"
   },
   "img2img_megapixels": {
     "type": "float",
@@ -225,7 +341,7 @@
     "type": "bool",
     "description": "图生图 CFGNorm 预 CFG",
     "hint": "对应 Qwen 工作流 CFGNorm 节点的 pre_cfg 输入",
-    "default": false
+    "default": true
   },
   "img2img_tile_size": {
     "type": "int",
@@ -257,6 +373,140 @@
     "description": "图生图输出文件名前缀",
     "default": "astrbot/img2img_qwen"
   },
+  "img2img_flux2_source_workflow": {
+    "type": "string",
+    "description": "Flux2 Klein 图生图源工作流位置",
+    "hint": "留空使用插件内置工作流；支持 ComfyUI API 格式，插件会复制到自己的 workflows 目录，不会覆盖源文件",
+    "default": ""
+  },
+  "img2img_flux2_unet_name": {
+    "type": "string",
+    "description": "Flux2 图生图独立核心模型",
+    "default": "flux-2-klein\\flux-2-klein-9b-fp8.safetensors"
+  },
+  "img2img_flux2_clip_name": {
+    "type": "string",
+    "description": "Flux2 图生图独立文本编码器",
+    "default": "qwen_3_8b_fp8mixed.safetensors"
+  },
+  "img2img_flux2_vae_name": {
+    "type": "string",
+    "description": "Flux2 图生图独立 VAE",
+    "default": "flux2-vae.safetensors"
+  },
+  "img2img_flux2_lora_name": {
+    "type": "string",
+    "description": "Flux2 图生图独立 LoRA，留空关闭",
+    "default": ""
+  },
+  "img2img_flux2_lora_strength": {
+    "type": "float",
+    "description": "Flux2 图生图独立 LoRA 权重",
+    "default": 0.9
+  },
+  "img2img_flux2_default_positive": {
+    "type": "text",
+    "description": "Flux2 图生图默认正面提示词",
+    "default": ""
+  },
+  "img2img_flux2_default_negative": {
+    "type": "text",
+    "description": "Flux2 图生图默认负面提示词（工作流当前使用零化负面条件）",
+    "default": ""
+  },
+  "img2img_flux2_prompt_template": {
+    "type": "text",
+    "description": "Flux2 图生图中文 AI 用户输入模板",
+    "hint": "使用 {request} 代表用户编辑要求；默认模板与 Qwen 图生图相同",
+    "default": "用户的图生图编辑要求：\\n{request}\\n\\n只写用户明确想改变的内容，输出一行具体、简短的中文编辑句。\\n不要重新描述原图，不要翻译成英文，不要补充用户没有要求的服装、场景或人物设定。\\n未要求改变的内容保持原图不变。"
+  },
+  "img2img_flux2_llm_prompt_source": {
+    "type": "string",
+    "description": "Flux2 图生图 AI 来源",
+    "hint": "plugin 使用插件 AI；astrbot 使用 AstrBot 当前 AI",
+    "default": "plugin",
+    "options": ["plugin", "astrbot"],
+    "enum": ["plugin", "astrbot"]
+  },
+  "img2img_flux2_ai_system_prompt": {
+    "type": "text",
+    "description": "Flux2 图生图中文 AI 系统提示词",
+    "hint": "留空使用与 Qwen 图生图相同的中文编辑规则",
+    "default": ""
+  },
+  "img2img_flux2_plugin_ai_knowledge": {
+    "type": "text",
+    "description": "Flux2 图生图补充编辑知识",
+    "default": ""
+  },
+  "img2img_flux2_plugin_ai_debug": {
+    "type": "bool",
+    "description": "显示 Flux2 图生图插件 AI 调试信息",
+    "default": false
+  },
+  "img2img_flux2_output_format": {
+    "type": "text",
+    "description": "Flux2 图生图 AI 输出格式要求",
+    "hint": "留空使用内置中文短编辑句格式",
+    "default": ""
+  },
+  "img2img_flux2_plain_translate_enabled": {
+    "type": "bool",
+    "description": "Flux2 图生图普通中文翻译",
+    "hint": "默认关闭；Flux2 工作流本身支持中文提示词",
+    "default": false
+  },
+  "img2img_flux2_plain_translate_url": {
+    "type": "string",
+    "description": "Flux2 图生图普通翻译网站地址",
+    "default": "https://translate.googleapis.com/translate_a/single"
+  },
+  "img2img_flux2_size": {
+    "type": "int",
+    "description": "Flux2 图生图参考图最大边",
+    "hint": "0 表示沿用工作流；输出保持第一张参考图的宽高比",
+    "default": 1280
+  },
+  "img2img_flux2_steps": {
+    "type": "int",
+    "description": "Flux2 图生图采样步数",
+    "default": 6
+  },
+  "img2img_flux2_cfg": {
+    "type": "float",
+    "description": "Flux2 图生图 CFG",
+    "default": 1.0
+  },
+  "img2img_flux2_seed": {
+    "type": "int",
+    "description": "Flux2 图生图随机种子，-1 为随机",
+    "default": -1
+  },
+  "img2img_flux2_sampler_name": {
+    "type": "string",
+    "description": "Flux2 图生图采样器",
+    "default": "euler"
+  },
+  "img2img_flux2_scheduler": {
+    "type": "string",
+    "description": "Flux2 图生图调度器",
+    "default": "simple"
+  },
+  "img2img_flux2_denoise": {
+    "type": "float",
+    "description": "Flux2 图生图重绘幅度",
+    "default": 1.0
+  },
+  "img2img_flux2_batch": {
+    "type": "int",
+    "description": "Flux2 图生图输出批次",
+    "default": 1
+  },
+  "img2img_flux2_filename_prefix": {
+    "type": "string",
+    "description": "Flux2 图生图输出文件名前缀",
+    "default": "astrbot/img2img_flux2_klein"
+  },
   "model_name": {
     "type": "string",
     "description": "默认核心模型",
@@ -266,6 +516,39 @@
     "type": "list",
     "description": "默认启用的多个 LoRA，格式为 文件名:权重",
     "default": []
+  },
+  "style_lora_mode": {
+    "type": "string",
+    "description": "画风 LoRA 自动使用方式",
+    "hint": "random 每次文生图随机使用指定数量；all 使用全部；off 关闭自动画风 LoRA",
+    "default": "random",
+    "options": ["random", "all", "off"],
+    "enum": ["random", "all", "off"]
+  },
+  "style_lora_random_count": {
+    "type": "int",
+    "description": "随机画风 LoRA 数量",
+    "hint": "随机模式每次文生图抽取的不同画风 LoRA 数量，默认为 1，最多 16 个",
+    "default": 1,
+    "min": 1,
+    "max": 16
+  },
+  "style_lora_list": {
+    "type": "list",
+    "description": "画风 LoRA 候选文件列表",
+    "hint": "只在 WebUI 的画风 LoRA 模块中勾选的文件会参与自动选择",
+    "default": []
+  },
+  "style_lora_aliases": {
+    "type": "dict",
+    "description": "画风 LoRA 指令简称",
+    "hint": "未填写时自动分配稳定的画风数字；新增画风使用已有最大编号加一，旧简称不会变化",
+    "default": {}
+  },
+  "style_lora_weights": {
+    "type": "dict",
+    "description": "画风 LoRA 权重",
+    "default": {}
   },
   "default_positive": {
     "type": "text",
@@ -303,12 +586,26 @@
     "description": "AI 模型",
     "default": "gpt-4o-mini"
   },
+  "civitai_base_url": {
+    "type": "string",
+    "description": "CivitAI 兼容站地址",
+    "hint": "例如 https://civitai.com 或 https://civitai.red；不要填写 /api/v1",
+    "default": "https://civitai.com"
+  },
   "civitai_token": {
     "type": "string",
     "description": "CivitAI API Key（可选）",
     "hint": "公共 LoRA 通常不需要；下载受限、私有或被限流的模型时可填写 CivitAI API Key",
     "secret": true,
     "default": ""
+  },
+  "civitai_download_mode": {
+    "type": "string",
+    "description": "C 站下载方式",
+    "hint": "auto 先免 API Key 解析、失败再退回 API；nokey 全程免 API Key（直链或解析模型页）；token 始终使用 CivitAI API。免 API 方式支持直链下载地址和模型页链接，公共 LoRA 无需任何密钥。",
+    "default": "auto",
+    "options": ["auto", "nokey", "token"],
+    "enum": ["auto", "nokey", "token"]
   },
   "llm_prompt_source": {
     "type": "string",
@@ -350,8 +647,8 @@
   },
   "draw_reply_mode": {
     "type": "string",
-    "description": "绘图完成后的回复方式",
-    "hint": "custom 使用自定义固定内容；astrbot 使用当前会话的 AstrBot 人格",
+    "description": "绘图完成后的回复方式：LLM 人格或固定回复",
+    "hint": "custom 使用固定回复；astrbot 使用当前会话 LLM 人格，并准确说明绘图模式和图片数量",
     "default": "astrbot",
     "options": ["custom", "astrbot"],
     "enum": ["custom", "astrbot"]
@@ -382,6 +679,65 @@
     "hint": "每行一个群号，也支持逗号或空格分隔；黑名单群仍可生成普通图片",
     "default": ""
   },
+  "moderation_enabled": {
+    "type": "bool",
+    "description": "图片安全审核总开关",
+    "hint": "开启后按下面两个名单分别检测输入图片和生成结果；命中 NSFW 或猎奇图片时直接回传警告，不发送图片",
+    "default": false
+  },
+  "moderation_input_groups": {
+    "type": "text",
+    "description": "输入端审核生效名单",
+    "hint": "每行一个群号；填 QQ 号只检测该用户；填 * 表示所有群聊。留空表示不检测输入端",
+    "default": ""
+  },
+  "moderation_output_groups": {
+    "type": "text",
+    "description": "输出端审核生效名单",
+    "hint": "每行一个群号；填 QQ 号只检测该用户；填 * 表示所有群聊。留空表示不检测输出端",
+    "default": ""
+  },
+  "moderation_base_url": {
+    "type": "string",
+    "description": "审核模型服务地址",
+    "hint": "OpenAI 兼容接口，例如 https://api.a6api.com/v1；留空则跳过检测",
+    "default": ""
+  },
+  "moderation_api_key": {
+    "type": "string",
+    "description": "审核模型 API Key",
+    "secret": true,
+    "default": ""
+  },
+  "moderation_model": {
+    "type": "string",
+    "description": "审核模型名称",
+    "hint": "必须是支持图片输入的多模态模型，例如 gemini-2.5-flash、gpt-4o-mini",
+    "default": ""
+  },
+  "moderation_strictness": {
+    "type": "string",
+    "description": "审核判定尺度",
+    "hint": "loose=只拦露骨和严重血腥；standard=拦性暗示及以上与轻微血腥；strict=擦边也拦",
+    "default": "standard"
+  },
+  "moderation_timeout": {
+    "type": "int",
+    "description": "单张图片审核超时秒数",
+    "default": 30
+  },
+  "moderation_fail_open": {
+    "type": "bool",
+    "description": "审核服务异常时是否放行",
+    "hint": "开启（默认）：审核接口报错时正常出图；关闭：审核失败也拦截并回传警告",
+    "default": true
+  },
+  "moderation_max_side": {
+    "type": "int",
+    "description": "送审图片压缩后的最长边像素",
+    "hint": "越小越快越省流量；1024 已能覆盖审核所需细节",
+    "default": 1024
+  },
   "plain_translate_enabled": {
     "type": "bool",
     "description": "自动翻译普通中文提示词",
@@ -394,6 +750,17 @@
     "hint": "默认使用 Google Translate 网页接口",
     "default": "https://translate.googleapis.com/translate_a/single"
   },
+  "img2img_plain_translate_enabled": {
+    "type": "bool",
+    "description": "图生图非 AI 中文自动翻译",
+    "hint": "默认关闭；图生图默认把中文短编辑要求直接交给 Qwen Image Edit",
+    "default": false
+  },
+  "img2img_plain_translate_url": {
+    "type": "string",
+    "description": "图生图普通翻译网站地址",
+    "default": "https://translate.googleapis.com/translate_a/single"
+  },
   "draw_reply_custom": {
     "type": "string",
     "description": "绘图完成后的自定义回复",
@@ -403,8 +770,28 @@
   "draw_start_reply": {
     "type": "string",
     "description": "开始绘图时发送的自定义提示",
-    "hint": "支持 {mode} 和 {prompt}",
+    "hint": "支持 {mode}、{prompt}、{queue}、{queue_images}、{queue_tasks}",
     "default": "{mode}任务已提交，生成期间可以继续聊天，完成后会发送结果。"
+  },
+  "llm_draw_start_reply_mode": {
+    "type": "string",
+    "description": "LLM 绘图开始回复方式",
+    "hint": "ai 使用当前 AstrBot 人格先回复一句；fixed 使用固定中文开始回复",
+    "default": "ai",
+    "options": ["ai", "fixed"],
+    "enum": ["ai", "fixed"]
+  },
+  "draw_queue_notice_enabled": {
+    "type": "bool",
+    "description": "绘图前显示 ComfyUI 排队数量",
+    "hint": "会显示运行中和等待中的估算图片数；关闭后不读取队列",
+    "default": true
+  },
+  "draw_queue_notice_ai": {
+    "type": "bool",
+    "description": "普通指令的队列提示使用 AstrBot AI",
+    "hint": "开启后普通斜杠指令的开始提示使用当前 AstrBot 人格；AI 失败自动回退固定中文",
+    "default": false
   },
   "width": {
     "type": "int",
@@ -483,6 +870,18 @@
     "hint": "例如 3600 表示一小时",
     "default": 3600
   },
+  "draw_queue_limit_enabled": {
+    "type": "bool",
+    "description": "队列过多时禁止继续绘图",
+    "hint": "开启后，当前队列加本次预计图片数超过上限时拒绝提交；读取队列失败也会拒绝提交",
+    "default": false
+  },
+  "draw_queue_limit_count": {
+    "type": "int",
+    "description": "最多允许排队图片数",
+    "hint": "包含运行中和等待中的图片，只在队列限制开关开启时生效",
+    "default": 4
+  },
   "draw_limit_admin_ids": {
     "type": "text",
     "description": "绘图管理员 ID",
@@ -493,6 +892,24 @@
     "type": "string",
     "description": "ComfyUI 启动脚本路径",
     "hint": "留空自动寻找 run_nvidia_gpu.bat 或 run.bat；仅管理员可通过指令启动",
+    "default": ""
+  },
+  "image_font_regular": {
+    "type": "string",
+    "description": "图片字体文件（常规）",
+    "hint": "帮助图和 LoRA 总览图使用的常规字体；留空自动探测系统中文字体",
+    "default": ""
+  },
+  "image_font_bold": {
+    "type": "string",
+    "description": "图片字体文件（粗体）",
+    "hint": "标题使用的粗体字体；留空自动探测系统中文字体",
+    "default": ""
+  },
+  "anima_template_path": {
+    "type": "string",
+    "description": "Anima 提示词模板路径",
+    "hint": "可填写模板文件或所在目录；留空使用插件内置 knowledge/提示词模版.txt",
     "default": ""
   },
   "anima_teacache": {

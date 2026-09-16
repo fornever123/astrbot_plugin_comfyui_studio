@@ -1,7 +1,7 @@
 {
   "1": {
     "inputs": {
-      "prompt": "下一秒，图1人物站了起来",
+      "prompt": "naked,nude",
       "clip": [
         "161",
         0
@@ -31,7 +31,7 @@
   },
   "11": {
     "inputs": {
-      "image": "222.jpg"
+      "image": "6b8ea1dc3bf9a99ddaced40ceadc5a4b.jpg"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -108,12 +108,12 @@
           {
             "name": "A",
             "selected": true,
-            "url": "/api/view?filename=rgthree.compare._temp_grrmh_00011_.png&type=temp&subfolder=&rand=0.9922436709083923"
+            "url": "/api/view?filename=rgthree.compare._temp_xnapr_00005_.png&type=temp&subfolder=&rand=0.36469476549848245"
           },
           {
             "name": "B",
             "selected": true,
-            "url": "/api/view?filename=rgthree.compare._temp_grrmh_00012_.png&type=temp&subfolder=&rand=0.6242260968993646"
+            "url": "/api/view?filename=rgthree.compare._temp_xnapr_00006_.png&type=temp&subfolder=&rand=0.503404423202286"
           }
         ]
       },
@@ -207,7 +207,7 @@
   },
   "152": {
     "inputs": {
-      "seed": 23058794954932,
+      "seed": 455523893955800,
       "steps": 4,
       "cfg": 1,
       "sampler_name": "euler",

@@ -1,10 +1,19 @@
 name: astrbot_plugin_comfyui_ai_studio
-display_name: ComfyUI AI 绘画台
-short_desc: 在 AstrBot 中使用本地 ComfyUI 进行文生图、图生图和高清放大。
+display_name: Anima 全能绘画台
+short_desc: Anima 全能绘画台——本地 ComfyUI 画图台，随便画、随便部署、功能全。文生图、双引擎图生图、高清放大、洗图、扩图、多角度七种模式；支持批量导入 LoRA 与免 API 下载 C 站模型。
 desc: |
-  ComfyUI 绘画台 v0.8.0。支持中文指令、多核心模型、多个 LoRA、CivitAI 信息与提示词展示、LoRA 独立提示词预设、AI 提示词优化、LLM 自然语言绘画、普通中文翻译以及 AstrBot WebUI 控制台。图生图使用独立的 Qwen Image Edit 参考图工作流、编辑知识库与模型配置，并可按原图宽高比输出。图生图 LLM 的工具规则、系统提示词、用户输入模板、知识库和输出格式均可在 WebUI 查看和修改。LoRA 专属预设支持多个指令简称共用同一组提示词。
-  内置 Anima 提示词工程师和低 token 模板规则，不需要额外安装 Anima 插件。图生图默认使用 Qwen-Rapid-NSFW-v23_Q3_K.gguf、Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf 与 qwen_image_vae.safetensors。
-version: 0.8.0
+  Anima 全能绘画台把本地 ComfyUI 变成一台「说中文就能画」的绘画工作台——随便画、随便部署、功能全。
+  内置 Anima 提示词工程师和低 token 模板规则，不需要额外安装 Anima 插件。
+  文生图、Qwen / Flux2 双引擎图生图、高清放大、洗图、扩图、多角度七种模式开箱即用。
+  图生图为完全独立模块：独立工作流、独立核心模型、独立文本编码器、独立 VAE 和独立 LoRA，
+  不读取文生图核心模型；并且图生图只受各页面的「独立 LoRA」影响，不加载文生图 LoRA 列表、
+  不参与画风 LoRA 随机，界面上有【特别标注】明确提示。
+  LoRA 管理支持批量导入（一次拖入多个文件）、中文昵称、多个指令简称、分类、专属提示词预设、
+  CivitAI 触发词、预览图、下载、上传与删除；C 站下载提供免 API Key 方式，直链或模型页链接均可直接下载，
+  公共 LoRA 无需任何密钥，也可在 auto / nokey / token 三种方式间切换。
+  支持中文指令、多核心模型、AI 提示词优化、LLM 自然语言绘画、普通中文翻译、绘图限额、
+  图片安全审核、队列提示和管理员启停 ComfyUI，并提供完整的 AstrBot WebUI 控制台。
+version: 1.0.0
 author: fornever123
 repo: https://github.com/fornever123/astrbot_plugin_comfyui_studio
 license: MIT
@@ -13,3 +22,4 @@ tags:
   - ComfyUI
   - AI绘图
   - LoRA
+  - 图生图

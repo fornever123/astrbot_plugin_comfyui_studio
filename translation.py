@@ -157,7 +157,7 @@ class PlainTranslator:
         raise PlainTranslationError(f"普通翻译服务均不可用{f'（{detail}）' if detail else ''}")
 
     @staticmethod
-    def _split_long_text(value: str, limit: int = 420) -> list[str]:
+    def _split_long_text(value: str, limit: int = 300) -> list[str]:
         parts = re.split(r"(?<=[，。！？；,!?;\n])", value)
         chunks: list[str] = []
         current = ""
@@ -183,7 +183,7 @@ class PlainTranslator:
         if not value or not any("\u4e00" <= char <= "\u9fff" for char in value):
             return value
 
-        headers = {"User-Agent": "AstrBot-ComfyUI-AI-Studio/0.8.0"}
+        headers = {"User-Agent": "AstrBot-Anima-Studio/1.0.0"}
         timeout = httpx.Timeout(12.0, connect=6.0)
         try:
             async with httpx.AsyncClient(
@@ -191,14 +191,26 @@ class PlainTranslator:
                 follow_redirects=True,
                 headers=headers,
             ) as client:
+                # 翻译网站常见的限制是 query 最多 500 个字符。提前分段，
+                # 不要先把长文本请求一次再等待服务端返回 414/400；300 字符
+                # 为中文、URL 编码和不同翻译服务实现留出余量。
+                chunks = self._split_long_text(value)
+                if len(chunks) > 1:
+                    translated_chunks = []
+                    for chunk in chunks:
+                        if any("\u4e00" <= char <= "\u9fff" for char in chunk):
+                            translated_chunks.append(await self._translate_once(client, chunk))
+                        else:
+                            translated_chunks.append(chunk)
+                    return ", ".join(item for item in translated_chunks if item).strip(" ,，。；;")
                 try:
                     return await self._translate_once(client, value)
                 except PlainTranslationError:
                     # 长提示词可能超过翻译网站的单次 URL 限制；短文本继续
                     # 抛出原始错误，长文本再按标点分段重试。
-                    if len(value) <= 450:
+                    if len(value) <= 320:
                         raise
-                    chunks = self._split_long_text(value)
+                    chunks = self._split_long_text(value, limit=240)
                     translated_chunks = []
                     for chunk in chunks:
                         if any("\u4e00" <= char <= "\u9fff" for char in chunk):

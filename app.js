@@ -7,7 +7,8 @@ let loraItems = [];
 let loraCategories = ["未分类"];
 let loraCategoryFilter = "全部";
 let loraSearchQuery = "";
-let loraSimpleMode = false;
+let expandedLoraFile = "";
+let loraSection = "normal";
 let presetItems = {};
 let editingPreset = "";
 let artistPresetItems = {};
@@ -144,17 +145,41 @@ function setTheme(theme) {
 function initTheme() {
   let saved = "";
   try { saved = localStorage.getItem("comfyui-ai-studio-theme") || ""; } catch (_) {}
-  setTheme(saved === "light" ? "light" : "dark");
+  setTheme(saved === "dark" ? "dark" : "light");
   const button = document.getElementById("themeToggle");
   if (button) button.onclick = () => setTheme(document.documentElement.dataset.uiTheme === "light" ? "dark" : "light");
 }
 
 function initLoraMode() {
   try {
-    loraSimpleMode = localStorage.getItem("comfyui-ai-studio-lora-simple") === "1";
+    expandedLoraFile = localStorage.getItem("comfyui-ai-studio-expanded-lora")
+      || localStorage.getItem("comfyui-ai-studio-expanded-style-lora")
+      || "";
   } catch (_) {
-    loraSimpleMode = false;
+    expandedLoraFile = "";
   }
+}
+
+function initLoraSection() {
+  const apply = section => {
+    loraSection = section === "style" ? "style" : "normal";
+    const normalPanel = document.querySelector(".lora-management-band");
+    const stylePanel = document.querySelector(".style-lora-band");
+    if (normalPanel) normalPanel.hidden = loraSection !== "normal";
+    if (stylePanel) stylePanel.hidden = loraSection !== "style";
+    document.querySelectorAll("[data-lora-section]").forEach(tab => {
+      const active = tab.dataset.loraSection === loraSection;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    try { localStorage.setItem("comfyui-ai-studio-lora-section", loraSection); } catch (_) {}
+  };
+  document.querySelectorAll("[data-lora-section]").forEach(tab => {
+    tab.onclick = () => apply(tab.dataset.loraSection);
+  });
+  let saved = "";
+  try { saved = localStorage.getItem("comfyui-ai-studio-lora-section") || ""; } catch (_) {}
+  apply(saved || "normal");
 }
 
 function initViews() {
@@ -184,10 +209,11 @@ function initViews() {
 async function load() {
   initTheme();
   initLoraMode();
+  initLoraSection();
   initViews();
   try {
     const status = await get(`${API}/status`);
-    document.getElementById("version").textContent = `版本 ${status.version || "v0.8.0"}`;
+    document.getElementById("version").textContent = `版本 ${status.version || "v0.10.3"}`;
     config = status.config || {};
     const comfy = status.comfy || {};
     const statusEl = document.getElementById("status");
@@ -195,7 +221,7 @@ async function load() {
     statusEl.className = `status ${comfy.ok ? "ok" : "bad"}`;
     document.getElementById("statusText").textContent = comfy.ok ? `ComfyUI 已连接，版本 ${comfy.version || "未知"}` : `ComfyUI 未连接：${comfy.error || "未知错误"}`;
     const paths = status.paths || {};
-    document.getElementById("paths").textContent = Object.entries(paths).map(([key, value]) => `${key}: ${value || "未检测到"}`).join("\n");
+    const pathsEl = document.getElementById("paths"); if (pathsEl) { const openable = ["diffusion_models","checkpoints","loras","upscale_models","controlnet","ipadapter","clip_vision","workflows","source_workflow"]; pathsEl.innerHTML = Object.entries(paths).map(([key, value]) => { const kind = key === "workflow_dir" ? "workflows" : key; const canOpen = value && openable.includes(kind); const val = value || "未检测到"; return `<div class="path-row"><code>${escapeHtml(key)}</code><span class="path-value" title="${escapeHtml(val)}">${escapeHtml(val)}</span>${canOpen ? `<button type="button" class="secondary" data-open-folder="${escapeHtml(kind)}">打开文件夹</button>` : ""}</div>`; }).join(""); pathsEl.querySelectorAll("[data-open-folder]").forEach(btn => { btn.onclick = async () => { try { const result = await post(`${API}/open_folder`, {kind: btn.dataset.openFolder}); show(`已打开：${result.path}`); } catch (e) { show(e.message); } }; }); } const pathsCountEl = document.getElementById("pathsCount"); if (pathsCountEl) pathsCountEl.textContent = `（${Object.keys(paths).length} 项）`;
     for (const key of ["loras", "diffusion_models", "checkpoints", "upscale_models", "workflow_dir"]) {
       const el = document.getElementById(`path-${key}`);
       if (el) el.textContent = paths[key] || "未检测到";
@@ -217,8 +243,12 @@ async function load() {
 
 function fillConfig() {
   document.getElementById("ai_base_url").value = config.ai_base_url || "";
+  const civitaiBaseInput = document.getElementById("civitai_base_url");
+  if (civitaiBaseInput) civitaiBaseInput.value = config.civitai_base_url || "https://civitai.com";
   document.getElementById("civitai_token").value = "";
   document.getElementById("civitai_token").placeholder = config.civitai_token_configured ? "已保存密钥，留空表示沿用" : "公共模型通常不需要";
+  const civitaiStatus = document.getElementById("civitaiStatus");
+  if (civitaiStatus) civitaiStatus.textContent = `当前信息源：${config.civitai_base_url || "https://civitai.com"}`;
   setAiModelOptions(config.ai_model ? [config.ai_model] : [], config.ai_model || "");
   document.getElementById("llm_prompt_source").value = config.llm_prompt_source || "astrbot";
   document.getElementById("plugin_ai_debug").checked = config.plugin_ai_debug === true || config.plugin_ai_debug === "true" || config.plugin_ai_debug === 1;
@@ -235,29 +265,48 @@ function fillConfig() {
   document.getElementById("img2img_llm_prompt_source").value = config.img2img_llm_prompt_source || "plugin";
   document.getElementById("img2img_plugin_ai_debug").checked = config.img2img_plugin_ai_debug === true || config.img2img_plugin_ai_debug === "true" || config.img2img_plugin_ai_debug === 1;
   const img2imgDefaults = config.img2img_prompt_defaults || {};
-  document.getElementById("img2img_plugin_ai_llm_system_prompt").value = config.img2img_plugin_ai_llm_system_prompt || img2imgDefaults.plugin_system_prompt || "";
+  document.getElementById("img2img_ai_system_prompt").value = config.img2img_ai_system_prompt || config.img2img_plugin_ai_llm_system_prompt || img2imgDefaults.system_prompt || img2imgDefaults.plugin_system_prompt || "";
+  document.getElementById("img2img_plugin_ai_llm_system_prompt").value = config.img2img_plugin_ai_llm_system_prompt || "";
   document.getElementById("img2img_plugin_ai_knowledge").value = config.img2img_plugin_ai_knowledge || img2imgDefaults.knowledge || "";
   document.getElementById("img2img_astrbot_llm_system_prompt").value = config.img2img_astrbot_llm_system_prompt || img2imgDefaults.astrbot_system_prompt || "";
   document.getElementById("img2img_astrbot_user_prompt_template").value = config.img2img_astrbot_user_prompt_template || img2imgDefaults.astrbot_user_prompt_template || "";
   document.getElementById("img2img_plugin_ai_user_prompt_template").value = config.img2img_plugin_ai_user_prompt_template || img2imgDefaults.plugin_user_prompt_template || "";
   document.getElementById("img2img_plugin_ai_output_format").value = config.img2img_plugin_ai_output_format || img2imgDefaults.output_format || "";
   document.getElementById("img2img_llm_tool_prompt").value = config.img2img_llm_tool_prompt || img2imgDefaults.llm_tool_prompt || "";
-  const img2imgAspect = document.getElementById("img2img_keep_aspect_ratio");
-  if (img2imgAspect) img2imgAspect.checked = config.img2img_keep_aspect_ratio !== false && config.img2img_keep_aspect_ratio !== "false" && config.img2img_keep_aspect_ratio !== 0;
   document.getElementById("plain_translate_enabled").checked = config.plain_translate_enabled !== false;
   document.getElementById("plain_translate_url").value = config.plain_translate_url || "https://translate.googleapis.com/translate_a/single";
+  const img2imgTranslateEnabled = document.getElementById("img2img_plain_translate_enabled");
+  if (img2imgTranslateEnabled) img2imgTranslateEnabled.checked = config.img2img_plain_translate_enabled === true || config.img2img_plain_translate_enabled === "true" || config.img2img_plain_translate_enabled === 1;
+  const img2imgTranslateUrl = document.getElementById("img2img_plain_translate_url");
+  if (img2imgTranslateUrl) img2imgTranslateUrl.value = config.img2img_plain_translate_url || "https://translate.googleapis.com/translate_a/single";
   document.getElementById("default_positive").value = config.default_positive || config.quality_prefix || "";
   document.getElementById("default_negative").value = config.default_negative || "";
-  document.getElementById("draw_reply_mode").value = config.draw_reply_mode || "astrbot";
+  const img2imgEngine = document.getElementById("img2img_engine");
+  if (img2imgEngine) img2imgEngine.value = config.img2img_engine || "qwen";
+  document.getElementById("draw_reply_mode").value = "custom";
   document.getElementById("draw_delivery_mode").value = config.draw_delivery_mode || "normal";
-  document.getElementById("draw_reply_timeout").value = config.draw_reply_timeout ?? 6;
+  const llmStartMode = document.getElementById("llm_draw_start_reply_mode");
+  if (llmStartMode) llmStartMode.value = config.llm_draw_start_reply_mode || "ai";
+  const queueNoticeEnabled = document.getElementById("draw_queue_notice_enabled");
+  if (queueNoticeEnabled) queueNoticeEnabled.checked = config.draw_queue_notice_enabled !== false && config.draw_queue_notice_enabled !== "false" && config.draw_queue_notice_enabled !== 0;
+  const queueNoticeAi = document.getElementById("draw_queue_notice_ai");
+  if (queueNoticeAi) queueNoticeAi.checked = config.draw_queue_notice_ai === true || config.draw_queue_notice_ai === "true" || config.draw_queue_notice_ai === 1;
   if (document.getElementById("llm_wait_timeout")) document.getElementById("llm_wait_timeout").value = config.llm_wait_timeout ?? 45;
+  if (document.getElementById("draw_start_reply")) document.getElementById("draw_start_reply").value = config.draw_start_reply || "{mode}任务已提交，生成期间可以继续聊天，完成后会发送结果。";
   document.getElementById("draw_attach_prompt").checked = config.draw_attach_prompt === true || config.draw_attach_prompt === "true" || config.draw_attach_prompt === 1;
   document.getElementById("nsfw_group_blacklist").value = Array.isArray(config.nsfw_group_blacklist) ? config.nsfw_group_blacklist.join("\n") : (config.nsfw_group_blacklist || "");
-  document.getElementById("draw_start_reply").value = config.draw_start_reply || "{mode}任务已提交，生成期间可以继续聊天，完成后会发送结果。";
+  applyModerationConfig(config);
   document.getElementById("draw_reply_custom").value = config.draw_reply_custom || "{mode}完成，共 {count} 张。";
+  const styleMode = document.getElementById("style_lora_mode");
+  if (styleMode) styleMode.value = config.style_lora_mode || "random";
+  const styleRandomCount = document.getElementById("style_lora_random_count");
+  if (styleRandomCount) styleRandomCount.value = Math.max(1, Math.min(16, Number(config.style_lora_random_count || 1)));
   document.getElementById("draw_limit_count").value = config.draw_limit_count ?? 0;
   document.getElementById("draw_limit_window_seconds").value = config.draw_limit_window_seconds ?? 3600;
+  const queueLimitEnabled = document.getElementById("draw_queue_limit_enabled");
+  if (queueLimitEnabled) queueLimitEnabled.checked = config.draw_queue_limit_enabled === true || config.draw_queue_limit_enabled === "true" || config.draw_queue_limit_enabled === 1;
+  const queueLimitCount = document.getElementById("draw_queue_limit_count");
+  if (queueLimitCount) queueLimitCount.value = config.draw_queue_limit_count ?? 0;
   document.getElementById("draw_limit_admin_ids").value = Array.isArray(config.draw_limit_admin_ids) ? config.draw_limit_admin_ids.join("\n") : (config.draw_limit_admin_ids || "");
   document.getElementById("comfyui_start_script").value = config.comfyui_start_script || "";
   for (const id of ["width", "height", "steps", "seed", "cfg", "sampler_name", "scheduler", "denoise", "hires_scale", "hires_steps", "hires_denoise", "hires_upscale_model"]) {
@@ -268,12 +317,51 @@ function fillConfig() {
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
+  setSelectOptions("img2img_accel_lora_name", modelData.img2img_accel_loras || modelData.loras || [], config.img2img_accel_lora_name || "", true);
+  const img2imgAccelEnabled = document.getElementById("img2img_accel_lora_enabled");
+  if (img2imgAccelEnabled) img2imgAccelEnabled.checked = config.img2img_accel_lora_enabled === true || config.img2img_accel_lora_enabled === "true" || config.img2img_accel_lora_enabled === 1;
   const img2imgPreCfg = document.getElementById("img2img_pre_cfg");
   if (img2imgPreCfg) img2imgPreCfg.checked = config.img2img_pre_cfg === true || config.img2img_pre_cfg === "true" || config.img2img_pre_cfg === 1;
-  for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method", "img2img_largest_size", "img2img_crop", "img2img_megapixels", "img2img_resolution_steps", "img2img_reference_method", "img2img_sampling_shift", "img2img_cfg_norm_strength", "img2img_tile_size", "img2img_tile_overlap", "img2img_temporal_size", "img2img_temporal_overlap", "img2img_default_positive", "img2img_default_negative", "img2img_second_image", "img2img_filename_prefix"]) {
+  for (const id of ["img2img_lora_strength", "img2img_accel_lora_strength", "img2img_accel_steps", "img2img_accel_cfg", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method", "img2img_largest_size", "img2img_crop", "img2img_megapixels", "img2img_resolution_steps", "img2img_reference_method", "img2img_sampling_shift", "img2img_cfg_norm_strength", "img2img_tile_size", "img2img_tile_overlap", "img2img_temporal_size", "img2img_temporal_overlap", "img2img_default_positive", "img2img_default_negative", "img2img_second_image", "img2img_filename_prefix"]) {
     const element = document.getElementById(id);
     if (element) element.value = config[id] ?? "";
   }
+  const matchInputSize = document.getElementById("img2img_match_input_size");
+  if (matchInputSize) matchInputSize.checked = config.img2img_match_input_size !== false;
+  const flux2TextFields = [
+    "img2img_flux2_source_workflow", "img2img_flux2_lora_strength", "img2img_flux2_size",
+    "img2img_flux2_steps", "img2img_flux2_cfg", "img2img_flux2_seed",
+    "img2img_flux2_sampler_name", "img2img_flux2_scheduler", "img2img_flux2_denoise",
+    "img2img_flux2_batch", "img2img_flux2_default_positive", "img2img_flux2_default_negative",
+    "img2img_flux2_prompt_template", "img2img_flux2_ai_system_prompt",
+    "img2img_flux2_plugin_ai_knowledge", "img2img_flux2_plain_translate_url",
+    "img2img_flux2_output_format", "img2img_flux2_filename_prefix",
+  ];
+  for (const id of flux2TextFields) {
+    const element = document.getElementById(id);
+    if (element) element.value = config[id] ?? "";
+  }
+  const flux2Source = document.getElementById("img2img_flux2_llm_prompt_source");
+  if (flux2Source) flux2Source.value = config.img2img_flux2_llm_prompt_source || "plugin";
+  for (const id of ["img2img_flux2_plugin_ai_debug", "img2img_flux2_plain_translate_enabled"]) {
+    const element = document.getElementById(id);
+    if (element) element.checked = config[id] === true || config[id] === "true" || config[id] === 1;
+  }
+  for (const mode of ["wash", "outpaint", "multi_angle"]) {
+    for (const key of ["source_workflow", "model_name", "clip_name", "vae_name", "default_positive", "default_negative", "sampler_name", "scheduler", "filename_prefix"]) {
+      const element = document.getElementById(`${mode}_${key}`);
+      if (element) element.value = config[`${mode}_${key}`] ?? "";
+    }
+    for (const key of ["steps", "cfg", "seed", "denoise", "size", "batch", "caption_tokens", "left", "top", "right", "bottom", "feathering", "horizontal_angle", "vertical_angle", "zoom"]) {
+      const element = document.getElementById(`${mode}_${key}`);
+      if (element) element.value = config[`${mode}_${key}`] ?? "";
+    }
+    for (const key of ["default_prompts", "camera_view"]) {
+      const element = document.getElementById(`${mode}_${key}`);
+      if (element) element.checked = config[`${mode}_${key}`] === true || config[`${mode}_${key}`] === "true" || config[`${mode}_${key}`] === 1;
+    }
+  }
+  updateQwenAccelHint();
   updateReplyCustomVisibility();
 }
 
@@ -284,6 +372,23 @@ function setSelectOptions(id, values, selected = "", allowEmpty = false) {
   if (selected && !options.includes(selected)) options.unshift(selected);
   select.innerHTML = `${allowEmpty ? '<option value="">不使用</option>' : ''}${options.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
   select.value = selected || (allowEmpty ? "" : options[0] || "");
+}
+
+function updateQwenAccelHint() {
+  const hint = document.getElementById("img2imgAccelHint");
+  if (!hint) return;
+  const normalSteps = document.getElementById("img2img_steps")?.value || "8";
+  const normalCfg = document.getElementById("img2img_cfg")?.value || "1.0";
+  const accelSteps = document.getElementById("img2img_accel_steps")?.value || "4";
+  const accelCfg = document.getElementById("img2img_accel_cfg")?.value || "1.0";
+  const enabled = document.getElementById("img2img_accel_lora_enabled")?.checked === true;
+  const model = document.getElementById("img2img_unet_name")?.value || "";
+  const isRapid = model.toLowerCase().includes("rapid");
+  const effectiveEnabled = enabled && !isRapid;
+  const rapidWarning = isRapid
+    ? " 当前核心为 Qwen-Rapid，插件会自动跳过标准 Lightning LoRA。"
+    : "";
+  hint.textContent = `普通模式（未启用加速 LoRA）：${normalSteps} 步 / CFG ${normalCfg}；加速模式（启用兼容 Lightning LoRA）：${accelSteps} 步 / CFG ${accelCfg}。当前生效：${effectiveEnabled ? `加速模式 ${accelSteps} 步 / CFG ${accelCfg}` : `普通模式 ${normalSteps} 步 / CFG ${normalCfg}`}。${rapidWarning}`;
 }
 
 function updateModelHint() {
@@ -324,6 +429,63 @@ function updateReplyCustomVisibility() {
   document.getElementById("drawReplyCustomLabel").hidden = document.getElementById("draw_reply_mode").value !== "custom";
 }
 
+/* 图片安全审核：名单和密钥都在这里回填，密钥只回填“是否已配置”。 */
+const MODERATION_TEXT_FIELDS = {
+  moderation_input_groups: "",
+  moderation_output_groups: "",
+  moderation_base_url: "",
+  moderation_model: "",
+};
+const MODERATION_NUMBER_FIELDS = {
+  moderation_timeout: 30,
+  moderation_max_side: 1024,
+};
+
+function moderationListText(value) {
+  if (Array.isArray(value)) return value.join("\n");
+  return value == null ? "" : String(value);
+}
+
+function applyModerationConfig(config) {
+  for (const [id, fallback] of Object.entries(MODERATION_TEXT_FIELDS)) {
+    const element = document.getElementById(id);
+    if (element) element.value = id.endsWith("_groups") ? moderationListText(config[id]) : (config[id] ?? fallback);
+  }
+  for (const [id, fallback] of Object.entries(MODERATION_NUMBER_FIELDS)) {
+    const element = document.getElementById(id);
+    if (element) element.value = config[id] ?? fallback;
+  }
+  const strictness = document.getElementById("moderation_strictness");
+  if (strictness) strictness.value = config.moderation_strictness || "standard";
+  const enabled = document.getElementById("moderation_enabled");
+  if (enabled) enabled.checked = config.moderation_enabled === true || config.moderation_enabled === "true" || config.moderation_enabled === 1;
+  const failOpen = document.getElementById("moderation_fail_open");
+  if (failOpen) failOpen.checked = config.moderation_fail_open !== false && config.moderation_fail_open !== "false" && config.moderation_fail_open !== 0;
+  const status = document.getElementById("moderationStatus");
+  if (status && config.moderation_api_key_configured) {
+    status.textContent = config.moderation_ready ? "已配置审核模型" : "密钥已保存，模型或地址仍缺失";
+  }
+}
+
+function moderationFormBody() {
+  const body = { action: "test" };
+  for (const id of Object.keys(MODERATION_TEXT_FIELDS)) {
+    const element = document.getElementById(id);
+    if (element) body[id] = element.value.trim();
+  }
+  for (const [id, fallback] of Object.entries(MODERATION_NUMBER_FIELDS)) {
+    const element = document.getElementById(id);
+    if (element) body[id] = Number(element.value || fallback);
+  }
+  const strictness = document.getElementById("moderation_strictness");
+  if (strictness) body.moderation_strictness = strictness.value;
+  const failOpen = document.getElementById("moderation_fail_open");
+  if (failOpen) body.moderation_fail_open = failOpen.checked;
+  const apiKey = document.getElementById("moderation_api_key");
+  if (apiKey) body.moderation_api_key = apiKey.value;
+  return body;
+}
+
 function renderLoraCategories() {
   const select = document.getElementById("loraCategoryFilter");
   if (!select) return;
@@ -331,6 +493,17 @@ function renderLoraCategories() {
   select.innerHTML = values.map(value => `<option value="${escapeHtml(value)}">${value === "全部" ? "全部分类" : escapeHtml(value)}</option>`).join("");
   if (!values.includes(loraCategoryFilter)) loraCategoryFilter = "全部";
   select.value = loraCategoryFilter;
+  renderLoraBatchCategories();
+}
+
+// 批量导入的分类下拉：只提供实际可用的分类（不含“全部”筛选项）。
+function renderLoraBatchCategories() {
+  const select = document.getElementById("loraBatchCategory");
+  if (!select) return;
+  const current = select.value;
+  const values = loraCategories.filter(value => value && value !== "全部");
+  select.innerHTML = `<option value="">未分类</option>${values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("")}`;
+  select.value = values.includes(current) ? current : "";
 }
 
 function normalizedLoraPresetEntries(item) {
@@ -382,7 +555,7 @@ function renderLoraPresetEditor(item, file, compact = false) {
   return `<div class="lora-preset-editor${compact ? " compact" : ""}"><div class="lora-preset-title"><strong>LoRA 专属预设</strong><span class="muted">左侧可添加多个指令简称，右侧内容会对应这一整组简称</span></div>${triggerPanel}<div class="lora-preset-list" data-lora-preset-list="${file}">${rows || `<span class="muted lora-preset-empty">暂无专属预设，点击下方按钮添加一组</span>`}</div><button type="button" class="secondary" data-lora-action="add-lora-preset" data-file="${file}">添加预设组</button></div>`;
 }
 
-function renderLorasRaw() {
+function renderLorasRawLegacy() {
   const active = {};
   (config.lora_list || []).forEach(item => {
     const text = String(item);
@@ -391,8 +564,10 @@ function renderLorasRaw() {
     active[name] = split > 0 ? text.slice(split + 1) : "0.8";
   });
   const allItems = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), command_aliases: [], command_alias: "", category: "未分类", images: [], found: false, model_url: "", custom_url: "", custom_name: "", civitai_tags: [], lora_presets: [], show_images: true}));
+  // 画风 LoRA 由下方黄色模块独立管理，普通区域不重复展示它们。
+  const normalItems = allItems.filter(item => (item.category || "未分类") !== "画风");
   const search = loraSearchQuery.trim().toLowerCase();
-  const categoryItems = loraCategoryFilter === "全部" ? allItems : allItems.filter(item => (item.category || "未分类") === loraCategoryFilter);
+  const categoryItems = loraCategoryFilter === "全部" ? normalItems : normalItems.filter(item => (item.category || "未分类") === loraCategoryFilter);
   const items = search ? categoryItems.filter(item => {
     const aliases = Array.isArray(item.command_aliases) ? item.command_aliases : (item.command_alias ? [item.command_alias] : []);
     return [item.file_name, item.alias, ...aliases].some(value => String(value || "").toLowerCase().includes(search));
@@ -403,7 +578,7 @@ function renderLorasRaw() {
   if (toggle) toggle.textContent = loraSimpleMode ? "完整管理" : "简洁选择";
   const bulkActions = document.getElementById("loraBulkActions");
   if (bulkActions) bulkActions.hidden = !loraSimpleMode;
-  container.innerHTML = items.map(item => {
+  const renderCard = item => {
     const rawFile = String(item.file_name || "");
     const file = escapeHtml(rawFile);
     const commandAliases = Array.isArray(item.command_aliases) ? item.command_aliases : (item.command_alias ? [item.command_alias] : []);
@@ -422,12 +597,279 @@ function renderLorasRaw() {
     if (loraSimpleMode) {
       return `<article class="lora-card lora-card-simple"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-simple-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label>${renderLoraPresetEditor(item, file, true)}<button class="primary" data-lora-action="save-lora" data-file="${file}">保存分类与预设</button></div><small class="lora-simple-meta">指令简称：${escapeHtml(commandAliases.join("、") || "默认简称")}</small></article>`;
     }
-    return `<article class="lora-card"><div class="lora-main"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>显示昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias)}"></label><label>权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(active[item.file_name] || "0.8")}"></label><div class="command-alias-label"><span>指令简称（可添加多个）</span><div class="command-alias-list" data-command-alias-list="${file}">${commandAliasChips || `<span class="muted command-alias-empty">尚未添加简称，将使用默认简称</span>`}</div><div class="command-alias-add"><input class="input command-alias-input" data-command-alias-input-file="${file}" placeholder="如：1号lora"><button type="button" class="secondary" data-lora-action="add-command-alias" data-file="${file}">添加简称</button></div></div><label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapedCustomUrl}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div></div><div class="civitai-info">${info}<div class="civitai-gallery">${images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
-  }).join("") || '<div class="empty">当前分类没有 LoRA。</div>';
+    return `<article class="lora-card"><div class="lora-main"><label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${isEnabled ? "checked" : ""}><span>${escapeHtml(item.alias)} <small class="lora-state">${isEnabled ? "✅ 已开启" : "⬜ 未开启"}</small></span></label><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>显示昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias)}"></label><label>权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(active[item.file_name] || "0.8")}"></label><div class="command-alias-label"><span>指令简称（可添加多个）</span><div class="command-alias-list" data-command-alias-list="${file}">${commandAliasChips || `<span class="muted command-alias-empty">尚未添加简称，将使用默认简称</span>`}</div><div class="command-alias-add"><input class="input command-alias-input" data-command-alias-input-file="${file}" placeholder="如：1号lora"><button type="button" class="secondary" data-lora-action="add-command-alias" data-file="${file}">添加简称</button></div></div><label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapedCustomUrl}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div><div class="civitai-info">${info}<div class="civitai-gallery">${images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
+  };
+  const grouped = new Map();
+  items.forEach(item => {
+    const category = item.category || "未分类";
+    if (!grouped.has(category)) grouped.set(category, []);
+    grouped.get(category).push(item);
+  });
+  const categoryOrder = new Map(loraCategories.map((value, index) => [value, index]));
+  const modules = [...grouped.entries()]
+    .sort((a, b) => (categoryOrder.get(a[0]) ?? 999) - (categoryOrder.get(b[0]) ?? 999))
+    .map(([category, group]) => `<section class="lora-category-module" data-lora-category-module="${escapeHtml(category)}"><div class="lora-category-module-head"><div><h3>${escapeHtml(category)}</h3><span class="muted">${group.length} 个 LoRA</span></div><button type="button" class="secondary lora-category-jump" data-lora-category-jump="${escapeHtml(category)}">只看此分类</button></div><div class="lora-grid lora-category-grid">${group.map(renderCard).join("")}</div></section>`)
+    .join("");
+  container.innerHTML = modules || '<div class="empty">当前分类没有 LoRA。</div>';
+}
+
+function renderLorasLegacy() {
+  renderLorasRaw();
+  renderStyleLoras();
+}
+
+function styleLoraConfigLegacy() {
+  const selected = new Set((config.style_lora_list || []).map(value => String(value || "").split(":")[0]));
+  const weights = config.style_lora_weights && typeof config.style_lora_weights === "object" ? config.style_lora_weights : {};
+  const aliases = config.style_lora_aliases && typeof config.style_lora_aliases === "object" ? config.style_lora_aliases : {};
+  return {selected, weights, aliases};
+}
+
+function renderStyleLorasLegacy() {
+  const container = document.getElementById("styleLoras");
+  if (!container) return;
+  const {selected, weights, aliases} = styleLoraConfig();
+  const items = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), category: "未分类"}));
+  // 画风模块只展示普通 LoRA 管理中明确归类为“画风”的文件。
+  // 旧版 style_lora_list 里残留的其它 LoRA 会被忽略，但不会从配置中删除。
+  const styleCandidates = items.filter(item => (item.category || "未分类") === "画风");
+  styleCandidates.sort((a, b) => {
+    const aNumber = Number(String(a.style_alias || "").match(/^画风(\d+)$/)?.[1] || -1);
+    const bNumber = Number(String(b.style_alias || "").match(/^画风(\d+)$/)?.[1] || -1);
+    return bNumber - aNumber;
+  });
+  const styleItems = styleCandidates.filter(item => selected.has(item.file_name));
+  const ordered = [...styleItems, ...styleCandidates.filter(item => !selected.has(item.file_name))];
+  const active = currentLoraSelection();
+  const renderCard = item => {
+    const rawFile = String(item.file_name || "");
+    const file = escapeHtml(rawFile);
+    const checked = selected.has(rawFile);
+    const styleIndex = styleCandidates.findIndex(value => value.file_name === rawFile);
+    const rawAlias = aliases[rawFile] ?? aliases[rawFile.replace(/\\/g, "/")];
+    const alias = Array.isArray(rawAlias) ? (rawAlias.find(value => String(value || "").trim()) || "") : (rawAlias || "");
+    const styleAlias = String(alias || `画风${styleIndex + 1}`).trim();
+    const weight = weights[rawFile] ?? weights[rawFile.replace(/\\/g, "/")] ?? 0.8;
+    const isEnabled = active[rawFile] !== undefined;
+    const category = item.category || "画风";
+    const categoryOptions = loraCategories.map(value => `<option value="${escapeHtml(value)}" ${value === category ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+    const url = externalUrl(item.model_url);
+    const escapedUrl = escapeHtml(url);
+    const customUrl = externalUrl(item.custom_url);
+    const customName = escapeHtml(item.custom_name || "");
+    const images = item.show_images === false ? `<span class="muted">图片显示已关闭</span>` : (item.images || []).slice(0, 1).map(image => `<a class="civitai-image" href="${escapedUrl || "#"}" target="_blank" rel="noopener noreferrer" data-civitai-url="${escapedUrl}"><img src="${escapeHtml(image.url)}" loading="lazy" onerror="var p=this.closest('.lora-simple-thumb')||this.parentNode;p&amp;&amp;p.remove()" alt="${escapeHtml(item.alias || rawFile)} 的 CivitAI 预览图"></a>`).join("");
+    const linkText = item.custom_info ? "打开我的 CivitAI 信息" : (item.custom_link ? "打开我的 CivitAI 链接" : (item.found ? `打开 CivitAI：${escapeHtml(item.model_name)}` : "未匹配，打开 CivitAI 搜索"));
+    const info = url ? `<div class="civitai-link-row"><a class="civitai-link ${item.found ? "" : "muted"}" href="${escapedUrl}" target="_blank" rel="noopener noreferrer" data-civitai-url="${escapedUrl}">${linkText}</a><button type="button" class="secondary" data-civitai-copy="${escapedUrl}">复制链接</button></div><code class="civitai-url">${escapedUrl}</code>` : `<span class="muted">暂未获得 CivitAI 链接</span>`;
+    const candidateCheck = `<label class="check style-lora-check"><input type="checkbox" data-style-lora-file="${file}" ${checked ? "checked" : ""}><span>纳入画风候选</span></label>`;
+    const enabledCheck = `<label class="check style-lora-enabled"><input type="checkbox" data-lora-enabled-checkbox="${file}" ${isEnabled ? "checked" : ""}>普通 LoRA长期启用</label>`;
+    const expanded = expandedStyleLoraFile === rawFile;
+    if (!expanded) {
+      return `<article class="style-lora-card style-lora-card-simple${checked ? " selected" : ""}"><div class="style-lora-card-head">${candidateCheck}<strong>${escapeHtml(item.alias || rawFile)}</strong><button class="secondary" type="button" data-lora-action="toggle-style-details" data-file="${file}">展开</button></div><code>${file}</code><label>详细昵称<input class="input" data-alias-file="${file}" value="${escapeHtml(item.alias || "")}"></label><label>指令简称<input class="input" data-style-lora-alias="${file}" value="${escapeHtml(styleAlias)}" placeholder="画风${styleIndex + 1}"></label><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><div class="style-lora-simple-actions">${enabledCheck}<button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA</button></div></article>`;
+    }
+    const commandAliases = Array.isArray(item.command_aliases) ? item.command_aliases : (item.command_alias ? [item.command_alias] : []);
+    const commandAliasChips = commandAliases.map(value => `<span class="command-alias-chip">${escapeHtml(value)}</span>`).join("");
+    return `<article class="lora-card style-lora-card-full${checked ? " style-selected" : ""}"><div class="lora-main"><div class="style-lora-full-head"><div class="style-lora-check-row">${candidateCheck}${enabledCheck}</div><button class="secondary" type="button" data-lora-action="toggle-style-details" data-file="${file}">收起简洁选择</button></div><h3>${escapeHtml(item.alias || rawFile)}</h3><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>详细昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias || "")}"></label><label>权重<input class="weight" data-style-lora-weight="${file}" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(weight)}"></label><label>画风指令简称<input class="input" data-style-lora-alias="${file}" value="${escapeHtml(styleAlias)}" placeholder="画风${styleIndex + 1}"></label><div class="command-alias-label"><span>其它指令简称（只读显示）</span><div class="command-alias-list">${commandAliasChips || `<span class="muted">无</span>`}</div></div><label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapeHtml(customUrl)}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div><div class="civitai-info">${info}<div class="civitai-gallery">${images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
+  };
+  container.innerHTML = ordered.length ? ordered.map(renderCard).join("") : '<div class="empty">当前没有分类为“画风”的 LoRA。请先在普通 LoRA管理中把目标文件分类为“画风”，或在本页上传并归类。</div>';
+}
+
+function loraManualAliases(item) {
+  const values = Array.isArray(item.manual_command_aliases)
+    ? item.manual_command_aliases
+    : (Array.isArray(item.command_aliases) ? item.command_aliases : (item.command_alias ? [item.command_alias] : []));
+  return [...new Set(values.map(value => String(value || "").trim()).filter(Boolean))];
+}
+
+function renderCommandAliasEditor(item, file) {
+  const aliases = loraManualAliases(item);
+  const chips = aliases.map(alias => `<span class="command-alias-chip" data-command-alias-value="${escapeHtml(alias)}">${escapeHtml(alias)}<button type="button" class="command-alias-remove" data-lora-action="remove-command-alias" data-file="${file}" data-alias="${escapeHtml(alias)}" aria-label="删除简称 ${escapeHtml(alias)}" title="删除简称">×</button></span>`).join("");
+  return `<div class="command-alias-label"><span>指令简称（可添加多个）</span><div class="command-alias-list" data-command-alias-list="${file}">${chips || `<span class="muted command-alias-empty">尚未添加简称</span>`}</div><div class="command-alias-add"><input class="input command-alias-input" data-command-alias-input-file="${file}" placeholder="如：1号lora"><button type="button" class="secondary" data-lora-action="add-command-alias" data-file="${file}">添加简称</button></div></div>`;
+}
+
+function renderLoraCivitaiInfo(item) {
+  const url = externalUrl(item.model_url);
+  const escapedUrl = escapeHtml(url);
+  const customName = escapeHtml(item.custom_name || "");
+  const file = escapeHtml(item.file_name || "");
+  const clearPreview = item.custom_image_data
+    ? `<button type="button" class="secondary lora-preview-clear" data-lora-action="clear-lora-preview" data-file="${file}" title="清除拖入的预览图">清除预览图</button>`
+    : "";
+  const images = item.show_images === false
+    ? `<span class="muted">图片显示已关闭</span>`
+    : (item.images || []).slice(0, 1).map(image => `<a class="civitai-image" href="${escapedUrl || "#"}" target="_blank" rel="noopener noreferrer" data-civitai-url="${escapedUrl}"><img src="${escapeHtml(image.url)}" loading="lazy" alt="${escapeHtml(item.alias || item.file_name)} 的 CivitAI 预览图"></a>`).join("") + clearPreview;
+  const linkText = item.custom_info
+    ? "打开我的 CivitAI 信息"
+    : (item.custom_link ? "打开我的 CivitAI 链接" : (item.found ? `打开 CivitAI：${escapeHtml(item.model_name)}` : "未匹配，打开 CivitAI 搜索"));
+  const info = url
+    ? `<div class="civitai-link-row"><a class="civitai-link ${item.found ? "" : "muted"}" href="${escapedUrl}" target="_blank" rel="noopener noreferrer" data-civitai-url="${escapedUrl}">${linkText}</a><button type="button" class="secondary" data-civitai-copy="${escapedUrl}">复制链接</button></div><code class="civitai-url">${escapedUrl}</code>`
+    : `<span class="muted">暂未获得 CivitAI 链接</span>`;
+  return {customName, images, info};
+}
+
+function renderLoraCompactCard(item, file, options = {}) {
+  const style = Boolean(options.style);
+  const aliases = Array.isArray(item.command_aliases)
+    ? [...item.command_aliases]
+    : (item.command_alias ? [item.command_alias] : []);
+  if (item.style_alias) aliases.push(item.style_alias);
+  const aliasText = [...new Set(aliases.map(value => String(value || "").trim()).filter(Boolean))].join("、") || "暂无简称";
+  const civitai = renderLoraCivitaiInfo(item);
+  const thumb = item.show_images === false || !(item.images || []).length
+    ? ""
+    : `<div class="lora-simple-thumb">${civitai.images}</div>`;
+  return `<article class="lora-card lora-card-simple${style ? " style-lora-card-simple" : ""}${options.selected ? " selected" : ""}">${thumb}<div class="lora-simple-head"><strong title="${file}">${escapeHtml(item.alias || item.file_name)}</strong><span class="lora-simple-alias" title="指令简称">简称：${escapeHtml(aliasText)}</span><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">展开</button></div></article>`;
+}
+
+function renderLoraFullCard(item, file, options = {}) {
+  const style = Boolean(options.style);
+  const category = item.category || (style ? "画风" : "未分类");
+  const categoryOptions = loraCategories.map(value => `<option value="${escapeHtml(value)}" ${value === category ? "selected" : ""}>${escapeHtml(value)}</option>`).join("");
+  const enabled = Boolean(options.enabled);
+  const enabledInput = style
+    ? `<label class="check"><input type="checkbox" data-lora-enabled-checkbox="${file}" ${enabled ? "checked" : ""}>长期启用</label>`
+    : `<label class="lora-check"><input type="checkbox" data-lora-checkbox="${file}" ${enabled ? "checked" : ""}><span>${enabled ? "已开启" : "未开启"}</span></label>`;
+  const candidate = style
+    ? `<label class="check"><input type="checkbox" data-style-lora-file="${file}" ${options.selected ? "checked" : ""}>纳入随机候选</label>`
+    : "";
+  const styleAlias = style
+    ? `<label>画风指令简称<input class="input" data-style-lora-alias="${file}" value="${escapeHtml(options.styleAlias || "")}" placeholder="画风${Number(options.styleIndex || 1)}"></label>`
+    : "";
+  const styleWeight = style
+    ? `<label>随机画风权重<input class="weight" data-style-lora-weight="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.styleWeight ?? "0.8")}"></label>`
+    : "";
+  const info = renderLoraCivitaiInfo(item);
+  return `<article class="lora-card${style ? " style-lora-card-full" : " lora-card-full"}"><div class="lora-main"><div class="lora-full-head"><div class="lora-check-row">${enabledInput}${candidate}</div><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">收起简洁选择</button></div><h3>${escapeHtml(item.alias || item.file_name)}</h3><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>详细昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias || "")}"></label><label>长期启用权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.activeWeight ?? "0.8")}"></label>${styleWeight}${styleAlias}${renderCommandAliasEditor(item, file)}<label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${info.customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapeHtml(externalUrl(item.custom_url))}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div><div class="civitai-info">${info.info}<div class="civitai-gallery lora-image-dropzone" data-lora-image-dropzone="${file}" title="将图片拖入此区域替换预览图">${info.images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
+}
+
+function renderLorasRaw() {
+  const active = currentLoraSelection();
+  const allItems = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), manual_command_aliases: [], command_aliases: [], category: "未分类", images: [], found: false, model_url: "", custom_url: "", custom_name: "", civitai_tags: [], lora_presets: [], show_images: true}));
+  const normalItems = allItems.filter(item => (item.category || "未分类") !== "画风");
+  const search = loraSearchQuery.trim().toLowerCase();
+  const categoryItems = loraCategoryFilter === "全部" ? normalItems : normalItems.filter(item => (item.category || "未分类") === loraCategoryFilter);
+  const items = search ? categoryItems.filter(item => [item.file_name, item.alias, ...loraManualAliases(item), item.style_alias].some(value => String(value || "").toLowerCase().includes(search))) : categoryItems;
+  const container = document.getElementById("loras");
+  const toggle = document.getElementById("loraDisplayToggle");
+  if (toggle) toggle.textContent = "全部收起";
+  const bulkActions = document.getElementById("loraBulkActions");
+  if (bulkActions) bulkActions.hidden = false;
+  const renderCard = item => {
+    const rawFile = String(item.file_name || "");
+    const file = escapeHtml(rawFile);
+    const options = {enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] || "0.8"};
+    return expandedLoraFile === rawFile ? renderLoraFullCard(item, file, options) : renderLoraCompactCard(item, file, options);
+  };
+  const grouped = new Map();
+  items.forEach(item => {
+    const category = item.category || "未分类";
+    if (!grouped.has(category)) grouped.set(category, []);
+    grouped.get(category).push(item);
+  });
+  const categoryOrder = new Map(loraCategories.map((value, index) => [value, index]));
+  const modules = [...grouped.entries()]
+    .sort((a, b) => (categoryOrder.get(a[0]) ?? 999) - (categoryOrder.get(b[0]) ?? 999))
+    .map(([category, group]) => `<section class="lora-category-module" data-lora-category-module="${escapeHtml(category)}"><div class="lora-category-module-head"><div><h3>${escapeHtml(category)}</h3><span class="muted">${group.length} 个 LoRA</span></div><button type="button" class="secondary lora-category-jump" data-lora-category-jump="${escapeHtml(category)}">只看此分类</button></div><div class="lora-grid lora-category-grid">${group.map(renderCard).join("")}</div></section>`)
+    .join("");
+  container.innerHTML = modules || '<div class="empty">当前分类没有 LoRA。</div>';
 }
 
 function renderLoras() {
   renderLorasRaw();
+  renderStyleLoras();
+}
+
+function styleLoraConfig() {
+  const selected = new Set((config.style_lora_list || []).map(value => String(value || "").split(":")[0]));
+  const weights = config.style_lora_weights && typeof config.style_lora_weights === "object" ? config.style_lora_weights : {};
+  const aliases = config.style_lora_aliases && typeof config.style_lora_aliases === "object" ? config.style_lora_aliases : {};
+  return {selected, weights, aliases};
+}
+
+function renderStyleLoras() {
+  const container = document.getElementById("styleLoras");
+  if (!container) return;
+  const {selected, weights, aliases} = styleLoraConfig();
+  const items = loraItems.length ? loraItems : (modelData.loras || []).map(file_name => ({file_name, alias: file_name.replace(/\.[^.]+$/, ""), category: "未分类", manual_command_aliases: [], command_aliases: []}));
+  const styleCandidates = items.filter(item => (item.category || "未分类") === "画风");
+  styleCandidates.sort((a, b) => {
+    const aNumber = Number(String(a.style_alias || "").match(/^画风(\d+)$/)?.[1] || -1);
+    const bNumber = Number(String(b.style_alias || "").match(/^画风(\d+)$/)?.[1] || -1);
+    return bNumber - aNumber;
+  });
+  const selectedKeys = new Set([...selected].map(value => String(value).replace(/\\/g, "/").toLowerCase()));
+  const ordered = styleCandidates;
+  const active = currentLoraSelection();
+  const renderCard = item => {
+    const rawFile = String(item.file_name || "");
+    const file = escapeHtml(rawFile);
+    const selectedItem = selectedKeys.has(rawFile.replace(/\\/g, "/").toLowerCase());
+    const styleIndex = styleCandidates.findIndex(value => value.file_name === rawFile);
+    const rawStyleAlias = aliases[rawFile] ?? aliases[rawFile.replace(/\\/g, "/")] ?? item.style_alias;
+    const styleAlias = String(rawStyleAlias || `画风${styleIndex + 1}`).trim();
+    const styleWeight = weights[rawFile] ?? weights[rawFile.replace(/\\/g, "/")] ?? item.style_weight ?? 0.8;
+    const options = {style: true, selected: selectedItem, enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] ?? "0.8", styleAlias, styleWeight, styleIndex: styleIndex + 1};
+    return expandedLoraFile === rawFile ? renderLoraFullCard(item, file, options) : renderLoraCompactCard(item, file, options);
+  };
+  container.innerHTML = ordered.length ? ordered.map(renderCard).join("") : '<div class="empty">当前没有分类为“画风”的 LoRA。请先在 LoRA 管理中把目标文件分类为“画风”，或在本页上传并归类。</div>';
+}
+
+function readLoraPreviewData(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("读取图片失败，请重新选择"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleLoraPreviewDrop(event) {
+  const zone = event.target.closest?.("[data-lora-image-dropzone]");
+  if (!zone) return;
+  event.preventDefault();
+  event.stopPropagation();
+  zone.classList.remove("dragover");
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(String(file.type || "").toLowerCase())) {
+    show("预览图只支持 PNG、JPEG 或 WEBP");
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    show("预览图不能超过 8 MB");
+    return;
+  }
+  try {
+    const imageData = await readLoraPreviewData(file);
+    const result = await post(`${API}/lora_info`, {
+      action: "set_preview_image",
+      file_name: zone.dataset.loraImageDropzone || "",
+      image_data: imageData,
+    });
+    loraItems = result.items || loraItems;
+    loraCategories = result.categories || loraCategories;
+    renderLoraCategories();
+    renderLoras();
+    show("LoRA 预览图已更新");
+  } catch (error) {
+    show(error.message || "预览图更新失败");
+  }
+}
+
+function bindLoraPreviewDrop(container) {
+  if (!container) return;
+  container.addEventListener("dragover", event => {
+    const zone = event.target.closest?.("[data-lora-image-dropzone]");
+    if (!zone || !container.contains(zone)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    zone.classList.add("dragover");
+  });
+  container.addEventListener("dragleave", event => {
+    const zone = event.target.closest?.("[data-lora-image-dropzone]");
+    if (!zone || zone.contains(event.relatedTarget)) return;
+    zone.classList.remove("dragover");
+  });
+  container.addEventListener("drop", handleLoraPreviewDrop);
 }
 
 async function loadLoraInfo(force = false) {
@@ -448,6 +890,11 @@ async function loadModels() {
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
+  setSelectOptions("img2img_accel_lora_name", modelData.img2img_accel_loras || modelData.loras || [], config.img2img_accel_lora_name || "", true);
+  setSelectOptions("img2img_flux2_unet_name", modelData.img2img_flux2_models || [], config.img2img_flux2_unet_name || modelData.current_img2img_flux2 || "");
+  setSelectOptions("img2img_flux2_clip_name", modelData.img2img_flux2_clip_models || [], config.img2img_flux2_clip_name || modelData.current_img2img_flux2_clip || "");
+  setSelectOptions("img2img_flux2_vae_name", modelData.img2img_flux2_vae_models || [], config.img2img_flux2_vae_name || modelData.current_img2img_flux2_vae || "");
+  setSelectOptions("img2img_flux2_lora_name", modelData.img2img_flux2_loras || modelData.loras || [], config.img2img_flux2_lora_name || modelData.current_img2img_flux2_lora || "", true);
   await loadLoraInfo();
 }
 
@@ -469,7 +916,8 @@ function currentLoraSelectionListWithout(fileName) {
 async function saveSimpleLoraSelection() {
   const selected = new Set([...document.querySelectorAll("[data-lora-checkbox]")].filter(input => input.checked).map(input => input.dataset.loraCheckbox));
   const current = currentLoraSelection();
-  const visible = new Set((loraCategoryFilter === "全部" ? loraItems : loraItems.filter(item => (item.category || "未分类") === loraCategoryFilter)).map(item => item.file_name));
+  const normalItems = loraItems.filter(item => (item.category || "未分类") !== "画风");
+  const visible = new Set((loraCategoryFilter === "全部" ? normalItems : normalItems.filter(item => (item.category || "未分类") === loraCategoryFilter)).map(item => item.file_name));
   const next = Object.entries(current).filter(([name]) => !visible.has(name) || selected.has(name)).map(([name, weight]) => `${name}:${weight}`);
   for (const name of selected) if (!current[name]) next.push(`${name}:0.8`);
   const result = await post(`${API}/config`, {lora_list: [...new Set(next)]});
@@ -480,7 +928,7 @@ async function saveSimpleLoraSelection() {
 async function loadWorkflows() {
   const value = await get(`${API}/workflows`);
   const files = value.files || [];
-  for (const id of ["wf_txt2img", "wf_img2img", "wf_hires"]) {
+  for (const id of ["wf_txt2img", "wf_img2img", "wf_img2img_flux2", "wf_hires", "wf_wash", "wf_outpaint", "wf_multi_angle"]) {
     const mode = id.substring(3);
     const select = document.getElementById(id);
     select.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join("") || '<option value="">无工作流</option>';
@@ -510,10 +958,118 @@ async function loadArtistPresets() {
 document.querySelectorAll("[data-open-folder]").forEach(button => {
   button.onclick = async () => { try { const result = await post(`${API}/open_folder`, {kind: button.dataset.openFolder}); show(`已打开：${result.path}`); } catch (e) { show(e.message); } };
 });
+// ---- 批量导入 LoRA ----
+// 通过逐文件上传实现批量导入：AstrBot 页面桥接一次只能携带一个文件，
+// 顺序上传最稳，也便于给出「i/N」进度和逐文件失败明细。
+function updateLoraBatchProgress(patch = {}) {
+  const panel = document.getElementById("loraBatchProgress");
+  if (!panel) return;
+  panel.hidden = false;
+  const stage = document.getElementById("loraBatchStage");
+  const percent = document.getElementById("loraBatchPercent");
+  const bar = document.getElementById("loraBatchBar");
+  const file = document.getElementById("loraBatchFile");
+  const result = document.getElementById("loraBatchResult");
+  const failures = document.getElementById("loraBatchFailures");
+  if (patch.stage != null) stage.textContent = patch.stage;
+  if (patch.percent != null) {
+    const value = Math.max(0, Math.min(100, Number(patch.percent) || 0));
+    bar.value = value;
+    percent.textContent = `${value.toFixed(value % 1 ? 1 : 0)}%`;
+  }
+  if (patch.file != null) file.textContent = patch.file;
+  if (patch.result != null) result.textContent = patch.result;
+  if (Array.isArray(patch.failures)) {
+    failures.innerHTML = patch.failures
+      .map(item => `<li><b>${escapeHtml(item.file_name || "未知文件")}</b>：${escapeHtml(item.error || "导入失败")}</li>`)
+      .join("");
+  }
+}
+
+async function importLoraBatch(fileList) {
+  const list = Array.from(fileList || []).filter(Boolean);
+  if (!list.length) return;
+  const categorySelect = document.getElementById("loraBatchCategory");
+  const category = categorySelect ? categorySelect.value : "";
+  const saved = [];
+  const failures = [];
+  updateLoraBatchProgress({
+    stage: `准备导入 ${list.length} 个文件`,
+    percent: 0,
+    file: "尚未开始",
+    result: `0 成功 / 0 失败`,
+    failures: [],
+  });
+  for (let index = 0; index < list.length; index += 1) {
+    const file = list[index];
+    updateLoraBatchProgress({
+      stage: `正在导入 ${index + 1}/${list.length}`,
+      file: file.name,
+      percent: (index / list.length) * 100,
+      result: `${saved.length} 成功 / ${failures.length} 失败`,
+    });
+    try {
+      const result = await upload(`${API}/upload_lora`, file);
+      const name = (result && result.file_name) || file.name;
+      saved.push(name);
+    } catch (e) {
+      failures.push({file_name: file.name, error: e.message || "导入失败"});
+    }
+    updateLoraBatchProgress({
+      percent: ((index + 1) / list.length) * 100,
+      result: `${saved.length} 成功 / ${failures.length} 失败`,
+      failures,
+    });
+  }
+  // 统一归类：一次请求处理全部已导入文件。
+  let categoryNote = "";
+  if (category && saved.length) {
+    try {
+      await post(`${API}/lora_info`, {action: "category_batch", file_names: saved, category});
+      categoryNote = `，已归入「${category}」分类`;
+    } catch (e) {
+      categoryNote = `，但归类失败：${e.message}`;
+    }
+  }
+  await loadModels();
+  if (category) await loadLoraInfo(true);
+  updateLoraBatchProgress({
+    stage: failures.length ? "导入完成（部分失败）" : "导入完成",
+    percent: 100,
+    file: saved.length ? `已导入：${saved.slice(0, 5).join("、")}${saved.length > 5 ? ` 等 ${saved.length} 个` : ""}` : "没有文件导入成功",
+    result: `${saved.length} 成功 / ${failures.length} 失败`,
+    failures,
+  });
+  show(`批量导入完成：${saved.length} 成功 / ${failures.length} 失败${categoryNote}`);
+}
+
 document.getElementById("loraFile").onchange = async event => {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  try { await upload(`${API}/upload_lora`, file); show("LoRA 已上传，正在刷新模型列表"); await loadModels(); } catch (e) { show(e.message); } finally { event.target.value = ""; }
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  try { await importLoraBatch(files); } catch (e) { show(e.message); }
+  finally { event.target.value = ""; }
+};
+
+document.getElementById("styleLoraFile").onchange = async event => {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  const failures = [];
+  let ok = 0;
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      try {
+        await upload(`${API}/upload_style_lora`, files[index]);
+        ok += 1;
+      } catch (e) {
+        failures.push({file_name: files[index].name, error: e.message || "导入失败"});
+      }
+    }
+    await loadModels();
+    loraSection = "style";
+    document.querySelector("[data-lora-section='style']")?.click();
+    show(`画风 LoRA 导入完成：${ok} 成功 / ${failures.length} 失败`);
+  } catch (e) { show(e.message); }
+  finally { event.target.value = ""; }
 };
 function formatBytes(value) {
   const bytes = Number(value || 0);
@@ -540,7 +1096,8 @@ function updateLoraDownloadProgress(job) {
   else bar.classList.remove("indeterminate");
   percent.textContent = hasTotal ? `${value.toFixed(value % 1 ? 1 : 0)}%` : "下载中";
   stage.textContent = job.stage || "正在处理";
-  file.textContent = job.file_name ? `文件：${job.file_name}` : "正在读取模型信息";
+  const mode = job.download_mode ? `（${job.download_mode}）` : "";
+  file.textContent = job.file_name ? `文件：${job.file_name}${mode}` : (job.download_mode ? `正在读取模型信息（${job.download_mode}）` : "正在读取模型信息");
   bytes.textContent = hasTotal ? `${formatBytes(job.downloaded)} / ${formatBytes(job.total)}` : `${formatBytes(job.downloaded)} / 未知大小`;
 }
 
@@ -620,7 +1177,15 @@ document.getElementById("deleteLoraCategory").onclick = async () => {
   } catch (e) { show(e.message); }
 };
 document.getElementById("refreshLoras").onclick = async () => { try { await loadLoraInfo(true); await loadPresets(); show("CivitAI 信息和自动预设已刷新"); } catch (e) { show(e.message); } };
-document.getElementById("loras").onclick = async event => {
+async function handleLoraClick(event) {
+  const categoryJump = event.target.closest("[data-lora-category-jump]");
+  if (categoryJump) {
+    loraCategoryFilter = categoryJump.dataset.loraCategoryJump || "全部";
+    const select = document.getElementById("loraCategoryFilter");
+    if (select) select.value = loraCategoryFilter;
+    renderLoras();
+    return;
+  }
   const copyButton = event.target.closest("button[data-civitai-copy]");
   if (copyButton) {
     const copied = await copyText(copyButton.dataset.civitaiCopy);
@@ -642,6 +1207,12 @@ document.getElementById("loras").onclick = async event => {
   if (!button) return;
   try {
     const file = button.dataset.file;
+    if (button.dataset.loraAction === "toggle-style-details" || button.dataset.loraAction === "toggle-lora-details") {
+      expandedLoraFile = expandedLoraFile === file ? "" : file;
+      try { localStorage.setItem("comfyui-ai-studio-expanded-lora", expandedLoraFile); } catch (_) {}
+      renderLoras();
+      return;
+    }
     if (button.dataset.loraAction === "add-lora-preset") {
       const list = document.querySelector(`[data-lora-preset-list="${CSS.escape(file)}"]`);
       if (!list) return;
@@ -704,6 +1275,15 @@ document.getElementById("loras").onclick = async event => {
       show("简称已移除，请点击保存此 LoRA");
       return;
     }
+    if (button.dataset.loraAction === "clear-lora-preview") {
+      const result = await post(`${API}/lora_info`, {action: "clear_preview_image", file_name: file});
+      loraItems = result.items || loraItems;
+      loraCategories = result.categories || loraCategories;
+      renderLoraCategories();
+      renderLoras();
+      show("LoRA 预览图已清除");
+      return;
+    }
     if (button.dataset.loraAction === "open-lora") {
       await post(API + "/open_lora", {file_name: file});
       show("已打开 LoRA 所在文件夹");
@@ -729,6 +1309,8 @@ document.getElementById("loras").onclick = async event => {
       const urlInput = document.querySelector(`[data-civitai-url-file="${CSS.escape(file)}"]`);
       const showImagesInput = document.querySelector(`[data-show-images-file="${CSS.escape(file)}"]`);
       const enabledInput = document.querySelector(`[data-lora-checkbox="${CSS.escape(file)}"]`);
+      const styleSelectedInput = document.querySelector(`[data-style-lora-file="${CSS.escape(file)}"]`);
+      const styleAliasInput = document.querySelector(`[data-style-lora-alias="${CSS.escape(file)}"]`);
       const presetList = document.querySelector(`[data-lora-preset-list="${CSS.escape(file)}"]`);
       const loraPresets = [...(presetList?.querySelectorAll("[data-lora-preset-row]") || [])].flatMap(row => {
         const content = row.querySelector("[data-lora-preset-content]")?.value.trim() || "";
@@ -749,12 +1331,18 @@ document.getElementById("loras").onclick = async event => {
         civitai_name: nameInput?.value ?? item.custom_name ?? "",
         civitai_url: urlInput?.value ?? item.custom_url ?? "",
         show_images: showImagesInput ? showImagesInput.checked : item.show_images !== false,
-        enabled: enabledInput ? enabledInput.checked : currentLoraSelection()[file] !== undefined,
-        lora_presets: loraPresets,
+        enabled: enabledInput ? enabledInput.checked : (document.querySelector(`[data-lora-enabled-checkbox="${CSS.escape(file)}"]`)?.checked ?? currentLoraSelection()[file] !== undefined),
+        ...(presetList ? {lora_presets: loraPresets} : {}),
+        style_selected: styleSelectedInput ? styleSelectedInput.checked : undefined,
+        style_alias: styleAliasInput?.value ?? undefined,
+        style_weight: document.querySelector(`[data-style-lora-weight="${CSS.escape(file)}"]`)?.value ?? undefined,
       });
       loraItems = result.items || [];
       loraCategories = result.categories || loraCategories;
       config.lora_list = result.lora_list || config.lora_list || [];
+      if (Array.isArray(result.style_lora_list)) config.style_lora_list = result.style_lora_list;
+      if (result.style_lora_aliases && typeof result.style_lora_aliases === "object") config.style_lora_aliases = result.style_lora_aliases;
+      if (result.style_lora_weights && typeof result.style_lora_weights === "object") config.style_lora_weights = result.style_lora_weights;
       renderLoraCategories();
       renderLoras();
       await loadPresets();
@@ -763,8 +1351,43 @@ document.getElementById("loras").onclick = async event => {
   } catch (e) { show(e.message); }
 };
 document.getElementById("model").onchange = updateModelHint;
+for (const id of ["img2img_accel_lora_enabled", "img2img_unet_name", "img2img_steps", "img2img_cfg", "img2img_accel_steps", "img2img_accel_cfg"]) {
+  document.getElementById(id)?.addEventListener("input", updateQwenAccelHint);
+  document.getElementById(id)?.addEventListener("change", updateQwenAccelHint);
+}
 document.getElementById("saveWorkflows").onclick = async () => { try { await post(`${API}/config`, {workflow_txt2img: document.getElementById("wf_txt2img").value, workflow_img2img: document.getElementById("wf_img2img").value, workflow_hires: document.getElementById("wf_hires").value}); show("工作流选择已保存"); } catch (e) { show(e.message); } };
 document.getElementById("saveImg2ImgWorkflow").onclick = async () => { try { await post(`${API}/config`, {workflow_img2img: document.getElementById("wf_img2img").value}); show("图生图工作流已保存"); } catch (e) { show(e.message); } };
+document.getElementById("saveImg2ImgFlux2Workflow").onclick = async () => {
+  const payload = {
+    img2img_engine: document.getElementById("img2img_engine").value,
+    workflow_img2img_flux2: document.getElementById("wf_img2img_flux2").value,
+    img2img_flux2_source_workflow: document.getElementById("img2img_flux2_source_workflow").value,
+  };
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图工作流和默认引擎已保存"); }
+  catch (e) { show(e.message); }
+};
+function flux2ToolPayload(mode) {
+  const payload = {};
+  for (const key of ["source_workflow", "model_name", "clip_name", "vae_name", "default_positive", "default_negative", "sampler_name", "scheduler", "filename_prefix"]) {
+    payload[`${mode}_${key}`] = document.getElementById(`${mode}_${key}`).value;
+  }
+  for (const key of ["steps", "cfg", "seed", "denoise", "size", "batch", "caption_tokens", "left", "top", "right", "bottom", "feathering", "horizontal_angle", "vertical_angle", "zoom"]) {
+    const element = document.getElementById(`${mode}_${key}`);
+    if (element) payload[`${mode}_${key}`] = Number(element.value);
+  }
+  for (const key of ["default_prompts", "camera_view"]) {
+    const element = document.getElementById(`${mode}_${key}`);
+    if (element) payload[`${mode}_${key}`] = element.checked;
+  }
+  payload[`workflow_${mode}`] = document.getElementById(`wf_${mode}`).value;
+  return payload;
+}
+for (const [id, mode, label] of [["saveWashSettings", "wash", "洗图"], ["saveOutpaintSettings", "outpaint", "扩图"], ["saveMultiAngleSettings", "multi_angle", "多角度"]]) {
+  document.getElementById(id).onclick = async () => {
+    try { const payload = flux2ToolPayload(mode); await post(`${API}/config`, payload); Object.assign(config, payload); show(`${label}设置已保存`); }
+    catch (e) { show(e.message); }
+  };
+}
 document.getElementById("saveTxt2ImgSettings").onclick = async () => {
   const payload = {};
   for (const id of ["width", "height", "steps", "seed", "cfg", "sampler_name", "scheduler", "denoise", "hires_scale", "hires_steps", "hires_denoise", "hires_upscale_model"]) {
@@ -785,8 +1408,8 @@ document.getElementById("saveTxt2ImgSettings").onclick = async () => {
   try { await post(`${API}/config`, payload); Object.assign(config, payload); updateModelHint(); show("文生图模型、参数和提示词设置已保存"); } catch (e) { show(e.message); }
 };
 document.getElementById("loraDisplayToggle").onclick = () => {
-  loraSimpleMode = !loraSimpleMode;
-  try { localStorage.setItem("comfyui-ai-studio-lora-simple", loraSimpleMode ? "1" : "0"); } catch (_) {}
+  expandedLoraFile = "";
+  try { localStorage.setItem("comfyui-ai-studio-expanded-lora", ""); } catch (_) {}
   renderLoras();
 };
 document.getElementById("loraSelectAll").onclick = () => {
@@ -798,6 +1421,40 @@ document.getElementById("loraClearAll").onclick = () => {
 document.getElementById("loraSaveSelection").onclick = async () => {
   try { await saveSimpleLoraSelection(); show("当前分类的 LoRA 选择已保存"); } catch (e) { show(e.message); }
 };
+document.getElementById("saveStyleLora").onclick = async () => {
+  try {
+    const selected = [...document.querySelectorAll("[data-style-lora-file]")]
+      .filter(input => input.checked)
+      .map(input => input.dataset.styleLoraFile);
+    const aliases = config.style_lora_aliases && typeof config.style_lora_aliases === "object" ? {...config.style_lora_aliases} : {};
+    const weights = config.style_lora_weights && typeof config.style_lora_weights === "object" ? {...config.style_lora_weights} : {};
+    document.querySelectorAll("[data-style-lora-alias]").forEach(input => {
+      const file = input.dataset.styleLoraAlias;
+      const value = input.value.trim();
+      if (value) aliases[file] = value;
+    });
+    document.querySelectorAll("[data-style-lora-weight]").forEach(input => {
+      const file = input.dataset.styleLoraWeight;
+      const value = Number(input.value);
+      if (Number.isFinite(value)) weights[file] = Math.max(0, Math.min(2, value));
+    });
+    const payload = {
+      style_lora_mode: document.getElementById("style_lora_mode").value,
+      style_lora_random_count: Math.max(1, Math.min(16, Number(document.getElementById("style_lora_random_count")?.value || 1))),
+      style_lora_list: selected,
+      style_lora_aliases: aliases,
+      style_lora_weights: weights,
+    };
+    const result = await post(`${API}/config`, payload);
+    Object.assign(config, payload, result || {});
+    renderStyleLoras();
+    show("画风 LoRA 设置已保存，下一次文生图生效");
+  } catch (e) { show(e.message); }
+}
+document.getElementById("loras").onclick = handleLoraClick;
+document.getElementById("styleLoras").onclick = handleLoraClick;
+bindLoraPreviewDrop(document.getElementById("loras"));
+bindLoraPreviewDrop(document.getElementById("styleLoras"));
 document.getElementById("loadAiModels").onclick = async () => {
   const status = document.getElementById("aiConnectionStatus");
   status.textContent = "正在获取模型列表…";
@@ -831,10 +1488,36 @@ document.getElementById("testAiConnection").onclick = async () => {
     show(e.message);
   }
 };
-for (const id of ["ai_base_url", "ai_model", "ai_api_key", "civitai_token"]) {
-  document.getElementById(id).addEventListener("input", () => { aiConnectionTested = false; });
-  document.getElementById(id).addEventListener("change", () => { aiConnectionTested = false; });
+for (const id of ["ai_base_url", "ai_model", "ai_api_key", "civitai_base_url", "civitai_token"]) {
+  const field = document.getElementById(id);
+  if (!field) continue;
+  field.addEventListener("input", () => { aiConnectionTested = false; });
+  field.addEventListener("change", () => { aiConnectionTested = false; });
 }
+const saveCivitaiSettingsButton = document.getElementById("saveCivitaiSettings");
+if (saveCivitaiSettingsButton) saveCivitaiSettingsButton.onclick = async () => {
+  const status = document.getElementById("civitaiStatus");
+  const payload = {
+    civitai_base_url: (document.getElementById("civitai_base_url")?.value || config.civitai_base_url || "https://civitai.com").trim(),
+    civitai_token: document.getElementById("civitai_token").value,
+  };
+  try {
+    await post(`${API}/config`, payload);
+    config.civitai_base_url = payload.civitai_base_url;
+    if (payload.civitai_token) config.civitai_token_configured = true;
+    if (status) {
+      status.textContent = `已保存信息源：${payload.civitai_base_url}`;
+      status.className = "muted success-text";
+    }
+    show("CivitAI 兼容站设置已保存");
+  } catch (e) {
+    if (status) {
+      status.textContent = `保存失败：${e.message}`;
+      status.className = "muted error-text";
+    }
+    show(e.message);
+  }
+};
 document.getElementById("saveAi").onclick = async () => {
   if (!aiConnectionTested) {
     show("请先获取模型列表并测试连接，测试成功后再保存 AI 服务设置");
@@ -844,19 +1527,22 @@ document.getElementById("saveAi").onclick = async () => {
     ai_base_url: document.getElementById("ai_base_url").value,
     ai_model: document.getElementById("ai_model").value,
     ai_api_key: document.getElementById("ai_api_key").value,
+    civitai_base_url: (document.getElementById("civitai_base_url")?.value || config.civitai_base_url || "https://civitai.com").trim(),
     civitai_token: document.getElementById("civitai_token").value,
   };
   try { await post(`${API}/config`, payload); Object.assign(config, payload); show("AI 服务设置已保存"); } catch (e) { show(e.message); }
 };
 document.getElementById("saveImg2ImgSettings").onclick = async () => {
   const payload = {};
-  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
+  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_accel_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
     payload[id] = document.getElementById(id).value;
   }
-  for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
+  for (const id of ["img2img_lora_strength", "img2img_accel_lora_strength", "img2img_accel_steps", "img2img_accel_cfg", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
     payload[id] = Number(document.getElementById(id).value);
   }
+  payload.img2img_accel_lora_enabled = document.getElementById("img2img_accel_lora_enabled")?.checked === true;
   payload.img2img_keep_aspect_ratio = document.getElementById("img2img_keep_aspect_ratio")?.checked !== false;
+  payload.img2img_match_input_size = document.getElementById("img2img_match_input_size")?.checked !== false;
   payload.img2img_crop = document.getElementById("img2img_crop").value;
   try {
     await post(`${API}/config`, payload);
@@ -868,27 +1554,104 @@ document.getElementById("saveImg2ImgAi").onclick = async () => {
   const payload = {
     img2img_llm_prompt_source: document.getElementById("img2img_llm_prompt_source").value,
     img2img_plugin_ai_debug: document.getElementById("img2img_plugin_ai_debug").checked,
-    img2img_plugin_ai_llm_system_prompt: document.getElementById("img2img_plugin_ai_llm_system_prompt").value,
+    img2img_ai_system_prompt: document.getElementById("img2img_ai_system_prompt").value,
+    img2img_plugin_ai_llm_system_prompt: "",
     img2img_plugin_ai_knowledge: document.getElementById("img2img_plugin_ai_knowledge").value,
-    img2img_astrbot_llm_system_prompt: document.getElementById("img2img_astrbot_llm_system_prompt").value,
-    img2img_astrbot_user_prompt_template: document.getElementById("img2img_astrbot_user_prompt_template").value,
-    img2img_plugin_ai_user_prompt_template: document.getElementById("img2img_plugin_ai_user_prompt_template").value,
-    img2img_plugin_ai_output_format: document.getElementById("img2img_plugin_ai_output_format").value,
-    img2img_llm_tool_prompt: document.getElementById("img2img_llm_tool_prompt").value,
+    img2img_plain_translate_enabled: document.getElementById("img2img_plain_translate_enabled")?.checked === true,
+    img2img_plain_translate_url: document.getElementById("img2img_plain_translate_url")?.value || "",
   };
   try { await post(`${API}/config`, payload); Object.assign(config, payload); show("图生图 LLM 和插件 AI 设置已保存"); } catch (e) { show(e.message); }
+};
+document.getElementById("saveImg2ImgFlux2Settings").onclick = async () => {
+  const payload = {};
+  for (const id of ["img2img_flux2_unet_name", "img2img_flux2_clip_name", "img2img_flux2_vae_name", "img2img_flux2_lora_name", "img2img_flux2_sampler_name", "img2img_flux2_scheduler", "img2img_flux2_default_positive", "img2img_flux2_default_negative", "img2img_flux2_filename_prefix"]) {
+    payload[id] = document.getElementById(id).value;
+  }
+  for (const id of ["img2img_flux2_lora_strength", "img2img_flux2_size", "img2img_flux2_steps", "img2img_flux2_cfg", "img2img_flux2_seed", "img2img_flux2_denoise", "img2img_flux2_batch"]) {
+    payload[id] = Number(document.getElementById(id).value);
+  }
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图模型和参数已保存"); }
+  catch (e) { show(e.message); }
+};
+document.getElementById("saveImg2ImgFlux2Ai").onclick = async () => {
+  const payload = {
+    img2img_flux2_llm_prompt_source: document.getElementById("img2img_flux2_llm_prompt_source").value,
+    img2img_flux2_plugin_ai_debug: document.getElementById("img2img_flux2_plugin_ai_debug").checked,
+    img2img_flux2_plain_translate_enabled: document.getElementById("img2img_flux2_plain_translate_enabled").checked,
+    img2img_flux2_plain_translate_url: document.getElementById("img2img_flux2_plain_translate_url").value,
+    img2img_flux2_ai_system_prompt: document.getElementById("img2img_flux2_ai_system_prompt").value,
+    img2img_flux2_plugin_ai_knowledge: document.getElementById("img2img_flux2_plugin_ai_knowledge").value,
+    img2img_flux2_prompt_template: document.getElementById("img2img_flux2_prompt_template").value,
+    img2img_flux2_output_format: document.getElementById("img2img_flux2_output_format").value,
+  };
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 中文 AI 设置已保存"); }
+  catch (e) { show(e.message); }
 };
 document.getElementById("saveDrawLimit").onclick = async () => {
   const payload = {
     draw_limit_count: Number(document.getElementById("draw_limit_count").value || 0),
     draw_limit_window_seconds: Number(document.getElementById("draw_limit_window_seconds").value || 3600),
+    draw_queue_limit_enabled: document.getElementById("draw_queue_limit_enabled")?.checked === true,
+    draw_queue_limit_count: Number(document.getElementById("draw_queue_limit_count")?.value || 0),
     draw_limit_admin_ids: document.getElementById("draw_limit_admin_ids").value,
     comfyui_start_script: document.getElementById("comfyui_start_script").value,
   };
   try { await post(`${API}/config`, payload); Object.assign(config, payload); show("绘图限额与 ComfyUI 控制设置已保存"); } catch (e) { show(e.message); }
 };
 document.getElementById("draw_reply_mode").onchange = updateReplyCustomVisibility;
-document.getElementById("saveReply").onclick = async () => { try { await post(`${API}/config`, {draw_reply_mode: document.getElementById("draw_reply_mode").value, draw_delivery_mode: document.getElementById("draw_delivery_mode").value, draw_reply_timeout: Number(document.getElementById("draw_reply_timeout").value || 6), llm_wait_timeout: Number(document.getElementById("llm_wait_timeout")?.value || 45), draw_attach_prompt: document.getElementById("draw_attach_prompt").checked, nsfw_group_blacklist: document.getElementById("nsfw_group_blacklist").value, draw_start_reply: document.getElementById("draw_start_reply").value, draw_reply_custom: document.getElementById("draw_reply_custom").value}); Object.assign(config, {draw_attach_prompt: document.getElementById("draw_attach_prompt").checked, nsfw_group_blacklist: document.getElementById("nsfw_group_blacklist").value, llm_wait_timeout: Number(document.getElementById("llm_wait_timeout")?.value || 45)}); show("回复设置、提示词附带和群聊黑名单已保存"); } catch (e) { show(e.message); } };
+document.getElementById("testModerationConnection").onclick = async () => {
+  const status = document.getElementById("moderationStatus");
+  status.textContent = "正在测试审核链路…";
+  status.className = "muted";
+  try {
+    const result = await post(`${API}/moderation_test`, moderationFormBody());
+    status.textContent = `审核链路正常（尺度：${result.strictness}）`;
+    status.className = "muted success-text";
+    show(result.message || "审核链路测试成功");
+  } catch (e) {
+    status.textContent = `测试失败：${e.message}`;
+    status.className = "muted error-text";
+    show(e.message);
+  }
+};
+document.getElementById("saveModeration").onclick = async () => {
+  const payload = {
+    moderation_enabled: document.getElementById("moderation_enabled").checked,
+    moderation_input_groups: document.getElementById("moderation_input_groups").value,
+    moderation_output_groups: document.getElementById("moderation_output_groups").value,
+    moderation_base_url: document.getElementById("moderation_base_url").value.trim(),
+    moderation_api_key: document.getElementById("moderation_api_key").value,
+    moderation_model: document.getElementById("moderation_model").value.trim(),
+    moderation_strictness: document.getElementById("moderation_strictness").value,
+    moderation_timeout: Number(document.getElementById("moderation_timeout").value || 30),
+    moderation_max_side: Number(document.getElementById("moderation_max_side").value || 1024),
+    moderation_fail_open: document.getElementById("moderation_fail_open").checked,
+  };
+  if (payload.moderation_enabled) {
+    if (!payload.moderation_base_url || !payload.moderation_model) {
+      show("启用审核前请先填写审核服务地址和审核模型；也可以先点“测试审核链路”验证");
+      return;
+    }
+    if (!payload.moderation_input_groups.trim() && !payload.moderation_output_groups.trim()) {
+      show("启用审核后，输入端和输出端名单至少要填写一个，否则不会检测任何会话");
+      return;
+    }
+    if (!payload.moderation_api_key && !config.moderation_api_key_configured) {
+      show("请填写审核 API Key");
+      return;
+    }
+  }
+  try {
+    await post(`${API}/config`, payload);
+    Object.assign(config, payload);
+    if (payload.moderation_api_key) config.moderation_api_key_configured = true;
+    config.moderation_ready = Boolean(payload.moderation_base_url && payload.moderation_model);
+    document.getElementById("moderation_api_key").value = "";
+    applyModerationConfig(config);
+    show("图片安全审核设置已保存");
+  } catch (e) { show(e.message); }
+};
+document.getElementById("saveReply").onclick = async () => { try { const payload = {draw_reply_mode: "custom", draw_delivery_mode: document.getElementById("draw_delivery_mode").value, llm_draw_start_reply_mode: document.getElementById("llm_draw_start_reply_mode")?.value || "ai", draw_queue_notice_enabled: document.getElementById("draw_queue_notice_enabled")?.checked !== false, draw_queue_notice_ai: document.getElementById("draw_queue_notice_ai")?.checked === true, llm_wait_timeout: Number(document.getElementById("llm_wait_timeout")?.value || 45), draw_attach_prompt: document.getElementById("draw_attach_prompt").checked, nsfw_group_blacklist: document.getElementById("nsfw_group_blacklist").value, draw_start_reply: document.getElementById("draw_start_reply")?.value || "", draw_reply_custom: document.getElementById("draw_reply_custom").value}; await post(`${API}/config`, payload); Object.assign(config, payload); show("回复、排队提示和群聊黑名单已保存"); } catch (e) { show(e.message); } };
 document.getElementById("addPreset").onclick = async () => {
   const name = document.getElementById("presetName").value;
   const content = document.getElementById("presetContent").value;
@@ -982,3 +1745,53 @@ function resetArtistPresetEditor() {
 }
 
 load();
+
+
+/* 未保存修改提示：作用域内任何表单变化 → 保存按钮变深（dirty） */
+(function () {
+  "use strict";
+  function track(btnId) {
+    var btn = document.getElementById(btnId);
+    if (!btn) return;
+    var band = btn.closest(".band") || btn.closest("section") || document;
+    function mark() {
+      if (!btn.classList.contains("dirty")) btn.classList.add("dirty");
+    }
+    band.addEventListener("input", mark, true);
+    band.addEventListener("change", mark, true);
+    btn.addEventListener("click", function () {
+      setTimeout(function () { btn.classList.remove("dirty"); }, 400);
+    });
+  }
+  ["loraSaveSelection", "saveStyleLora", "saveWorkflows", "saveTxt2ImgSettings",
+   "saveImg2ImgWorkflow", "saveImg2ImgSettings", "saveImg2ImgAi",
+   "saveImg2ImgFlux2Workflow", "saveImg2ImgFlux2Settings", "saveImg2ImgFlux2Ai",
+   "saveWashSettings", "saveOutpaintSettings", "saveMultiAngleSettings",
+   "saveAi", "saveReply", "saveDrawLimit", "saveModeration"].forEach(track);
+})();
+
+
+/* 动态卡片（展开的 LoRA 卡）保存按钮 dirty：事件委托覆盖动态渲染的卡片 */
+(function () {
+  "use strict";
+  function saveBtn(card) {
+    return card ? card.querySelector('[data-lora-action="save-lora"]') : null;
+  }
+  function mark(card) {
+    var btn = saveBtn(card);
+    if (btn && !btn.classList.contains("dirty")) btn.classList.add("dirty");
+  }
+  function cardOf(e) {
+    var t = e && e.target;
+    return t && t.closest ? t.closest(".lora-card-full, .style-lora-card-full") : null;
+  }
+  document.addEventListener("input", function (e) { mark(cardOf(e)); }, true);
+  document.addEventListener("change", function (e) { mark(cardOf(e)); }, true);
+  document.addEventListener("click", function (e) {
+    var btn = e && e.target && e.target.closest
+      ? e.target.closest('[data-lora-action="save-lora"]')
+      : null;
+    if (btn) setTimeout(function () { btn.classList.remove("dirty"); }, 400);
+  }, true);
+})();
+

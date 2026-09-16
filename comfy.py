@@ -16,7 +16,8 @@ class ComfyError(Exception):
 
 MODEL_TYPES = (
     "diffusion_models", "checkpoints", "loras", "upscale_models", "vae",
-    "text_encoders", "unet", "unet_gguf", "clip_gguf",
+    "text_encoders", "unet", "unet_gguf", "clip_gguf", "controlnet",
+    "ipadapter", "clip_vision",
 )
 
 
@@ -49,6 +50,25 @@ class ComfyClient:
 
     async def status(self) -> dict[str, Any]:
         return await self.request("GET", "/system_stats")
+
+    async def queue_info(self) -> dict[str, list[Any]]:
+        """读取 ComfyUI 当前运行中和等待中的任务。
+
+        ComfyUI 的队列元素在不同版本中可能是列表或对象；客户端只负责
+        保留原始元素，图片数量的估算交给插件按工作流输入进一步处理。
+        """
+        data = await self.request("GET", "/queue")
+        if not isinstance(data, dict):
+            raise ComfyError("ComfyUI 队列接口返回格式无效")
+
+        def entries(key: str) -> list[Any]:
+            value = data.get(key, [])
+            return list(value) if isinstance(value, list) else []
+
+        return {
+            "queue_running": entries("queue_running"),
+            "queue_pending": entries("queue_pending"),
+        }
 
     async def object_info(self) -> dict[str, Any]:
         data = await self.request("GET", "/object_info")
@@ -90,6 +110,9 @@ class ComfyClient:
             "clip_gguf": (("CLIPLoaderGGUF", "clip_name"),),
             "vae": (("VAELoader", "vae_name"),),
             "unet_gguf": (("UnetLoaderGGUF", "unet_name"),),
+            "controlnet": (("ControlNetLoader", "control_net_name"),),
+            "ipadapter": (("IPAdapterModelLoader", "ipadapter_file"),),
+            "clip_vision": (("CLIPVisionLoader", "clip_name"),),
         }
         names: list[str] = []
         for node_name, input_name in node_inputs.get(category, ()):

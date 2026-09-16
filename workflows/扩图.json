@@ -1,0 +1,345 @@
+{
+  "14": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "13": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "10": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "73": {
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ],
+      "latent": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "74": {
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ],
+      "latent": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "75": {
+    "inputs": {
+      "pixels": [
+        "123",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAEEncode"
+    }
+  },
+  "62": {
+    "inputs": {
+      "images": [
+        "124",
+        0
+      ],
+      "filename_prefix": "ComfyUI"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SaveImage"
+    }
+  },
+  "113": {
+    "inputs": {
+      "image_a": [
+        "123",
+        0
+      ],
+      "image_b": [
+        "124",
+        0
+      ]
+    },
+    "class_type": "Image Comparer (rgthree)",
+    "_meta": {
+      "title": "Image Comparer (rgthree)"
+    }
+  },
+  "83": {
+    "inputs": {
+      "width": [
+        "115",
+        2
+      ],
+      "height": [
+        "115",
+        3
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "EmptyFlux2LatentImage"
+    }
+  },
+  "11": {
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "116": {
+    "inputs": {
+      "image": [
+        "63",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 1
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "19": {
+    "inputs": {
+      "clip": [
+        "14",
+        0
+      ],
+      "text": "移除绿色区域"
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIPTextEncode"
+    }
+  },
+  "115": {
+    "inputs": {
+      "图像": [
+        "108",
+        0
+      ],
+      "遮罩": [
+        "108",
+        1
+      ],
+      "SD1.5": "关",
+      "SDXL": "关",
+      "FLUX": "关",
+      "WAN": "关",
+      "QWEN": "关",
+      "裁剪方式": "中心裁剪",
+      "缩放算法": "lanczos",
+      "启用边长缩放": true,
+      "缩放至边": "最长边",
+      "缩放长度": 1024
+    },
+    "class_type": "EasySizeSimpleImage",
+    "_meta": {
+      "title": "EasySizeSimpleImage"
+    }
+  },
+  "95": {
+    "inputs": {
+      "model": [
+        "13",
+        0
+      ],
+      "positive": [
+        "74",
+        0
+      ],
+      "negative": [
+        "73",
+        0
+      ],
+      "latent_image": [
+        "83",
+        0
+      ],
+      "seed": 1061518455125201,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "29": {
+    "inputs": {
+      "anything": [
+        "95",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "easy cleanGpuUsed"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "29",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAEDecode"
+    }
+  },
+  "129": {
+    "inputs": {
+      "clip_name": "qwen3-8b-abliterated-q5_k_m.gguf",
+      "type": "flux2"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "CLIPLoaderGGUF"
+    }
+  },
+  "128": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "UnetLoaderGGUF"
+    }
+  },
+  "123": {
+    "inputs": {
+      "image": [
+        "115",
+        0
+      ],
+      "mask": [
+        "115",
+        1
+      ],
+      "color": "0, 255, 0",
+      "device": "cpu"
+    },
+    "class_type": "DrawMaskOnImage",
+    "_meta": {
+      "title": "DrawMaskOnImage"
+    }
+  },
+  "124": {
+    "inputs": {
+      "image_ref": [
+        "116",
+        0
+      ],
+      "image_target": [
+        "17",
+        0
+      ],
+      "method": "mkl",
+      "strength": 0.4,
+      "multithread": true
+    },
+    "class_type": "ColorMatch",
+    "_meta": {
+      "title": "ColorMatch"
+    }
+  },
+  "63": {
+    "inputs": {
+      "image": "ComfyUI_00073_.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage"
+    }
+  },
+  "109": {
+    "inputs": {
+      "images": [
+        "123",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "PreviewImage"
+    }
+  },
+  "108": {
+    "inputs": {
+      "image": [
+        "116",
+        0
+      ],
+      "left": 504,
+      "top": 0,
+      "right": 504,
+      "bottom": 0,
+      "feathering": 0
+    },
+    "class_type": "ImagePadForOutpaint",
+    "_meta": {
+      "title": "ImagePadForOutpaint"
+    }
+  }
+}

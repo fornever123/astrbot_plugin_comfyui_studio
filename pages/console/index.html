@@ -3,61 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ComfyUI AI 绘画台</title>
+  <title>Anima 全能绘画台</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="shell">
-    <header class="topbar">
+    <aside class="sidebar">
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
-        <h1>ComfyUI AI 绘画台</h1>
-        <p id="version" class="version">版本 v0.8.0</p>
+        <h1>Anima 全能绘画台</h1>
+        <p id="version" class="version">版本 v1.0.0</p>
       </div>
-      <div class="top-actions">
-        <button id="themeToggle" class="secondary" type="button">切换明暗</button>
-        <div id="status" class="status pending">检查中</div>
-      </div>
-    </header>
 
-    <section class="band status-band">
+      <nav class="page-tabs" aria-label="控制台功能页面">
+<button class="page-tab active" type="button" data-view-tab="lora"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>LoRA 组</button>
+<button class="page-tab" type="button" data-view-tab="workflow"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流组</button>
+<button class="page-tab" type="button" data-view-tab="txt2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>文生图</button>
+    <details class="nav-group" open>
+      <summary class="nav-group-head" aria-expanded="true"><span>图生图</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <div class="nav-group-body">
+        <button class="page-tab" type="button" data-view-tab="img2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>图生图</button>
+        <button class="page-tab" type="button" data-view-tab="img2img_flux2"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2</button>
+      </div>
+    </details>
+    <details class="nav-group" open>
+      <summary class="nav-group-head" aria-expanded="true"><span>其他功能</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
+      <div class="nav-group-body">
+        <button class="page-tab" type="button" data-view-tab="wash"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</button>
+        <button class="page-tab" type="button" data-view-tab="outpaint"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</button>
+        <button class="page-tab" type="button" data-view-tab="multi_angle"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</button>
+      </div>
+    </details>
+<button class="page-tab" type="button" data-view-tab="ai"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 与回复</button>
+<button class="page-tab" type="button" data-view-tab="presets"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>提示词预设</button>
+<button class="page-tab" type="button" data-view-tab="artist"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>画师串预设</button>
+      </nav>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <div class="top-actions">
+          <button id="themeToggle" class="secondary" type="button"><span class="t-light">浅色</span><span class="t-dark">深色</span></button>
+          <div id="status" class="status pending">检查中</div>
+        </div>
+      </header>
+
+
+<section class="band status-band">
       <div>
-        <h2>运行状态</h2>
+        <h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>运行状态</h2>
         <div id="statusText" class="muted">正在读取 ComfyUI 状态</div>
       </div>
-      <pre id="paths" class="paths">正在读取模型和工作流位置</pre>
+      <details class="paths-wrap">
+        <summary>模型与工作流路径<span id="pathsCount" class="paths-count"></span></summary>
+        <pre id="paths" class="paths">正在读取模型和工作流位置</pre>
+      </details>
     </section>
 
-    <nav class="page-tabs" aria-label="控制台功能页面">
-      <button class="page-tab active" type="button" data-view-tab="lora">LoRA 组</button>
-      <button class="page-tab" type="button" data-view-tab="workflow">工作流组</button>
-      <button class="page-tab" type="button" data-view-tab="txt2img">文生图</button>
-      <button class="page-tab" type="button" data-view-tab="img2img">图生图</button>
-      <button class="page-tab" type="button" data-view-tab="ai">AI 与回复</button>
-      <button class="page-tab" type="button" data-view-tab="presets">提示词预设</button>
-      <button class="page-tab" type="button" data-view-tab="artist">画师串预设</button>
-    </nav>
+<div id="view-lora" class="view-panel" data-view-panel="lora">
 
-    <div id="view-lora" class="view-panel" data-view-panel="lora">
+    <div class="lora-section-switcher" role="tablist" aria-label="LoRA 模块">
+      <button id="normalLoraTab" class="lora-section-tab active" type="button" data-lora-section="normal" role="tab" aria-selected="true">普通 LoRA</button>
+      <button id="styleLoraTab" class="lora-section-tab" type="button" data-lora-section="style" role="tab" aria-selected="false">画风 LoRA</button>
+    </div>
 
     <section class="band">
       <div class="section-head">
-        <div><h2>LoRA 文件夹</h2><p>LoRA 文件和 CivitAI 信息在本组管理；文生图模型文件夹已移至“文生图”页。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>LoRA 文件夹</h2><p>LoRA 文件和 CivitAI 信息在本组管理；文生图模型文件夹已移至“文生图”页。</p></div>
       </div>
       <div class="folder-grid">
-        <article class="folder-card"><div><strong>LoRA</strong><code id="path-loras">未检测到</code></div><div class="folder-actions"><button data-open-folder="loras" class="primary">打开文件夹</button><label class="upload-button">上传 LoRA<input id="loraFile" type="file" accept=".safetensors,.pt,.ckpt,.bin"></label></div></article>
+        <article class="folder-card"><div><strong>LoRA</strong><code id="path-loras">未检测到</code></div><div class="folder-actions"><button data-open-folder="loras" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入 LoRA<input id="loraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label></div></article>
+      </div>
+      <div class="lora-batch-row">
+        <label>批量导入分类<select id="loraBatchCategory" class="select"><option value="">未分类</option></select><small class="field-hint">先选分类再点“批量导入 LoRA”，选中的文件会统一归入该分类。</small></label>
+      </div>
+      <div id="loraBatchProgress" class="download-progress" hidden>
+        <div class="download-progress-head"><strong id="loraBatchStage">等待导入</strong><span id="loraBatchPercent">0%</span></div>
+        <progress id="loraBatchBar" max="100" value="0"></progress>
+        <div class="download-progress-meta"><span id="loraBatchFile">尚未开始</span><span id="loraBatchResult">0 成功 / 0 失败</span></div>
+        <ul id="loraBatchFailures" class="lora-batch-failures"></ul>
       </div>
     </section>
 
-    <section class="band">
+    <section class="band lora-management-band">
       <div class="section-head">
-        <div><h2>LoRA 管理</h2><p>每个 LoRA 独立保存昵称、多个指令简称、分类、权重和专属预设；原有全局预设仍会保留。</p></div>
-        <div class="button-row"><button id="loraDisplayToggle" class="secondary" type="button">简洁选择</button><button id="refreshLoras" class="secondary">刷新 CivitAI</button></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>普通 LoRA</h2><p>这里管理角色、细节和其它普通 LoRA。分类为“画风”的 LoRA会进入旁边的独立画风模块；每张卡片默认简洁显示，只展开当前点击的一张。</p></div>
+        <div class="button-row"><button id="loraDisplayToggle" class="secondary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>全部收起</button><button id="refreshLoras" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>刷新 CivitAI</button></div>
       </div>
       <div class="lora-download-row">
-        <label>CivitAI 模型链接<input id="civitaiDownloadUrl" class="input" type="url" placeholder="https://civitai.com/models/123456"></label>
+        <label>CivitAI 模型链接 / 免 API 直链<input id="civitaiDownloadUrl" class="input" type="url" placeholder="https://civitai.com/models/123456 或 .../api/download/models/123456"><small class="field-hint">支持模型页、版本页和直链下载地址；「C 站下载方式」为 auto / nokey 时公共 LoRA 无需 API Key。</small></label>
         <label class="check"><input id="civitaiDownloadOverwrite" type="checkbox">允许覆盖同名文件</label>
-        <button id="downloadLora" class="primary" type="button">下载到 LoRA 文件夹</button>
+        <button id="downloadLora" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>下载到 LoRA 文件夹</button>
       </div>
       <div id="loraDownloadProgress" class="download-progress" hidden>
         <div class="download-progress-head"><strong id="loraDownloadStage">等待下载</strong><span id="loraDownloadPercent">0%</span></div>
@@ -68,26 +103,38 @@
         <label class="lora-search">搜索 LoRA<input id="loraSearch" class="input" type="search" placeholder="按昵称、文件名或指令简称搜索"></label>
         <label>筛选分类<select id="loraCategoryFilter" class="select"><option value="全部">全部分类</option></select></label>
         <label>新建自定义分类<input id="newLoraCategory" class="input" placeholder="例如：人物、风景"></label>
-        <button id="addLoraCategory" class="secondary">添加分类</button>
-        <button id="deleteLoraCategory" class="secondary">删除当前分类</button>
+        <button id="addLoraCategory" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>添加分类</button>
+        <button id="deleteLoraCategory" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>删除当前分类</button>
       </div>
       <div id="loraBulkActions" class="lora-bulk-actions" hidden>
         <span class="muted">简洁选择模式：勾选后保存，当前分类之外的已启用 LoRA 会保留。</span>
-        <button id="loraSelectAll" class="secondary" type="button">全选当前分类</button>
-        <button id="loraClearAll" class="secondary" type="button">清空当前分类</button>
-        <button id="loraSaveSelection" class="primary" type="button">保存选择</button>
+        <button id="loraSelectAll" class="secondary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>全选当前分类</button>
+        <button id="loraClearAll" class="secondary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 9-6 6"/><path d="m9 9 6 6"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>清空当前分类</button>
+        <button id="loraSaveSelection" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存选择</button>
       </div>
       <div id="loras" class="lora-grid"></div>
     </section>
 
-    </div>
+    <section class="band style-lora-band">
+      <div class="section-head">
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>画风 LoRA</h2><p>这里只显示分类为“画风”的 LoRA。它和普通 LoRA长期启用列表分开；简称没有自定义时按画风1、画风2、画风3生成。每张卡片默认简洁显示，只展开当前点击的一张。</p></div>
+        <div class="button-row"><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入并归类为画风"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入画风 LoRA<input id="styleLoraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label><button id="saveStyleLora" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存画风选择</button></div>
+      </div>
+      <div class="style-lora-notice">自动使用方式：关闭时不自动加载；随机模式会从勾选的候选中抽取不重复的 LoRA；使用全部时加载所有勾选候选。常态打开的画风 LoRA 不占随机数量。用户明确写出画风简称或专属预设简称时，只使用命中的画风 LoRA，本次不会再随机叠加其它画风；指令或自然语言写“不用画风”可临时全部跳过。</div>
+      <div class="form-grid style-lora-settings">
+        <label>自动使用方式<select id="style_lora_mode" class="select"><option value="random">随机选择</option><option value="all">使用全部</option><option value="off">关闭</option></select></label>
+        <label>随机使用数量<input id="style_lora_random_count" class="input" type="number" min="1" max="16" step="1" value="1"><small class="field-hint">默认 1；候选不足时自动按候选数量使用。</small></label>
+      </div>
+      <div id="styleLoras" class="style-lora-grid"></div>
+    </section>
 
-    <div id="view-workflow" class="view-panel" data-view-panel="workflow" hidden>
+    </div>
+<div id="view-workflow" class="view-panel" data-view-panel="workflow" hidden>
 
     <section class="band">
       <div class="section-head">
-        <div><h2>工作流</h2><p>工作流基于原始难工作流的修复副本，原文件不会被覆盖。</p></div>
-        <button id="saveWorkflows" class="primary">保存选择</button>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流</h2><p>工作流基于原始难工作流的修复副本，原文件不会被覆盖。</p></div>
+        <button id="saveWorkflows" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存选择</button>
       </div>
       <div class="workflow-grid">
         <label>文生图<select id="wf_txt2img" class="select"></select></label>
@@ -95,43 +142,29 @@
       </div>
       <div class="workflow-upload">
         <label>上传 ComfyUI API 工作流 JSON<input id="workflowFile" class="input" type="file" accept=".json,application/json"></label>
-        <button id="uploadWorkflow" class="secondary" type="button">上传工作流</button>
+        <button id="uploadWorkflow" class="secondary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>上传工作流</button>
         <span class="muted">上传后可在对应功能页面的工作流下拉框中选择</span>
       </div>
     </section>
 
-    <section class="band">
-      <div class="section-head">
-        <div><h2>绘图限额与 ComfyUI 控制</h2><p>限额按用户 ID 统计全部绘图类型；设为 0 表示不限制。管理员不受限额影响，并可使用 ComfyUI 开关指令。</p></div>
-        <button id="saveDrawLimit" class="primary" type="button">保存限额设置</button>
-      </div>
-      <div class="form-grid">
-        <label>每个用户最多图片数<input id="draw_limit_count" class="input" type="number" min="0" max="100" step="1"><small class="field-hint">0 表示关闭限额</small></label>
-        <label>统计时间（秒）<input id="draw_limit_window_seconds" class="input" type="number" min="1" max="604800" step="1"></label>
-        <label>ComfyUI 启动脚本<input id="comfyui_start_script" class="input" type="text" placeholder="留空自动寻找 run_nvidia_gpu.bat"></label>
-        <label class="wide">管理员平台用户 ID<textarea id="draw_limit_admin_ids" class="textarea" placeholder="每行一个 QQ/平台用户 ID；管理员可使用 /comfy打开、/comfy关闭"></textarea></label>
-      </div>
-    </section>
-
     </div>
-
-    <div id="view-txt2img" class="view-panel" data-view-panel="txt2img" hidden>
+<div id="view-txt2img" class="view-panel" data-view-panel="txt2img" hidden>
 
     <section class="band">
       <div class="section-head">
-        <div><h2>文生图模型文件夹</h2><p>这里管理文生图使用的核心模型、Checkpoint 和高清放大模型位置。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>文生图模型文件夹</h2><p>这里管理文生图使用的核心模型、Checkpoint 和高清放大模型位置。</p></div>
       </div>
       <div class="folder-grid">
-        <article class="folder-card"><div><strong>核心模型</strong><code id="path-diffusion_models">未检测到</code></div><button data-open-folder="diffusion_models" class="secondary">打开文件夹</button></article>
-        <article class="folder-card"><div><strong>Checkpoint</strong><code id="path-checkpoints">未检测到</code></div><button data-open-folder="checkpoints" class="secondary">打开文件夹</button></article>
-        <article class="folder-card"><div><strong>放大模型</strong><code id="path-upscale_models">未检测到</code></div><button data-open-folder="upscale_models" class="secondary">打开文件夹</button></article>
+        <article class="folder-card"><div><strong>核心模型</strong><code id="path-diffusion_models">未检测到</code></div><button data-open-folder="diffusion_models" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button></article>
+        <article class="folder-card"><div><strong>Checkpoint</strong><code id="path-checkpoints">未检测到</code></div><button data-open-folder="checkpoints" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button></article>
+        <article class="folder-card"><div><strong>放大模型</strong><code id="path-upscale_models">未检测到</code></div><button data-open-folder="upscale_models" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button></article>
       </div>
     </section>
 
     <section class="band">
       <div class="section-head">
-        <div><h2>文生图模型与默认参数</h2><p>这里的模型和参数只控制文生图；指令或 LLM 明确传入参数时会优先使用单次参数。</p></div>
-        <button id="saveTxt2ImgSettings" class="primary" type="button">保存文生图设置</button>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>文生图模型与默认参数</h2><p>这里的模型和参数只控制文生图；指令或 LLM 明确传入参数时会优先使用单次参数。</p></div>
+        <button id="saveTxt2ImgSettings" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存文生图设置</button>
       </div>
       <select id="model" class="select"></select>
       <p id="modelHint" class="field-hint"></p>
@@ -153,7 +186,7 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2>文生图 AI 与提示词</h2><p>这里的设置只用于文生图的 LLM 触发、普通指令翻译和默认提示词。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>文生图 AI 与提示词</h2><p>这里的设置只用于文生图的 LLM 触发、普通指令翻译和默认提示词。</p></div>
       </div>
       <div class="form-grid">
         <label>LLM 文生图提示词来源<select id="llm_prompt_source" class="select"><option value="astrbot">AstrBot LLM 已提取的提示词</option><option value="plugin">插件 AI 重新生成提示词</option></select></label>
@@ -163,21 +196,25 @@
         <p class="field-hint wide">这是 ComfyUI 插件内置的 Anima 提示词工程师功能，会用于文生图的插件 AI、普通指令翻译和预设翻译。它会按 Anima 的标签顺序输出，并保留用户明确要求的动作、姿势和场景。</p>
         <div class="ai-actions wide"><span class="muted">Anima 提示词工程师：</span><span id="animaPluginStatus" class="muted">读取中</span></div>
         <label class="wide">插件 AI：普通指令翻译提示词<textarea id="plugin_ai_command_system_prompt" class="textarea" placeholder="留空使用内置 Danbooru 翻译提示词"></textarea></label>
-        <label class="check"><input id="plain_translate_enabled" type="checkbox">非 AI 中文自动翻译</label>
-        <label>普通翻译网站地址<input id="plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
+        <label class="check"><input id="plain_translate_enabled" type="checkbox">文生图非 AI 中文自动翻译</label>
+        <label>文生图普通翻译网站地址<input id="plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
         <label class="wide">文生图默认正面提示词<textarea id="default_positive" class="textarea" placeholder="每次文生图都会放在用户提示词前面；留空则使用旧版质量词设置"></textarea></label>
         <label class="wide">文生图默认负面提示词<textarea id="default_negative" class="textarea"></textarea></label>
       </div>
     </section>
 
     </div>
+<div id="view-img2img" class="view-panel" data-view-panel="img2img" hidden>
 
-    <div id="view-img2img" class="view-panel" data-view-panel="img2img" hidden>
+    <div class="lora-isolation-notice" role="note">
+      <strong>【特别标注】图生图只受「独立 LoRA」影响</strong>
+      <span>本页的“独立 LoRA”是图生图唯一长期生效的 LoRA：它不会加载文生图的默认 LoRA 列表，也不会参与画风 LoRA 的随机/全部自动选择。只有你在指令中显式写出的 LoRA 简称才会在本次任务中临时叠加。</span>
+    </div>
 
     <section class="band">
       <div class="section-head">
-        <div><h2>图生图工作流</h2><p>图生图使用独立的 Qwen Image Edit 工作流，不读取文生图核心模型。</p></div>
-        <button id="saveImg2ImgWorkflow" class="primary" type="button">保存图生图工作流</button>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>图生图工作流</h2><p>图生图使用独立的 Qwen Image Edit 工作流，不读取文生图核心模型。</p></div>
+        <button id="saveImg2ImgWorkflow" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存图生图工作流</button>
       </div>
       <div class="workflow-grid">
         <label>图生图工作流<select id="wf_img2img" class="select"></select></label>
@@ -186,20 +223,26 @@
 
     <section class="band img2img-settings-band">
       <div class="section-head">
-        <div><h2>图生图模型与参数</h2><p>提示词只包含：显式 LoRA/预设、下方基础正面提示词和用户要求的编辑内容。不会套用全局画师串。</p></div>
-        <button id="saveImg2ImgSettings" class="primary" type="button">保存图生图设置</button>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>图生图模型与参数</h2><p>提示词只包含：显式 LoRA/预设、下方基础正面提示词和用户要求的编辑内容。不会套用全局画师串。</p></div>
+        <button id="saveImg2ImgSettings" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存图生图设置</button>
       </div>
       <div class="form-grid">
         <label>独立 UNet 模型<select id="img2img_unet_name" class="select"></select></label>
         <label>独立文本编码器<select id="img2img_clip_name" class="select"></select></label>
         <label>独立 VAE<select id="img2img_vae_name" class="select"></select></label>
-        <label>独立 LoRA<select id="img2img_lora_name" class="select"><option value="">不使用</option></select></label>
+        <label class="lora-isolated-field">★ 独立 LoRA（图生图唯一长期生效）<select id="img2img_lora_name" class="select"><option value="">不使用</option></select></label>
         <label>LoRA 权重<input id="img2img_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
+        <label class="check"><input id="img2img_accel_lora_enabled" type="checkbox">启用 Qwen Lightning 加速 LoRA</label>
+        <label>Qwen 加速 LoRA<select id="img2img_accel_lora_name" class="select"><option value="">不使用</option></select></label>
+        <label>加速 LoRA 权重<input id="img2img_accel_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
+        <label>启用加速 LoRA 时步数<input id="img2img_accel_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">建议 4 步</small></label>
+        <label>启用加速 LoRA 时 CFG<input id="img2img_accel_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">建议 CFG 1.0</small></label>
+        <p id="img2imgAccelHint" class="field-hint wide">采样参数说明：关闭加速 LoRA 时使用普通模式，当前建议 8 步 / CFG 1.0；开启兼容的 Lightning LoRA 时使用加速模式，建议 4 步 / CFG 1.0。当前 Qwen-Rapid 核心已自带快速采样，插件会自动跳过标准 Lightning LoRA。</p>
         <label>输出宽度<input id="img2img_width" class="input" type="number" min="64" step="8"></label>
         <label>输出高度<input id="img2img_height" class="input" type="number" min="64" step="8"></label>
-        <label class="check"><input id="img2img_keep_aspect_ratio" type="checkbox">按原图宽高比输出</label>
-        <label>采样步数<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"></label>
-        <label>CFG<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+        <label class="check"><input id="img2img_keep_aspect_ratio" type="checkbox" checked>按原图宽高比输出</label>
+        <label>普通模式步数（未启用加速 LoRA）<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"></label>
+        <label>普通模式 CFG（未启用加速 LoRA）<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
         <label>种子<input id="img2img_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
         <label>采样器<input id="img2img_sampler_name" class="input" type="text"></label>
         <label>调度器<input id="img2img_scheduler" class="input" type="text"></label>
@@ -207,6 +250,8 @@
         <label>输入缩放算法<input id="img2img_scale_method" class="input" type="text"></label>
         <label>参考图最大边<input id="img2img_largest_size" class="input" type="number" min="64" step="64"></label>
         <label>参考图裁剪方式<select id="img2img_crop" class="select"><option value="center">居中裁剪</option><option value="disabled">不裁剪</option></select></label>
+        <label class="check"><input id="img2img_match_input_size" type="checkbox">默认使用输入图原始尺寸</label>
+        <p class="field-hint wide">同一条消息附两张图时，第一张是主图，第二张作为 Qwen 的第二参考图。未明确填写宽高时默认保持主图尺寸和比例。</p>
         <label>AuraFlow 偏移<input id="img2img_sampling_shift" class="input" type="number" min="0" max="100" step="0.01"></label>
         <label class="wide">图生图默认正面提示词<textarea id="img2img_default_positive" class="textarea"></textarea></label>
         <label class="wide">图生图默认负面提示词<textarea id="img2img_default_negative" class="textarea"></textarea></label>
@@ -216,67 +261,249 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2>图生图 LLM 与插件 AI</h2><p>专门处理“修改已有图片”的要求。插件 AI 只会整理用户要求改动的内容，不会扩写角色、背景、镜头和画风。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>图生图 AI</h2><p>图生图 AI 输出中文短编辑句，只说明用户想改变的内容；普通中文翻译默认关闭，避免把长上下文送到翻译网站。</p></div>
         <button id="saveImg2ImgAi" class="primary" type="button">保存图生图 AI 设置</button>
       </div>
       <div class="form-grid">
-        <label>LLM 编辑提示词来源<select id="img2img_llm_prompt_source" class="select"><option value="plugin">插件 AI 生成精简编辑指令</option><option value="astrbot">使用 AstrBot LLM 编辑要求</option></select></label>
-        <label class="check"><input id="img2img_plugin_ai_debug" type="checkbox">显示图生图插件 AI 调试过程（开发者）</label>
-        <label class="wide">图生图插件 AI：LLM 编辑提示词<textarea id="img2img_plugin_ai_llm_system_prompt" class="textarea" placeholder="留空使用内置规则；例如只输出 change the outfit to a dress"></textarea></label>
-        <label class="wide">图生图编辑知识库<textarea id="img2img_plugin_ai_knowledge" class="textarea" placeholder="留空使用内置保留原图规则；可补充编辑约束"></textarea></label>
-        <label class="wide">AstrBot LLM 图生图系统提示词<textarea id="img2img_astrbot_llm_system_prompt" class="textarea" placeholder="留空使用内置规则"></textarea></label>
-        <label class="wide">AstrBot LLM 用户输入模板<textarea id="img2img_astrbot_user_prompt_template" class="textarea" placeholder="支持 {request}、{用户要求}、{用户原话}"></textarea></label>
-        <label class="wide">插件 AI 用户输入模板<textarea id="img2img_plugin_ai_user_prompt_template" class="textarea" placeholder="支持 {request}、{用户要求}、{用户原话}"></textarea></label>
-        <label class="wide">AI 输出格式要求<textarea id="img2img_plugin_ai_output_format" class="textarea" placeholder="留空使用 EDIT: 简洁英文编辑指令格式"></textarea></label>
-        <label class="wide">AstrBot 图生图工具调用规则<textarea id="img2img_llm_tool_prompt" class="textarea" placeholder="留空使用内置工具调用规则"></textarea></label>
+        <label>AI 来源<select id="img2img_llm_prompt_source" class="select"><option value="plugin">插件 AI</option><option value="astrbot">AstrBot 当前 AI</option></select><small class="field-hint">只切换使用哪个 AI 服务，二者共用下方规则。</small></label>
+        <label class="check"><input id="img2img_plugin_ai_debug" type="checkbox">显示图生图 AI 调试过程（开发者）</label>
+        <label class="wide">统一图生图 AI 系统提示词<textarea id="img2img_ai_system_prompt" class="textarea" placeholder="留空使用内置中文编辑规则"></textarea><small class="field-hint">例如：“站立一字马”应理解为“完成一字马（劈叉）动作”，不能直译成站在马身上。</small></label>
+        <label class="wide">补充编辑知识（可选）<textarea id="img2img_plugin_ai_knowledge" class="textarea" placeholder="留空即可；用于补充你自己的图生图约束"></textarea></label>
+        <label class="check"><input id="img2img_plain_translate_enabled" type="checkbox">图生图非 AI 中文自动翻译</label>
+        <label>图生图普通翻译网站地址<input id="img2img_plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
+        <div hidden aria-hidden="true">
+          <textarea id="img2img_astrbot_llm_system_prompt"></textarea>
+          <textarea id="img2img_plugin_ai_llm_system_prompt"></textarea>
+          <textarea id="img2img_astrbot_user_prompt_template"></textarea>
+          <textarea id="img2img_plugin_ai_user_prompt_template"></textarea>
+          <textarea id="img2img_plugin_ai_output_format"></textarea>
+          <textarea id="img2img_llm_tool_prompt"></textarea>
+        </div>
       </div>
     </section>
 
     </div>
+<div id="view-img2img_flux2" class="view-panel" data-view-panel="img2img_flux2" hidden>
 
-    <div id="view-ai" class="view-panel" data-view-panel="ai" hidden>
+    <div class="lora-isolation-notice" role="note">
+      <strong>【特别标注】Flux2 图生图只受「独立 LoRA」影响</strong>
+      <span>本页的“独立 LoRA”是 Flux2 图生图唯一长期生效的 LoRA：它不读取文生图默认 LoRA 列表，也不参与画风 LoRA 的随机/全部自动选择，且不会混入 Qwen 图生图的 LoRA 设置。</span>
+    </div>
 
     <section class="band">
-      <div class="section-head"><div><h2>AI 服务设置</h2><p>填写兼容 OpenAI 的服务地址和 API Key，先获取模型并测试连接，成功后再保存。</p></div><button id="saveAi" class="primary">保存设置</button></div>
+      <div class="section-head">
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2 工作流</h2><p>这是独立于 Qwen 图生图的 Flux2 Klein 模块，使用 1 张参考图。保存后，普通“图生图”会按下方引擎选择执行。</p></div>
+        <button id="saveImg2ImgFlux2Workflow" class="primary" type="button">保存 Flux2 工作流设置</button>
+      </div>
+      <div class="workflow-grid">
+        <label>默认图生图引擎<select id="img2img_engine" class="select"><option value="qwen">Qwen 图生图</option><option value="flux2">Flux2 图生图</option></select><small class="field-hint">只影响普通 /图生图；也可以使用 /图生图Flux2 强制调用本模块。</small></label>
+        <label>Flux2 图生图工作流<select id="wf_img2img_flux2" class="select"></select></label>
+        <label class="wide">Flux2 源工作流位置<input id="img2img_flux2_source_workflow" class="input" type="text"><small class="field-hint">插件会复制源文件到自己的 workflows 目录，不会覆盖源文件。</small></label>
+      </div>
+    </section>
+
+    <section class="band img2img-settings-band">
+      <div class="section-head">
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>Flux2 独立模型与参数</h2><p>本页设置只供 Flux2 图生图使用，不读取 Qwen 图生图和文生图的模型、LoRA 或参数。</p></div>
+        <button id="saveImg2ImgFlux2Settings" class="primary" type="button">保存 Flux2 模型与参数</button>
+      </div>
+      <div class="form-grid">
+        <label>核心模型<select id="img2img_flux2_unet_name" class="select"></select></label>
+        <label>文本编码器<select id="img2img_flux2_clip_name" class="select"></select></label>
+        <label>VAE<select id="img2img_flux2_vae_name" class="select"></select></label>
+        <label class="lora-isolated-field">★ 独立 LoRA（Flux2 唯一长期生效）<select id="img2img_flux2_lora_name" class="select"><option value="">不使用</option></select></label>
+        <label>LoRA 权重<input id="img2img_flux2_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
+        <p class="field-hint wide">Flux2 按源工作流运行，不会额外加入加速 LoRA、KV Cache 或其它节点。</p>
+        <label>参考图最大边<input id="img2img_flux2_size" class="input" type="number" min="0" step="64"><small class="field-hint">0 表示沿用工作流；按最长边等比例缩放，不改变原图宽高比。</small></label>
+        <label>采样步数<input id="img2img_flux2_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">源工作流默认 6 步</small></label>
+        <label>CFG<input id="img2img_flux2_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">源工作流默认 1.0</small></label>
+        <label>种子<input id="img2img_flux2_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机。</small></label>
+        <label>采样器<input id="img2img_flux2_sampler_name" class="input" type="text"></label>
+        <label>调度器<input id="img2img_flux2_scheduler" class="input" type="text"></label>
+        <label>重绘幅度<input id="img2img_flux2_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+        <label>输出批次<input id="img2img_flux2_batch" class="input" type="number" min="1" max="4" step="1"></label>
+        <label class="wide">Flux2 默认正面提示词<textarea id="img2img_flux2_default_positive" class="textarea" placeholder="留空表示只使用中文编辑要求"></textarea></label>
+        <label class="wide">Flux2 默认负面提示词<textarea id="img2img_flux2_default_negative" class="textarea"></textarea></label>
+        <label class="wide">输出文件名前缀<input id="img2img_flux2_filename_prefix" class="input" type="text" placeholder="例如：astrbot/img2img_flux2_klein"></label>
+      </div>
+      <p class="field-hint wide">上传 1 张参考图。工作流会按最长边等比例缩放，输出画布沿用原图宽高比；不会拉伸或裁剪成固定比例。</p>
+    </section>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>Flux2 中文 AI 编辑提示词</h2><p>Flux2 支持中文提示词。AI 只把用户要求整理成简短中文编辑句，不会翻译成英文，也不会重述整张原图。</p></div>
+        <button id="saveImg2ImgFlux2Ai" class="primary" type="button">保存 Flux2 AI 设置</button>
+      </div>
+      <div class="form-grid">
+        <label>AI 来源<select id="img2img_flux2_llm_prompt_source" class="select"><option value="plugin">插件 AI</option><option value="astrbot">AstrBot 当前 AI</option></select></label>
+        <label class="check"><input id="img2img_flux2_plugin_ai_debug" type="checkbox">显示 Flux2 AI 调试过程（开发者）</label>
+        <label class="check"><input id="img2img_flux2_plain_translate_enabled" type="checkbox">Flux2 普通中文翻译（默认关闭）</label>
+        <label>普通翻译网站地址<input id="img2img_flux2_plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
+        <label class="wide">Flux2 中文 AI 系统提示词<textarea id="img2img_flux2_ai_system_prompt" class="textarea" placeholder="留空使用内置中文编辑规则"></textarea></label>
+        <label class="wide">Flux2 编辑知识<textarea id="img2img_flux2_plugin_ai_knowledge" class="textarea" placeholder="可补充你自己的中文编辑约束"></textarea></label>
+        <label class="wide">Flux2 用户输入模板<textarea id="img2img_flux2_prompt_template" class="textarea" placeholder="使用 {request} 代表用户的编辑要求"></textarea><small class="field-hint">可用占位符：{request}、{用户要求}、{用户原话}。</small></label>
+        <label class="wide">Flux2 AI 输出格式要求<textarea id="img2img_flux2_output_format" class="textarea" placeholder="留空使用内置中文短编辑句格式"></textarea></label>
+      </div>
+    </section>
+
+    </div>
+<div id="view-wash" class="view-panel" data-view-panel="wash" hidden>
+      <section class="band tool-panel">
+        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</h2><p>只使用第一张输入图片。中文要求直接交给工作流，不调用 AI、普通翻译、全局 LoRA 或临时 LoRA。</p></div><button id="saveWashSettings" class="primary" type="button">保存洗图设置</button></div>
+        <div class="form-grid">
+          <label>洗图工作流<select id="wf_wash" class="select"></select></label>
+          <label>源工作流位置<input id="wash_source_workflow" class="input" type="text"></label>
+          <label>核心模型（留空沿用工作流）<input id="wash_model_name" class="input" type="text"></label>
+          <label>文本编码器（留空沿用工作流）<input id="wash_clip_name" class="input" type="text"></label>
+          <label>VAE（留空沿用工作流）<input id="wash_vae_name" class="input" type="text"></label>
+          <label>步数<input id="wash_steps" class="input" type="number" min="1" max="200" step="1"></label>
+          <label>CFG<input id="wash_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+          <label>种子<input id="wash_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示随机</small></label>
+          <label>重绘幅度<input id="wash_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+          <label>采样器<input id="wash_sampler_name" class="input" type="text"></label>
+          <label>调度器<input id="wash_scheduler" class="input" type="text"></label>
+          <label>工作流缩放长度<input id="wash_size" class="input" type="number" min="0" step="64"><small class="field-hint">0 表示沿用工作流</small></label>
+          <label>Florence2 最大输出 Token<input id="wash_caption_tokens" class="input" type="number" min="64" max="4096" step="1"></label>
+          <label>批次<input id="wash_batch" class="input" type="number" min="1" max="4" step="1"></label>
+          <label class="wide">默认正面提示词<textarea id="wash_default_positive" class="textarea"></textarea></label>
+          <label class="wide">默认负面提示词<textarea id="wash_default_negative" class="textarea"></textarea></label>
+          <label class="wide">输出文件名前缀<input id="wash_filename_prefix" class="input" type="text"></label>
+        </div>
+      </section>
+    </div>
+<div id="view-outpaint" class="view-panel" data-view-panel="outpaint" hidden>
+      <section class="band tool-panel">
+        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；扩展方向和羽化边缘使用本页设置。</p></div><button id="saveOutpaintSettings" class="primary" type="button">保存扩图设置</button></div>
+        <div class="form-grid">
+          <label>扩图工作流<select id="wf_outpaint" class="select"></select></label>
+          <label>源工作流位置<input id="outpaint_source_workflow" class="input" type="text"></label>
+          <label>核心模型（留空沿用工作流）<input id="outpaint_model_name" class="input" type="text"></label>
+          <label>文本编码器（留空沿用工作流）<input id="outpaint_clip_name" class="input" type="text"></label>
+          <label>VAE（留空沿用工作流）<input id="outpaint_vae_name" class="input" type="text"></label>
+          <label>左侧边距<input id="outpaint_left" class="input" type="number" min="0" step="8"></label>
+          <label>上侧边距<input id="outpaint_top" class="input" type="number" min="0" step="8"></label>
+          <label>右侧边距<input id="outpaint_right" class="input" type="number" min="0" step="8"></label>
+          <label>下侧边距<input id="outpaint_bottom" class="input" type="number" min="0" step="8"></label>
+          <label>羽化边缘<input id="outpaint_feathering" class="input" type="number" min="0" step="1"></label>
+          <label>步数<input id="outpaint_steps" class="input" type="number" min="1" max="200" step="1"></label>
+          <label>CFG<input id="outpaint_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+          <label>种子<input id="outpaint_seed" class="input" type="number" min="-1" step="1"></label>
+          <label>重绘幅度<input id="outpaint_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+          <label>采样器<input id="outpaint_sampler_name" class="input" type="text"></label>
+          <label>调度器<input id="outpaint_scheduler" class="input" type="text"></label>
+          <label>工作流缩放长度<input id="outpaint_size" class="input" type="number" min="0" step="64"></label>
+          <label>批次<input id="outpaint_batch" class="input" type="number" min="1" max="4" step="1"></label>
+          <label class="wide">默认正面提示词<textarea id="outpaint_default_positive" class="textarea"></textarea></label>
+          <label class="wide">默认负面提示词<textarea id="outpaint_default_negative" class="textarea"></textarea></label>
+          <label class="wide">输出文件名前缀<input id="outpaint_filename_prefix" class="input" type="text"></label>
+        </div>
+      </section>
+    </div>
+<div id="view-multi_angle" class="view-panel" data-view-panel="multi_angle" hidden>
+      <section class="band tool-panel">
+        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；相机角度和默认镜头提示在本页设置。</p></div><button id="saveMultiAngleSettings" class="primary" type="button">保存多角度设置</button></div>
+        <div class="form-grid">
+          <label>多角度工作流<select id="wf_multi_angle" class="select"></select></label>
+          <label>源工作流位置<input id="multi_angle_source_workflow" class="input" type="text"></label>
+          <label>核心模型（留空沿用工作流）<input id="multi_angle_model_name" class="input" type="text"></label>
+          <label>文本编码器（留空沿用工作流）<input id="multi_angle_clip_name" class="input" type="text"></label>
+          <label>VAE（留空沿用工作流）<input id="multi_angle_vae_name" class="input" type="text"></label>
+          <label>水平角度<input id="multi_angle_horizontal_angle" class="input" type="number" min="-180" max="180" step="1"></label>
+          <label>垂直角度<input id="multi_angle_vertical_angle" class="input" type="number" min="-90" max="90" step="1"></label>
+          <label>缩放<input id="multi_angle_zoom" class="input" type="number" min="0.1" max="20" step="0.1"></label>
+          <label>步数<input id="multi_angle_steps" class="input" type="number" min="1" max="200" step="1"></label>
+          <label>CFG<input id="multi_angle_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
+          <label>种子<input id="multi_angle_seed" class="input" type="number" min="-1" step="1"></label>
+          <label>重绘幅度<input id="multi_angle_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+          <label>采样器<input id="multi_angle_sampler_name" class="input" type="text"></label>
+          <label>调度器<input id="multi_angle_scheduler" class="input" type="text"></label>
+          <label>工作流缩放长度<input id="multi_angle_size" class="input" type="number" min="0" step="64"></label>
+          <label>批次<input id="multi_angle_batch" class="input" type="number" min="1" max="4" step="1"></label>
+          <label class="check"><input id="multi_angle_default_prompts" type="checkbox">使用工作流默认镜头提示</label>
+          <label class="check"><input id="multi_angle_camera_view" type="checkbox">启用相机视角描述</label>
+          <label class="wide">默认正面提示词<textarea id="multi_angle_default_positive" class="textarea"></textarea></label>
+          <label class="wide">默认负面提示词<textarea id="multi_angle_default_negative" class="textarea"></textarea></label>
+          <label class="wide">输出文件名前缀<input id="multi_angle_filename_prefix" class="input" type="text"></label>
+        </div>
+      </section>
+    </div>
+<div id="view-ai" class="view-panel" data-view-panel="ai" hidden>
+
+    <section class="band">
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 服务设置</h2><p>填写兼容 OpenAI 的服务地址和 API Key，先获取模型并测试连接，成功后再保存。</p></div><button id="saveAi" class="primary">保存设置</button></div>
        <div class="form-grid">
         <label>服务地址<input id="ai_base_url" class="input" type="url"></label>
         <label>模型<select id="ai_model" class="select"><option value="">请先获取模型列表</option></select></label>
         <label>API Key<input id="ai_api_key" class="input" type="password" placeholder="留空表示沿用已保存密钥"></label>
+        <label>CivitAI 兼容站地址<input id="civitai_base_url" class="input" type="url" placeholder="例如 https://civitai.com 或 https://civitai.red"><small class="field-hint">不要填写 /api/v1 后缀</small></label>
         <label>CivitAI API Key（下载受限模型需要）<input id="civitai_token" class="input" type="password" placeholder="公共模型可留空；401 时填写有下载权限的密钥"></label>
-        <div class="ai-actions wide"><button id="loadAiModels" class="secondary" type="button">获取模型列表</button><button id="testAiConnection" class="secondary" type="button">测试连接</button><span id="aiConnectionStatus" class="muted">尚未测试</span></div>
+        <div class="ai-actions wide"><button id="loadAiModels" class="secondary" type="button">获取模型列表</button><button id="testAiConnection" class="secondary" type="button">测试连接</button><span id="aiConnectionStatus" class="muted">尚未测试</span><span id="civitaiStatus" class="muted"></span></div>
       </div>
     </section>
 
     <section class="band">
-      <div class="section-head"><div><h2>回复设置</h2><p>绘图会在后台执行，完成后按这里的选择发送文字和图片。AstrBot 回复会使用当前会话人格。</p></div><button id="saveReply" class="primary">保存回复设置</button></div>
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1 1 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>图片安全审核</h2><p>用支持图片输入的多模态模型，分别在输入端和输出端审核图片。命中 NSFW 或血腥猎奇内容时，直接回传公开警告并 @ 发送者，不发送图片。</p></div>
+        <button id="saveModeration" class="primary" type="button">保存审核设置</button>
+      </div>
+      <div class="form-grid">
+        <label class="check wide"><input id="moderation_enabled" type="checkbox">启用图片安全审核</label>
+        <label class="wide">输入端检测名单<textarea id="moderation_input_groups" class="textarea" placeholder="每行一个群号；填 QQ 号只检测该用户；填 * 表示所有群聊；留空表示不检测输入端"></textarea><small class="field-hint">用户发送的参考图会在进入绘图流程之前被审核，命中时不会占用生成队列。</small></label>
+        <label class="wide">输出端检测名单<textarea id="moderation_output_groups" class="textarea" placeholder="每行一个群号；填 QQ 号只检测该用户；填 * 表示所有群聊；留空表示不检测输出端"></textarea><small class="field-hint">生成结果在发送前被审核，命中时图片不会发出，只回传警告。</small></label>
+        <label>审核服务地址<input id="moderation_base_url" class="input" type="url" placeholder="例如 https://api.a6api.com/v1；留空则跳过检测"><small class="field-hint">兼容 OpenAI 接口，插件会自动追加 /chat/completions。</small></label>
+        <label>审核模型<input id="moderation_model" class="input" type="text" placeholder="必须是多模态模型，例如 gemini-2.5-flash"><small class="field-hint">文本模型看不懂图片，请勿填写纯文本模型。</small></label>
+        <label>审核 API Key<input id="moderation_api_key" class="input" type="password" placeholder="留空表示沿用已保存密钥"></label>
+        <label>判定尺度<select id="moderation_strictness" class="select"><option value="loose">宽松（只拦露骨与严重血腥）</option><option value="standard">标准（拦性暗示及以上、轻微血腥）</option><option value="strict">严格（擦边也拦）</option></select></label>
+        <label>单张超时（秒）<input id="moderation_timeout" class="input" type="number" min="1" max="300" step="1"></label>
+        <label>送审最长边（像素）<input id="moderation_max_side" class="input" type="number" min="256" max="2048" step="64"><small class="field-hint">送审前会等比缩小，越小越快越省流量。</small></label>
+        <label class="check wide"><input id="moderation_fail_open" type="checkbox">审核服务异常时放行（关闭则审核失败也拦截）</label>
+        <div class="ai-actions wide"><button id="testModerationConnection" class="secondary" type="button">测试审核链路</button><span id="moderationStatus" class="muted">尚未测试</span></div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>回复设置</h2><p>绘图开始和完成状态使用固定中文消息，不再额外调用 AI 判断。</p></div><button id="saveReply" class="primary">保存回复设置</button></div>
       <div class="form-grid">
         <label class="wide">群聊涩图黑名单<textarea id="nsfw_group_blacklist" class="textarea" placeholder="每行一个群号，也支持逗号、空格分隔；黑名单群仍可生成普通图片"></textarea></label>
         <label class="check wide"><input id="draw_attach_prompt" type="checkbox">发送图片时附带本次实际提示词</label>
-        <label>绘图完成后的回复方式<select id="draw_reply_mode" class="select"><option value="astrbot">AstrBot 当前人格回复</option><option value="custom">自定义固定内容</option></select></label>
+        <label>绘图完成后的回复方式<select id="draw_reply_mode" class="select"><option value="custom">固定完成回复</option></select><small class="field-hint">图片发送完成后直接使用下方固定内容，不再额外调用 AI 判断。</small></label>
         <label>绘图结果发送方式<select id="draw_delivery_mode" class="select"><option value="normal">普通消息</option><option value="forward">群聊合并转发</option></select></label>
-        <label>人格回复最长等待秒数<input id="draw_reply_timeout" class="input" type="number" min="0" max="60" step="0.5"></label>
+        <label>LLM 绘图开始回复方式<select id="llm_draw_start_reply_mode" class="select"><option value="ai">AstrBot AI 人格回复</option><option value="fixed">固定中文回复</option></select><small class="field-hint">LLM 决定绘图后先发送一句确认；AI 失败会自动使用固定回复。</small></label>
+        <label class="check"><input id="draw_queue_notice_enabled" type="checkbox">绘图前显示 ComfyUI 排队数量</label>
+        <label class="check"><input id="draw_queue_notice_ai" type="checkbox">普通指令的队列提示使用 AstrBot AI</label>
         <label>LLM 工具等待图片秒数<input id="llm_wait_timeout" class="input" type="number" min="0.1" max="120" step="1"><small class="field-hint">超时后继续后台生成并主动发送图片</small></label>
-        <label class="wide">开始绘图提示词<textarea id="draw_start_reply" class="textarea" placeholder="支持 {mode} 和 {prompt}"></textarea></label>
+        <label class="wide">LLM 开始绘图提示词<textarea id="draw_start_reply" class="textarea" placeholder="支持 {mode}、{prompt}、{queue}、{queue_images}、{queue_tasks}"></textarea></label>
         <label id="drawReplyCustomLabel" class="wide">自定义完成回复<textarea id="draw_reply_custom" class="textarea" placeholder="例如：{mode}完成，共 {count} 张。"></textarea></label>
       </div>
     </section>
 
-    </div>
+    <section class="band">
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>绘图限额与 ComfyUI 控制</h2><p>限额按用户 ID 统计全部绘图类型；设为 0 表示不限制。管理员不受限额影响，并可使用 ComfyUI 开关指令。</p></div>
+        <button id="saveDrawLimit" class="primary" type="button">保存限额设置</button>
+      </div>
+      <div class="form-grid">
+        <label>每个用户最多图片数<input id="draw_limit_count" class="input" type="number" min="0" max="100" step="1"><small class="field-hint">0 表示关闭限额</small></label>
+        <label>统计时间（秒）<input id="draw_limit_window_seconds" class="input" type="number" min="1" max="604800" step="1"></label>
+        <label class="check"><input id="draw_queue_limit_enabled" type="checkbox">队列过多时禁止继续绘图</label>
+        <label>最多允许排队图片数<input id="draw_queue_limit_count" class="input" type="number" min="1" max="1000" step="1"><small class="field-hint">包含运行中和等待中的图片；只在上方开关开启时生效。</small></label>
+        <label>ComfyUI 启动脚本<input id="comfyui_start_script" class="input" type="text" placeholder="留空自动寻找 run_nvidia_gpu.bat"></label>
+        <label class="wide">管理员平台用户 ID<textarea id="draw_limit_admin_ids" class="textarea" placeholder="每行一个 QQ/平台用户 ID；管理员可使用 /comfy打开、/comfy关闭"></textarea></label>
+      </div>
+    </section>
 
-    <div id="view-presets" class="view-panel" data-view-panel="presets" hidden>
+    </div>
+<div id="view-presets" class="view-panel" data-view-panel="presets" hidden>
 
     <section class="band">
-      <div class="section-head"><div><h2>提示词预设</h2><p>这里显示并编辑全局预设，例如角色名对应的 Danbooru 标签。LoRA 的 CivitAI 自动触发词和专属预设只显示在对应 LoRA 卡片中，不会混入这里。</p></div></div>
-      <div class="preset-add"><input id="presetName" class="input" placeholder="名称"><input id="presetContent" class="input" placeholder="标签或中文描述"><button id="addPreset" class="primary">添加预设</button><button id="cancelPreset" class="secondary" hidden>取消编辑</button></div>
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>提示词预设</h2><p>这里显示并编辑全局预设，例如角色名对应的 Danbooru 标签。LoRA 的 CivitAI 自动触发词和专属预设只显示在对应 LoRA 卡片中，不会混入这里。</p></div></div>
+      <div class="preset-add"><input id="presetName" class="input" placeholder="名称"><input id="presetContent" class="input" placeholder="标签或中文描述"><button id="addPreset" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>添加预设</button><button id="cancelPreset" class="secondary" hidden>取消编辑</button></div>
       <div id="presets" class="preset-list"></div>
     </section>
 
     </div>
-
-    <div id="view-artist" class="view-panel" data-view-panel="artist" hidden>
+<div id="view-artist" class="view-panel" data-view-panel="artist" hidden>
 
     <section class="band">
-      <div class="section-head"><div><h2>画师串预设（独立）</h2><p>画师串不会和普通提示词预设混用，会在绘画提示词前原样拼接。默认预设为“画风001”。</p></div></div>
+      <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>画师串预设（独立）</h2><p>画师串不会和普通提示词预设混用，会在绘画提示词前原样拼接。默认预设为“画风001”。</p></div></div>
       <div class="preset-add">
         <label>当前画师串<select id="artistPresetActive" class="select"></select></label>
         <button id="activateArtistPreset" class="primary">启用当前画师串</button>
@@ -288,9 +515,10 @@
 
     </div>
 
-    <div id="toast" class="toast" role="status"></div>
+<div id="toast" class="toast" role="status"></div>
+    </div>
   </main>
-  <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=0.8.0-img2img-llm-prompts"></script>
+<script src="/api/plugin/page/bridge-sdk.js"></script>
+  <script src="app.js?v=1.0.0"></script>
 </body>
 </html>

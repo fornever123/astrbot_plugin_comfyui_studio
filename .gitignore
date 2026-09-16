@@ -6,3 +6,10 @@ data/
 output/
 *.tmp
 
+# 本地备份与临时快照，只保留在本机，不进入仓库
+*.bak
+*.bak_*
+*.bak.*
+*.before_*
+backup_*/
+

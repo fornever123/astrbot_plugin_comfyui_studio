@@ -1,0 +1,309 @@
+{
+  "14": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "10": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "74": {
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ],
+      "latent": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "73": {
+    "inputs": {
+      "conditioning": [
+        "11",
+        0
+      ],
+      "latent": [
+        "75",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "75": {
+    "inputs": {
+      "pixels": [
+        "90",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAEEncode"
+    }
+  },
+  "83": {
+    "inputs": {
+      "width": [
+        "90",
+        2
+      ],
+      "height": [
+        "90",
+        3
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "EmptyFlux2LatentImage"
+    }
+  },
+  "13": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "62": {
+    "inputs": {
+      "images": [
+        "108",
+        0
+      ],
+      "filename_prefix": "ComfyUI"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SaveImage"
+    }
+  },
+  "95": {
+    "inputs": {
+      "model": [
+        "13",
+        0
+      ],
+      "positive": [
+        "74",
+        0
+      ],
+      "negative": [
+        "73",
+        0
+      ],
+      "latent_image": [
+        "83",
+        0
+      ],
+      "seed": 1049691927082702,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "29": {
+    "inputs": {
+      "anything": [
+        "95",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "easy cleanGpuUsed"
+    }
+  },
+  "90": {
+    "inputs": {
+      "图像": [
+        "63",
+        0
+      ],
+      "SD1.5": "关",
+      "SDXL": "关",
+      "FLUX": "关",
+      "WAN": "关",
+      "QWEN": "关",
+      "裁剪方式": "中心裁剪",
+      "缩放算法": "lanczos",
+      "启用边长缩放": true,
+      "缩放至边": "最长边",
+      "缩放长度": 1280
+    },
+    "class_type": "EasySizeSimpleImage",
+    "_meta": {
+      "title": "EasySizeSimpleImage"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "29",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAEDecode"
+    }
+  },
+  "108": {
+    "inputs": {
+      "image_ref": [
+        "90",
+        0
+      ],
+      "image_target": [
+        "17",
+        0
+      ],
+      "method": "mkl",
+      "strength": 0.4,
+      "multithread": true
+    },
+    "class_type": "ColorMatch",
+    "_meta": {
+      "title": "ColorMatch"
+    }
+  },
+  "110": {
+    "inputs": {
+      "clip_name": "qwen3-8b-abliterated-q5_k_m.gguf",
+      "type": "flux2"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "CLIPLoaderGGUF"
+    }
+  },
+  "109": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "UnetLoaderGGUF"
+    }
+  },
+  "11": {
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "63": {
+    "inputs": {
+      "image": "ComfyUI_00075_.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage"
+    }
+  },
+  "19": {
+    "inputs": {
+      "clip": [
+        "14",
+        0
+      ],
+      "text": [
+        "112",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIPTextEncode"
+    }
+  },
+  "105": {
+    "inputs": {
+      "image": [
+        "63",
+        0
+      ],
+      "horizontal_angle": 71,
+      "vertical_angle": 42,
+      "zoom": 4.5,
+      "default_prompts": true,
+      "camera_view": false
+    },
+    "class_type": "QwenMultiangleCameraNode",
+    "_meta": {
+      "title": "QwenMultiangleCameraNode"
+    }
+  },
+  "112": {
+    "inputs": {
+      "text1": [
+        "105",
+        0
+      ],
+      "text2": [
+        "114",
+        0
+      ],
+      "separator": ", "
+    },
+    "class_type": "CR Text Concatenate",
+    "_meta": {
+      "title": "CR Text Concatenate"
+    }
+  },
+  "114": {
+    "inputs": {
+      "prompt": "姿势保持不变"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "补充提示词（可不填）"
+    }
+  }
+}

@@ -34,7 +34,10 @@ def normalize_base_url(value: str) -> str:
 DANBOORU_SYSTEM_PROMPT = """你是 Stable Diffusion / Danbooru 提示词专家。
 把用户的中文画面描述改写为一行英文、逗号分隔的标签。
 保留用户明确给出的角色、主体、动作、服装、镜头、构图、背景和天气；已存在的英文标签不要重复。
-角色名称优先使用 Danbooru 官方词条；只输出最终提示词，不要解释、Markdown、代码块或换行。
+角色名称优先使用 Danbooru 官方词条。
+输出协议是硬性要求：正文的第一个字符必须是最终英文标签，正文最后一个字符也必须是标签；只输出一行英文逗号分隔标签。
+不要输出分析、思考、推理、分类、草稿、字段名、Markdown、代码块、换行、<think> 或 </think>。
+如果模型内部需要思考，请不要把思考写入回复；不要输出“最终提示词：”等前缀。
 不要输出质量词、画师名、LoRA 语法或权重语法；不要擅自添加用户没有要求的剧情、场景或服装。"""
 
 PLAIN_SYSTEM_PROMPT = """你是 Stable Diffusion 提示词专家。
@@ -62,7 +65,7 @@ class AITranslator:
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.8.0",
+            "User-Agent": "AstrBot-ComfyUI-AI-Studio/0.9.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

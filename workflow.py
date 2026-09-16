@@ -15,6 +15,13 @@ class WorkflowError(Exception):
 # is approximately 2.9B parameters, so do not treat it as a 29B model.
 ANIMA_29B_MARKERS = ("anima29b", "anima-2.9b", "anima_2.9b")
 
+# These nodes only control groups in the ComfyUI editor. They are not
+# executable graph nodes and must never be sent through /prompt, especially
+# when rgthree is not installed on the user's ComfyUI instance.
+EDITOR_ONLY_NODE_TYPES = {
+    "Fast Groups Bypasser (rgthree)",
+}
+
 
 def is_anima_29b_model(model_name: str) -> bool:
     normalized = str(model_name or "").replace("-", "").replace("_", "").lower()
@@ -54,7 +61,11 @@ def load_api_workflow(path: Path) -> dict[str, Any]:
     return data
 
 
-def convert_ui_workflow(data: dict[str, Any]) -> dict[str, Any]:
+def convert_ui_workflow(
+    data: dict[str, Any],
+    *,
+    preserve_disabled: bool = False,
+) -> dict[str, Any]:
     """Convert a ComfyUI editor workflow into the API prompt format.
 
     ComfyUI's ``Save (API Format)`` export is not the only format users save.
@@ -82,41 +93,63 @@ def convert_ui_workflow(data: dict[str, Any]) -> dict[str, Any]:
         links[link_id] = (source_id, source_slot, target_id, target_slot)
 
     node_by_id: dict[str, dict[str, Any]] = {}
+    disabled_by_id: dict[str, dict[str, Any]] = {}
     for node in raw_nodes:
         if not isinstance(node, dict) or "id" not in node or not node.get("type"):
             continue
-        if str(node.get("type")) in {"Note", "Reroute", "PrimitiveNode"}:
+        if str(node.get("type")) in {
+            "Note",
+            "Reroute",
+            "PrimitiveNode",
+            *EDITOR_ONLY_NODE_TYPES,
+        }:
             continue
-        # Disabled editor nodes must not be executed. The Qwen workflow uses
-        # this for its optional second reference image and optional LoRA.
-        if int(node.get("mode", 0) or 0) == 4:
+        # Most editor workflows use mode=4 for an intentionally bypassed
+        # branch. Flux2's supplied editor graph uses that same flag for its
+        # optional second/third reference branches and its model LoRA. The
+        # Flux2 adapter needs those nodes and their original connections, so
+        # it opts into preserving them explicitly.
+        if int(node.get("mode", 0) or 0) == 4 and not preserve_disabled:
+            disabled_by_id[str(node["id"])] = node
             continue
         node_by_id[str(node["id"])] = node
 
-    widget_maps: dict[str, tuple[str, ...]] = {
-        "TextEncodeQwenImageEditPlus": ("prompt",),
-        "TextEncodeQwenImageEdit": ("prompt",),
-        "LoadImage": ("image",),
-        "ImageScaleToTotalPixels": (
-            "upscale_method", "megapixels", "resolution_steps"
-        ),
-        "FluxKontextMultiReferenceLatentMethod": ("reference_latents_method",),
-        "ModelSamplingAuraFlow": ("shift",),
-        "CFGNorm": ("strength", "pre_cfg"),
-        "EmptySD3LatentImage": ("width", "height", "batch_size"),
-        "CLIPLoaderGGUF": ("clip_name", "type"),
-        "UnetLoaderGGUF": ("unet_name",),
-        "LoraLoaderModelOnly": ("lora_name", "strength_model"),
-        "VAELoader": ("vae_name",),
-        "KSampler": (
-            "seed", "control_after_generate", "steps", "cfg",
-            "sampler_name", "scheduler", "denoise",
-        ),
-        "VAEDecodeTiled": (
-            "tile_size", "overlap", "temporal_size", "temporal_overlap"
-        ),
-        "SaveImage": ("filename_prefix",),
-    }
+    # Editor JSON omits disabled nodes from execution.  Follow their first
+    # connected input when an active node still points at a disabled node, so
+    # a disabled LoRA/RAM cleanup node becomes a transparent bypass instead
+    # of breaking the model or SaveImage chain.
+    incoming: dict[str, list[tuple[str, int]]] = {}
+    for raw in raw_links:
+        if not isinstance(raw, list) or len(raw) < 5:
+            continue
+        try:
+            source_id = str(raw[1])
+            source_slot = int(raw[2])
+            target_id = str(raw[3])
+            link_id = int(raw[0])
+        except (TypeError, ValueError):
+            continue
+        link = links.get(link_id)
+        if link is not None:
+            incoming.setdefault(target_id, []).append((source_id, source_slot))
+
+    def resolve_source(
+        source_id: str, source_slot: int, visited: set[str] | None = None
+    ) -> tuple[str, int] | None:
+        if source_id in node_by_id:
+            return source_id, source_slot
+        if source_id not in disabled_by_id:
+            return None
+        visited = set(visited or ())
+        if source_id in visited:
+            return None
+        visited.add(source_id)
+        for upstream_id, upstream_slot in incoming.get(source_id, ()):
+            resolved = resolve_source(upstream_id, upstream_slot, visited)
+            if resolved is not None:
+                return resolved
+        return None
+
     result: dict[str, Any] = {}
     for node_id, node in node_by_id.items():
         class_type = str(node["type"])
@@ -132,12 +165,28 @@ def convert_ui_workflow(data: dict[str, Any]) -> dict[str, Any]:
                 source_id, source_slot, _, _ = links[int(link_id)]
             except (KeyError, TypeError, ValueError):
                 continue
-            if source_id in node_by_id:
-                inputs[name] = [source_id, source_slot]
+            resolved = resolve_source(source_id, source_slot)
+            if resolved is not None:
+                inputs[name] = [resolved[0], resolved[1]]
 
         widget_values = list(node.get("widgets_values") or [])
-        names = widget_maps.get(class_type, ())
-        for index, name in enumerate(names):
+        widget_inputs = [
+            item for item in (node.get("inputs") or [])
+            if isinstance(item, dict)
+            and isinstance(item.get("widget"), dict)
+            and item.get("name")
+        ]
+        widget_names = [str(item["name"]) for item in widget_inputs]
+        # widgets_values keeps values for linked widgets too, so retain the
+        # original positions and only skip an already-resolved linked input.
+        # KSampler has an editor-only control_after_generate value between
+        # seed and steps; Florence2Run has a trailing editor-only control
+        # value. Remove those values before mapping real API inputs.
+        if class_type == "KSampler" and len(widget_values) == len(widget_names) + 1:
+            widget_values.pop(1)
+        elif class_type == "Florence2Run" and len(widget_values) == len(widget_names) + 1:
+            widget_values.pop()
+        for index, name in enumerate(widget_names):
             if index >= len(widget_values) or name in inputs:
                 continue
             inputs[name] = widget_values[index]
@@ -153,7 +202,7 @@ def convert_ui_workflow(data: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def load_workflow(path: Path) -> dict[str, Any]:
+def load_workflow(path: Path, *, preserve_disabled: bool = False) -> dict[str, Any]:
     """Load either an API workflow or a normal ComfyUI editor workflow."""
     if not path.is_file():
         raise WorkflowError(f"工作流不存在：{path}")
@@ -164,8 +213,18 @@ def load_workflow(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise WorkflowError("工作流 JSON 顶层必须是对象")
     if any(isinstance(node, dict) and node.get("class_type") for node in data.values()):
-        return data
-    return convert_ui_workflow(data)
+        # API exports can also contain editor-only nodes when they were saved
+        # by a frontend helper. Drop those before the graph reaches ComfyUI;
+        # they have no computational output and require optional UI packages.
+        return {
+            node_id: node
+            for node_id, node in data.items()
+            if not (
+                isinstance(node, dict)
+                and node.get("class_type") in EDITOR_ONLY_NODE_TYPES
+            )
+        }
+    return convert_ui_workflow(data, preserve_disabled=preserve_disabled)
 
 
 def _node(workflow: dict[str, Any], node_id: str) -> dict[str, Any] | None:
@@ -504,10 +563,10 @@ def adapt_qwen_img2img(
     seed: int = 0,
     sampler_name: str = "euler",
     scheduler: str = "simple",
-    denoise: float = 1.0,
+    denoise: float = 0.58,
     scale_method: str = "lanczos",
     largest_size: int = 1152,
-    crop: str = "center",
+    crop: str = "disabled",
     reference_method: str = "index_timestep_zero",
     sampling_shift: float = 3.1,
     cfg_norm_strength: float = 1.0,
@@ -518,7 +577,7 @@ def adapt_qwen_img2img(
     temporal_overlap: int = 8,
     filename_prefix: str = "astrbot/img2img_qwen",
 ) -> tuple[dict[str, Any], list[str]]:
-    """Apply the API workflow exported from E:/112121121.json.
+    """Apply the API workflow exported from the configured Qwen baseline.
 
     The current Qwen Image Edit workflow uses stable nodes 1/10/11/13/14/
     30/39/119/138/152/158/160/161/174.  Keep the mapping explicit so the
@@ -560,18 +619,28 @@ def adapt_qwen_img2img(
     positive_inputs = _qwen_inputs(workflow, "1")
     positive_inputs.update(clip=["161", 0], vae=["10", 0], image1=["158", 0], prompt=positive)
     _qwen_inputs(workflow, "39").update(clip=["161", 0], vae=["10", 0], prompt=negative or "")
-    # 112121121.json 的 TextEncodeQwenImageEditPlus 只有 image1 输入。
-    # 旧版适配器曾动态添加 image2，这会让 ComfyUI 拒绝整个 API 请求；
-    # 保留参数只是为了兼容旧调用，但不向这个工作流伪造不存在的端口。
+    # image2 是 TextEncodeQwenImageEditPlus 的真实可选输入。只有用户确实
+    # 提供第二张图时才添加 LoadImage 和 image2，单图任务保持原工作流不变。
     positive_inputs.pop("image2", None)
     positive_inputs.pop("image3", None)
     if second_image_name:
-        report.append("当前 Qwen 工作流只支持一张参考图，已忽略第二参考图")
+        second_load_id = "astrbot_img2img_second_input"
+        workflow[second_load_id] = {
+            "inputs": {"image": second_image_name},
+            "class_type": "LoadImage",
+            "_meta": {"title": "Qwen 图生图第二参考图"},
+        }
+        positive_inputs["image2"] = [second_load_id, 0]
+        negative_inputs = _qwen_inputs(workflow, "39")
+        negative_inputs["image2"] = [second_load_id, 0]
+        report.append("Qwen 图生图已接入第二张参考图：image2")
 
     _qwen_inputs(workflow, "160")["unet_name"] = unet_name
     _qwen_inputs(workflow, "161").update(clip_name=clip_name, type="qwen_image")
     _qwen_inputs(workflow, "10")["vae_name"] = vae_name
-    _qwen_inputs(workflow, "30").update(shift=max(0.0, float(sampling_shift)), model=["174", 0] if _node(workflow, "174") else ["160", 0])
+    # The acceleration LoRA is intentionally a separate loader.  It must not
+    # consume one of the user's content-LoRA slots in the Power Lora Loader.
+    workflow.pop("astrbot_qwen_accel_lora", None)
 
     requested_loras = list(loras or [])
     if lora_name and float(lora_strength or 0.0) != 0.0 and not loras:
@@ -599,6 +668,16 @@ def adapt_qwen_img2img(
     elif requested_loras:
         report.append("Qwen 图生图工作流缺少 Power Lora Loader，LoRA 未应用")
 
+    model_output = ["174", 0] if _node(workflow, "174") else ["160", 0]
+    # The supplied baseline graph has no acceleration branch.  Older callers
+    # cannot add one because the compatibility arguments were removed.
+    report.append("Qwen 图生图已回退到无加速 LoRA 工作流")
+
+    _qwen_inputs(workflow, "30").update(
+        shift=max(0.0, float(sampling_shift)),
+        model=model_output,
+    )
+
     sampler = _qwen_inputs(workflow, "152")
     sampler.update(
         model=["30", 0], positive=["1", 0], negative=["39", 0], latent_image=["119", 0],
@@ -610,6 +689,12 @@ def adapt_qwen_img2img(
     _qwen_inputs(workflow, "14").update(images=["13", 0], filename_prefix=filename_prefix)
     if _node(workflow, "51") is not None:
         _qwen_inputs(workflow, "51").update(image_a=["11", 0], image_b=["13", 0])
+    report.append(
+        "Qwen 图生图实际参数：普通 LoRA；步数={}；CFG={}".format(
+            max(1, int(steps)),
+            f"{max(0.0, float(cfg)):g}",
+        )
+    )
     if width > 0 and height > 0:
         report.append(f"Qwen 图生图输出尺寸已写入 ImageScale：{int(width)}x{int(height)}")
     _ = (reference_method, cfg_norm_strength, pre_cfg, tile_size, tile_overlap, temporal_size, temporal_overlap)
@@ -785,6 +870,480 @@ def adapt_flux2_img2img(
         height_inputs["any_02"] = ["726", 0]
     report.append("已按 222.json 启用 Flux2 Klein 参考图：LoadImage → 缩放 → VAEEncode → ReferenceLatent")
     report.append("采样器仍使用 EmptyFlux2LatentImage 作为输出画布，输入图不会被当作文生图开关")
+    return workflow, report
+
+
+def adapt_flux2_klein_img2img(
+    source: dict[str, Any],
+    *,
+    positive: str,
+    negative: str,
+    image_names: list[str],
+    unet_name: str,
+    clip_name: str,
+    vae_name: str,
+    lora_name: str = "",
+    lora_strength: float = 0.9,
+    # Kept for compatibility with older callers. Flux2 Klein is intentionally
+    # restored to the original workflow and no acceleration LoRA is injected.
+    size: int = 1280,
+    steps: int = 6,
+    cfg: float = 1.0,
+    seed: int = 0,
+    sampler_name: str = "euler",
+    scheduler: str = "simple",
+    denoise: float = 1.0,
+    batch: int = 1,
+    filename_prefix: str = "astrbot/img2img_flux2_klein",
+) -> tuple[dict[str, Any], list[str]]:
+    """Adapt the Flux2 Klein editor workflow with one to three references.
+
+    The supplied multi-reference graph contains three independent image
+    branches which are chained through ReferenceLatent nodes:
+
+    ``63 -> 90 -> 75 -> 73/74`` (first image)
+    ``64 -> 96 -> 87 -> 86/85`` (second image)
+    ``61 -> 97 -> 81 -> 79/80`` (third image)
+
+    The sampler receives the last branch selected by the number of supplied
+    images.  A single-reference custom workflow remains supported; requesting
+    more images from it produces a clear workflow capability error.
+    """
+    workflow = copy.deepcopy(source)
+    report: list[str] = []
+
+    def required(node_id: str, label: str) -> dict[str, Any]:
+        inputs = _inputs(workflow, node_id)
+        if inputs is None:
+            raise WorkflowError(f"Flux2 Klein 图生图工作流缺少{label}节点：{node_id}")
+        return inputs
+
+    required_nodes = {
+        "10": "VAE",
+        "13": "核心模型",
+        "14": "文本编码器",
+        "19": "正面提示词",
+        "38": "LoRA",
+        "62": "输出",
+        "83": "输出画布",
+        "95": "采样器",
+    }
+    for node_id, label in required_nodes.items():
+        required(node_id, label)
+
+    image_names = [str(value or "").strip() for value in image_names]
+    if not image_names:
+        raise WorkflowError("Flux2 Klein 图生图至少需要 1 张参考图")
+    if len(image_names) > 3:
+        raise WorkflowError("Flux2 Klein 图生图最多支持 3 张参考图")
+    if any(not value for value in image_names):
+        raise WorkflowError("Flux2 Klein 图生图收到空的参考图名称")
+
+    # The second and third branches are optional in the source graph.  Keep
+    # the mapping explicit because their conditioning order is not the same
+    # as the visual node order: branch 2 chains after branch 1, and branch 3
+    # chains after branch 2.
+    branches = (
+        {
+            "image": "63",
+            "scale": "90",
+            "encode": "75",
+            "negative": "73",
+            "positive": "74",
+        },
+        {
+            "image": "64",
+            "scale": "96",
+            "encode": "87",
+            "negative": "86",
+            "positive": "85",
+        },
+        {
+            "image": "61",
+            "scale": "97",
+            "encode": "81",
+            "negative": "79",
+            "positive": "80",
+        },
+    )
+    available_branches = 0
+    for branch in branches:
+        if all(_inputs(workflow, node_id) is not None for node_id in branch.values()):
+            available_branches += 1
+        else:
+            break
+    if len(image_names) > available_branches:
+        if available_branches <= 1:
+            raise WorkflowError(
+                "当前 Flux2 Klein 工作流只配置了 1 个参考图分支；"
+                "请在 WebUI 切换支持 3 张参考图的 Flux2 工作流"
+            )
+        raise WorkflowError(
+            f"当前 Flux2 Klein 工作流最多支持 {available_branches} 张参考图，"
+            f"本次收到 {len(image_names)} 张"
+        )
+
+    active_branch = branches[len(image_names) - 1]
+    for index, image_name in enumerate(image_names):
+        branch = branches[index]
+        required(branch["image"], f"第 {index + 1} 张参考图")["image"] = image_name
+        scale = required(branch["scale"], f"第 {index + 1} 张参考图缩放")
+        if int(size or 0) > 0:
+            if "缩放长度" in scale:
+                scale["缩放长度"] = max(64, int(size))
+            elif "size" in scale:
+                scale["size"] = max(64, int(size))
+            elif "megapixels" in scale:
+                # ImageScaleToTotalPixels keeps the source aspect ratio.  A
+                # square with the requested longest edge is the equivalent
+                # pixel budget, while the node derives the other edge from
+                # the actual input aspect ratio.
+                edge = max(64, int(size))
+                scale["megapixels"] = max(0.01, (edge * edge) / 1_000_000)
+            else:
+                raise WorkflowError(
+                    f"Flux2 Klein 第 {index + 1} 个参考图缩放节点缺少可调尺寸输入"
+                )
+
+    required("13", "核心模型")["unet_name"] = unet_name
+    required("14", "文本编码器").update(clip_name=clip_name, type="flux2")
+    required("10", "VAE")["vae_name"] = vae_name
+    required("19", "正面提示词").update(text=positive, clip=["14", 0])
+
+    # The source workflow includes one model-only LoRA node. An empty setting
+    # bypasses it by connecting the sampler directly to the selected UNet;
+    # a selected content LoRA uses the original node 38. Do not create any
+    # extra acceleration node: this module must remain the original workflow.
+    sampler = required("95", "采样器")
+    lora = required("38", "LoRA")
+    model_output: list[Any] = ["13", 0]
+    if lora_name.strip():
+        lora.update(
+            lora_name=lora_name,
+            strength_model=max(-2.0, min(2.0, float(lora_strength))),
+            model=["13", 0],
+        )
+        model_output = ["38", 0]
+        report.append(f"已启用 Flux2 Klein 独立 LoRA：{lora_name}")
+    else:
+        # The supplied graph contains an example LoRA node. Leaving that
+        # node in the submitted prompt can fail ComfyUI validation when the
+        # example file is absent, even though the sampler bypasses it.
+        workflow.pop("38", None)
+        report.append("Flux2 Klein 独立 LoRA 已关闭")
+
+    # The sampler is connected directly to the source workflow's original
+    # model chain. No acceleration LoRA, KV cache, or other node is added.
+    sampler["model"] = model_output
+    report.append("Flux2 使用源工作流模型链，不添加加速 LoRA 或 KV Cache")
+    if int(size or 0) > 0:
+        report.append(f"参考图最大边：{max(64, int(size))}")
+    else:
+        report.append("参考图尺寸沿用工作流默认值")
+
+    sampler.update(
+        positive=[active_branch["positive"], 0],
+        negative=[active_branch["negative"], 0],
+        seed=max(0, int(seed)),
+        steps=max(1, int(steps)),
+        cfg=max(0.0, float(cfg)),
+        sampler_name=sampler_name or "euler",
+        scheduler=scheduler or "simple",
+        # Keep the workflow's denoise control available to the user. The
+        # configured default remains 1.0, but lower values are valid when a
+        # gentler Flux2 edit is needed.
+        denoise=max(0.0, min(1.0, float(denoise))),
+    )
+    required("83", "输出画布")["batch_size"] = max(1, min(4, int(batch)))
+    required("62", "输出")["filename_prefix"] = filename_prefix
+    report.append(
+        f"已接入 {len(image_names)} 张参考图："
+        + "；".join(
+            f"{branches[index]['image']} → {branches[index]['scale']} → "
+            f"{branches[index]['encode']} → {branches[index]['negative']}/"
+            f"{branches[index]['positive']}"
+            for index in range(len(image_names))
+        )
+        + " → 95"
+    )
+    report.append("参考图使用最长边等比例缩放，输出画布沿用同一宽高比")
+    report.append("负面条件沿用工作流 ConditioningZeroOut；用户提示词写入节点 19")
+    _ = negative
+    return workflow, report
+
+
+def _first_node_id(workflow: dict[str, Any], class_types: tuple[str, ...]) -> str:
+    for node_id, node in workflow.items():
+        if isinstance(node, dict) and node.get("class_type") in class_types:
+            return str(node_id)
+    return ""
+
+
+def _follow_input_node(
+    workflow: dict[str, Any],
+    node_id: str,
+    input_name: str,
+    class_types: tuple[str, ...],
+    visited: set[str] | None = None,
+) -> str:
+    """Find a loader upstream of an input without relying on editor IDs."""
+    if not node_id:
+        return ""
+    visited = set(visited or ())
+    if node_id in visited:
+        return ""
+    visited.add(node_id)
+    node = _node(workflow, node_id)
+    if not node:
+        return ""
+    if node.get("class_type") in class_types:
+        return node_id
+    value = (_inputs(workflow, node_id) or {}).get(input_name)
+    if isinstance(value, list) and len(value) >= 1:
+        return _follow_input_node(workflow, str(value[0]), input_name, class_types, visited)
+    return ""
+
+
+def _set_named_input(inputs: dict[str, Any], names: tuple[str, ...], value: Any) -> bool:
+    for name in names:
+        if name in inputs:
+            inputs[name] = value
+            return True
+    return False
+
+
+def _join_tool_prompt(default_positive: str, user_prompt: str) -> str:
+    values = [str(value or "").strip() for value in (default_positive, user_prompt)]
+    return ", ".join(value for value in values if value)
+
+
+def adapt_flux2_tool(
+    source: dict[str, Any],
+    *,
+    tool: str,
+    positive: str,
+    negative: str,
+    image_name: str,
+    model_name: str = "",
+    clip_name: str = "",
+    vae_name: str = "",
+    width: int = 0,
+    height: int = 0,
+    size: int = 0,
+    steps: int = 6,
+    cfg: float = 1.0,
+    seed: int = 0,
+    denoise: float = 0.6,
+    sampler_name: str = "euler",
+    scheduler: str = "simple",
+    filename_prefix: str = "astrbot/flux2_tool",
+    left: int = 0,
+    top: int = 0,
+    right: int = 0,
+    bottom: int = 0,
+    feathering: int = 0,
+    horizontal_angle: int = 71,
+    vertical_angle: int = 42,
+    zoom: float = 4.5,
+    default_prompts: bool = True,
+    camera_view: bool = False,
+    caption_tokens: int = 1024,
+    batch: int = 1,
+) -> tuple[dict[str, Any], list[str]]:
+    """Adapt one of the standalone Flux.2 Klein image tools.
+
+    These workflows are intentionally kept separate from the normal drawing
+    path. Their active LoRA nodes are copied exactly as supplied by the user;
+    disabled editor nodes are absent after conversion and are never enabled
+    here. The text entered by the user is put into the workflow's own Chinese
+    prompt field without AI translation or global preset/LoRA expansion.
+    """
+    tool = str(tool or "").strip().lower()
+    if tool not in {"wash", "outpaint", "multi_angle"}:
+        raise WorkflowError(f"未知 Flux2 工具模式：{tool}")
+    workflow = copy.deepcopy(source)
+    report: list[str] = []
+    if not str(image_name or "").strip():
+        raise WorkflowError("Flux2 工具没有收到输入图片")
+
+    sampler_id = _first_node_id(workflow, ("KSampler",))
+    save_id = _first_node_id(workflow, ("SaveImage",))
+    image_id = _first_node_id(workflow, ("LoadImage",))
+    positive_id = _first_node_id(workflow, ("CLIPTextEncode",))
+    if tool in {"wash", "multi_angle"}:
+        prompt_nodes = [
+            node_id for node_id, node in workflow.items()
+            if isinstance(node, dict) and node.get("class_type") == "CR Prompt Text"
+        ]
+        if prompt_nodes:
+            positive_id = prompt_nodes[0] if tool == "wash" else prompt_nodes[-1]
+    if not sampler_id or not save_id or not image_id or not positive_id:
+        raise WorkflowError("Flux2 工具工作流缺少输入图、提示词、采样器或输出节点")
+    sampler_inputs = _inputs(workflow, sampler_id) or {}
+    positive_inputs = _inputs(workflow, positive_id) or {}
+    if not positive_inputs:
+        raise WorkflowError("Flux2 工具工作流的提示词节点没有输入")
+
+    # Resolve the actual loaders used by the sampler/conditioning graph. This
+    # keeps alternate GGUF branches in the source workflow untouched when they
+    # are not connected.
+    model_ref = sampler_inputs.get("model")
+    model_loader_id = (
+        str(model_ref[0])
+        if isinstance(model_ref, list) and model_ref
+        else ""
+    )
+    while model_loader_id:
+        node = _node(workflow, model_loader_id)
+        if not node:
+            break
+        if node.get("class_type") in {"UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"}:
+            break
+        upstream = (_inputs(workflow, model_loader_id) or {}).get("model")
+        model_loader_id = str(upstream[0]) if isinstance(upstream, list) and upstream else ""
+    clip_loader_id = ""
+    # CR Prompt Text is a string helper, so it does not contain the CLIP
+    # connection itself. Find the actual encoder downstream of it before
+    # creating an optional negative encoder.
+    clip_source_inputs = positive_inputs
+    if not clip_source_inputs.get("clip"):
+        encoder_id = _first_node_id(workflow, ("CLIPTextEncode",))
+        clip_source_inputs = _inputs(workflow, encoder_id) or {}
+    clip_ref = clip_source_inputs.get("clip")
+    if isinstance(clip_ref, list) and clip_ref:
+        clip_loader_id = _follow_input_node(
+            workflow, str(clip_ref[0]), "clip", ("CLIPLoader", "CLIPLoaderGGUF")
+        )
+    vae_loader_id = ""
+    for node_id, node in workflow.items():
+        if not isinstance(node, dict) or node.get("class_type") not in {"VAEEncode", "VAEDecode"}:
+            continue
+        vae_ref = (_inputs(workflow, str(node_id)) or {}).get("vae")
+        if isinstance(vae_ref, list) and vae_ref:
+            vae_loader_id = _follow_input_node(
+                workflow, str(vae_ref[0]), "vae", ("VAELoader",)
+            )
+            if vae_loader_id:
+                break
+
+    def set_loader(node_id: str, names: tuple[str, ...], value: str, label: str) -> None:
+        if not value:
+            return
+        inputs = _inputs(workflow, node_id)
+        if inputs is None or not _set_named_input(inputs, names, value):
+            report.append(f"未找到{label}输入，保留工作流原值")
+
+    set_loader(model_loader_id, ("unet_name", "ckpt_name", "model_name"), str(model_name or "").strip(), "核心模型")
+    set_loader(clip_loader_id, ("clip_name",), str(clip_name or "").strip(), "文本编码器")
+    set_loader(vae_loader_id, ("vae_name",), str(vae_name or "").strip(), "VAE")
+
+    _inputs(workflow, image_id)["image"] = image_name  # type: ignore[index]
+    prompt = _join_tool_prompt(positive, "")
+    if not _set_named_input(positive_inputs, ("prompt", "text", "String"), prompt):
+        raise WorkflowError("Flux2 工具工作流的提示词字段无法写入")
+
+    # A zeroed negative branch is useful in the editor preview, but it cannot
+    # carry a user-configured negative prompt. Insert one encoder while
+    # retaining the workflow's reference-latent topology.
+    if str(negative or "").strip():
+        negative_id = f"astrbot_{tool}_negative"
+        clip_value = positive_inputs.get("clip") or ([clip_loader_id, 0] if clip_loader_id else None)
+        if not isinstance(clip_value, list):
+            raise WorkflowError("Flux2 工具工作流无法连接负面提示词的文本编码器")
+        workflow[negative_id] = {
+            "inputs": {"clip": clip_value, "text": str(negative).strip()},
+            "class_type": "CLIPTextEncode",
+            "_meta": {"title": "Flux2 独立负面提示词"},
+        }
+        zero_nodes = [
+            node_id for node_id, node in workflow.items()
+            if isinstance(node, dict) and node.get("class_type") == "ConditioningZeroOut"
+        ]
+        if zero_nodes:
+            for node_id in zero_nodes:
+                (_inputs(workflow, node_id) or {})["conditioning"] = [negative_id, 0]
+        else:
+            sampler_inputs["negative"] = [negative_id, 0]
+
+    sampler_inputs.update(
+        seed=max(0, int(seed)),
+        steps=max(1, int(steps)),
+        cfg=max(0.0, float(cfg)),
+        sampler_name=str(sampler_name or "euler"),
+        scheduler=str(scheduler or "simple"),
+        denoise=max(0.0, min(1.0, float(denoise))),
+    )
+    for node_id, node in workflow.items():
+        if isinstance(node, dict) and node.get("class_type") == "EmptyFlux2LatentImage":
+            inputs = _inputs(workflow, str(node_id)) or {}
+            _set_named_input(inputs, ("batch_size",), max(1, min(4, int(batch or 1))))
+
+    if tool == "wash":
+        for node_id, node in workflow.items():
+            if not isinstance(node, dict) or node.get("class_type") != "Florence2Run":
+                continue
+            inputs = _inputs(workflow, str(node_id)) or {}
+            if "max_new_tokens" in inputs:
+                inputs["max_new_tokens"] = max(64, min(4096, int(caption_tokens or 1024)))
+        report.append("洗图保留工作流自带的 Florence2 图像描述链")
+    elif tool == "outpaint":
+        pad_id = _first_node_id(workflow, ("ImagePadForOutpaint",))
+        if not pad_id:
+            raise WorkflowError("扩图工作流缺少 ImagePadForOutpaint 节点")
+        pad_inputs = _inputs(workflow, pad_id) or {}
+        pad_inputs.update(
+            left=max(0, int(left)), top=max(0, int(top)),
+            right=max(0, int(right)), bottom=max(0, int(bottom)),
+            feathering=max(0, int(feathering)),
+        )
+        report.append(f"扩图边距已写入：左 {left}、上 {top}、右 {right}、下 {bottom}")
+
+    elif tool == "multi_angle":
+        camera_id = _first_node_id(workflow, ("QwenMultiangleCameraNode",))
+        if not camera_id:
+            raise WorkflowError("多角度工作流缺少 QwenMultiangleCameraNode 节点")
+        camera_inputs = _inputs(workflow, camera_id) or {}
+        camera_inputs.update(
+            horizontal_angle=int(horizontal_angle),
+            vertical_angle=int(vertical_angle),
+            zoom=max(0.1, float(zoom)),
+            default_prompts=bool(default_prompts),
+            camera_view=bool(camera_view),
+        )
+        report.append(f"多角度参数已写入：水平 {horizontal_angle}、垂直 {vertical_angle}、缩放 {zoom}")
+
+    if size > 0:
+        changed_size = False
+        for node in workflow.values():
+            if not isinstance(node, dict) or node.get("class_type") != "EasySizeSimpleImage":
+                continue
+            changed_size = _set_named_input(
+                _inputs(workflow, str(next(k for k, v in workflow.items() if v is node))) or {},
+                ("缩放长度", "resize_length", "length"),
+                max(64, int(size)),
+            ) or changed_size
+        if not changed_size:
+            report.append("工作流没有可调的缩放长度输入，保留原始尺寸设置")
+
+    if width > 0 or height > 0:
+        report.append("该 Flux2 工作流使用自身的画布尺寸链；宽高参数未强行覆盖")
+    _inputs(workflow, save_id)["filename_prefix"] = filename_prefix  # type: ignore[index]
+
+    lora_nodes = [
+        (str(node_id), node)
+        for node_id, node in workflow.items()
+        if isinstance(node, dict) and node.get("class_type") == "LoraLoaderModelOnly"
+    ]
+    if lora_nodes:
+        names = [
+            str((_inputs(workflow, node_id) or {}).get("lora_name", "")).strip()
+            for node_id, _ in lora_nodes
+        ]
+        names = [name for name in names if name]
+        report.append("仅保留工作流原本启用的 LoRA：" + ("、".join(names) if names else "无"))
+    else:
+        report.append("工作流没有可执行的 LoRA 节点")
+    report.append("本模式不使用全局 LoRA、临时 LoRA、预设扩展或 AI 提示词优化")
     return workflow, report
 
 

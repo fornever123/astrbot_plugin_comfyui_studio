@@ -1,0 +1,273 @@
+{
+  "13": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNETLoader"
+    }
+  },
+  "14": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "CLIPLoader"
+    }
+  },
+  "41": {
+    "inputs": {
+      "model": "MiaoshouAI/Florence-2-large-PromptGen-v2.0",
+      "precision": "fp16",
+      "attention": "sdpa",
+      "convert_to_safetensors": false
+    },
+    "class_type": "DownloadAndLoadFlorence2Model",
+    "_meta": {
+      "title": "DownloadAndLoadFlorence2Model"
+    }
+  },
+  "51": {
+    "inputs": {
+      "image": "ComfyUI_00318_.png",
+      "upload": "image"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage"
+    }
+  },
+  "43": {
+    "inputs": {
+      "图像": [
+        "51",
+        0
+      ],
+      "SD1.5": "关",
+      "SDXL": "关",
+      "FLUX": "关",
+      "WAN": "关",
+      "QWEN": "关",
+      "裁剪方式": "中心裁剪",
+      "缩放算法": "lanczos",
+      "启用边长缩放": true,
+      "缩放至边": "最长边",
+      "缩放长度": 1280
+    },
+    "class_type": "EasySizeSimpleImage",
+    "_meta": {
+      "title": "EasySizeSimpleImage"
+    }
+  },
+  "10": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "VAELoader"
+    }
+  },
+  "29": {
+    "inputs": {
+      "anything": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "easy cleanGpuUsed",
+    "_meta": {
+      "title": "easy cleanGpuUsed"
+    }
+  },
+  "17": {
+    "inputs": {
+      "samples": [
+        "29",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAEDecode"
+    }
+  },
+  "56": {
+    "inputs": {
+      "clip_name": "qwen3-8b-abliterated-q5_k_m.gguf",
+      "type": "flux2"
+    },
+    "class_type": "CLIPLoaderGGUF",
+    "_meta": {
+      "title": "CLIPLoaderGGUF"
+    }
+  },
+  "55": {
+    "inputs": {
+      "unet_name": "flux-2-klein\\flux-2-klein-9b-Q4_K_M.gguf"
+    },
+    "class_type": "UnetLoaderGGUF",
+    "_meta": {
+      "title": "UnetLoaderGGUF"
+    }
+  },
+  "11": {
+    "inputs": {
+      "conditioning": [
+        "19",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "53": {
+    "inputs": {
+      "pixels": [
+        "43",
+        0
+      ],
+      "vae": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAEEncode"
+    }
+  },
+  "50": {
+    "inputs": {
+      "images": [
+        "17",
+        0
+      ],
+      "filename_prefix": "ComfyUI"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "SaveImage"
+    }
+  },
+  "18": {
+    "inputs": {
+      "model": [
+        "13",
+        0
+      ],
+      "positive": [
+        "19",
+        0
+      ],
+      "negative": [
+        "11",
+        0
+      ],
+      "latent_image": [
+        "53",
+        0
+      ],
+      "seed": 1087538329886391,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 0.6
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "64": {
+    "inputs": {
+      "prompt": "皮肤白皙，柔和明亮的光线，"
+    },
+    "class_type": "CR Prompt Text",
+    "_meta": {
+      "title": "补充提示词（可不填）"
+    }
+  },
+  "40": {
+    "inputs": {
+      "image": [
+        "51",
+        0
+      ],
+      "florence2_model": [
+        "41",
+        0
+      ],
+      "text_input": "",
+      "task": "more_detailed_caption",
+      "fill_mask": false,
+      "keep_model_loaded": false,
+      "max_new_tokens": 1024,
+      "num_beams": 3,
+      "do_sample": false,
+      "output_mask_select": "",
+      "seed": 8798
+    },
+    "class_type": "Florence2Run",
+    "_meta": {
+      "title": "Florence2Run"
+    }
+  },
+  "52": {
+    "inputs": {
+      "anything": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "easy showAnything",
+    "_meta": {
+      "title": "easy showAnything"
+    }
+  },
+  "66": {
+    "inputs": {
+      "text1": [
+        "40",
+        2
+      ],
+      "text2": [
+        "64",
+        0
+      ],
+      "separator": ", "
+    },
+    "class_type": "CR Text Concatenate",
+    "_meta": {
+      "title": "CR Text Concatenate"
+    }
+  },
+  "19": {
+    "inputs": {
+      "clip": [
+        "14",
+        0
+      ],
+      "text": [
+        "66",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIPTextEncode"
+    }
+  }
+}
