@@ -13,3 +13,7 @@ output/
 *.before_*
 backup_*/
 
+
+# 控制台本地预览产物
+.pv.html
+pages/console/.pv.html

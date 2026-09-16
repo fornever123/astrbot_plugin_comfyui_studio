@@ -11,6 +11,18 @@
     "hint": "例如 E:\\1aaaaaai\\ComfyUI-aki-v3\\ComfyUI；留空自动检测",
     "default": ""
   },
+  "extra_model_paths_file": {
+    "type": "string",
+    "description": "额外模型路径配置文件",
+    "hint": "指向 ComfyUI 的 extra_model_paths.yaml；留空自动在 ComfyUI 根目录及其上一层查找，找不到时只用默认模型目录",
+    "default": ""
+  },
+  "model_dir_overrides": {
+    "type": "dict",
+    "description": "模型目录手动覆盖",
+    "hint": "按类别指定目录，例如 {\"loras\": \"D:/models/loras\", \"vae\": \"D:/models/vae\"}；优先级高于 extra_model_paths.yaml 和默认位置",
+    "default": {}
+  },
   "source_workflow": {
     "type": "string",
     "description": "原始工作流位置",

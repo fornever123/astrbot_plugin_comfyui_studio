@@ -221,10 +221,39 @@ async function load() {
     statusEl.className = `status ${comfy.ok ? "ok" : "bad"}`;
     document.getElementById("statusText").textContent = comfy.ok ? `ComfyUI 已连接，版本 ${comfy.version || "未知"}` : `ComfyUI 未连接：${comfy.error || "未知错误"}`;
     const paths = status.paths || {};
-    const pathsEl = document.getElementById("paths"); if (pathsEl) { const openable = ["diffusion_models","checkpoints","loras","upscale_models","controlnet","ipadapter","clip_vision","workflows","source_workflow"]; pathsEl.innerHTML = Object.entries(paths).map(([key, value]) => { const kind = key === "workflow_dir" ? "workflows" : key; const canOpen = value && openable.includes(kind); const val = value || "未检测到"; return `<div class="path-row"><code>${escapeHtml(key)}</code><span class="path-value" title="${escapeHtml(val)}">${escapeHtml(val)}</span>${canOpen ? `<button type="button" class="secondary" data-open-folder="${escapeHtml(kind)}">打开文件夹</button>` : ""}</div>`; }).join(""); pathsEl.querySelectorAll("[data-open-folder]").forEach(btn => { btn.onclick = async () => { try { const result = await post(`${API}/open_folder`, {kind: btn.dataset.openFolder}); show(`已打开：${result.path}`); } catch (e) { show(e.message); } }; }); } const pathsCountEl = document.getElementById("pathsCount"); if (pathsCountEl) pathsCountEl.textContent = `（${Object.keys(paths).length} 项）`;
+    const pathSources = status.path_sources || {};
+    const sourceLabels = { override: "手动指定", extra: "额外路径", default: "默认位置" };
+    const pathsEl = document.getElementById("paths");
+    if (pathsEl) {
+      const openable = ["diffusion_models", "checkpoints", "loras", "upscale_models", "unet", "text_encoders", "vae", "controlnet", "ipadapter", "clip_vision", "workflows", "source_workflow"];
+      pathsEl.innerHTML = Object.entries(paths).map(([key, value]) => {
+        const kind = key === "workflow_dir" ? "workflows" : key;
+        const canOpen = value && openable.includes(kind);
+        const val = value || "未检测到";
+        const source = pathSources[key];
+        const badge = value && source && source !== "default"
+          ? `<span class="path-source">${escapeHtml(sourceLabels[source] || source)}</span>`
+          : "";
+        return `<div class="path-row"><code>${escapeHtml(key)}</code><span class="path-value" title="${escapeHtml(val)}">${escapeHtml(val)}</span>${badge}${canOpen ? `<button type="button" class="secondary" data-open-folder="${escapeHtml(kind)}">打开文件夹</button>` : ""}</div>`;
+      }).join("");
+      pathsEl.querySelectorAll("[data-open-folder]").forEach(btn => {
+        btn.onclick = async () => {
+          try {
+            const result = await post(`${API}/open_folder`, { kind: btn.dataset.openFolder });
+            show(`已打开：${result.path}`);
+          } catch (e) { show(e.message); }
+        };
+      });
+    }
+    const pathsCountEl = document.getElementById("pathsCount");
+    if (pathsCountEl) pathsCountEl.textContent = `（${Object.keys(paths).length} 项）`;
     for (const key of ["loras", "diffusion_models", "checkpoints", "upscale_models", "workflow_dir"]) {
       const el = document.getElementById(`path-${key}`);
-      if (el) el.textContent = paths[key] || "未检测到";
+      if (!el) continue;
+      const value = paths[key];
+      const source = pathSources[key];
+      const label = value && source && source !== "default" ? sourceLabels[source] : "";
+      el.textContent = label ? `${value} · ${label}` : (value || "未检测到");
     }
     const sourcePath = paths.source_workflow || "";
     const sourcePathElement = document.getElementById("path-source_workflow");

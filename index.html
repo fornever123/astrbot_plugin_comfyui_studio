@@ -7,12 +7,29 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="bg-decor" aria-hidden="true">
+    <i class="bd-ring" style="top:15%;right:23%"></i>
+    <i class="bd-ring" style="top:32%;right:31%"></i>
+    <i class="bd-ring" style="top:48%;left:29%"></i>
+    <i class="bd-ring" style="top:66%;left:25%"></i>
+    <i class="bd-ring" style="bottom:5%;right:5%"></i>
+    <i class="bd-dot" style="top:7%;right:17%"></i>
+    <i class="bd-dot" style="top:23%;right:10%"></i>
+    <i class="bd-dot" style="top:41%;right:24%"></i>
+    <i class="bd-dot" style="bottom:18%;right:13%"></i>
+    <i class="bd-dot" style="top:56%;left:27%"></i>
+    <i class="bd-star" style="top:13%;right:14%"></i>
+    <i class="bd-star" style="bottom:11%;left:34%"></i>
+    <i class="bd-star" style="top:60%;right:8%"></i>
+    <i class="bd-star" style="top:27%;left:31%"></i>
+  </div>
+
   <main class="shell">
     <aside class="sidebar">
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.0.0</p>
+        <p id="version" class="version">版本 v1.0.1</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -68,7 +85,7 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>LoRA 文件夹</h2><p>LoRA 文件和 CivitAI 信息在本组管理；文生图模型文件夹已移至“文生图”页。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>LoRA 文件夹</h2><p>LoRA 文件和 CivitAI 信息在本组管理；文生图模型文件夹已移至“文生图”页。模型目录来源自动识别：手动覆盖 → extra_model_paths.yaml → ComfyUI 默认位置。</p></div>
       </div>
       <div class="folder-grid">
         <article class="folder-card"><div><strong>LoRA</strong><code id="path-loras">未检测到</code></div><div class="folder-actions"><button data-open-folder="loras" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入 LoRA<input id="loraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label></div></article>
@@ -152,7 +169,7 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>文生图模型文件夹</h2><p>这里管理文生图使用的核心模型、Checkpoint 和高清放大模型位置。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></svg>文生图模型文件夹</h2><p>这里管理文生图使用的核心模型、Checkpoint 和高清放大模型位置。模型目录来源自动识别：手动覆盖 → extra_model_paths.yaml → ComfyUI 默认位置。</p></div>
       </div>
       <div class="folder-grid">
         <article class="folder-card"><div><strong>核心模型</strong><code id="path-diffusion_models">未检测到</code></div><button data-open-folder="diffusion_models" class="secondary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>打开文件夹</button></article>
@@ -519,6 +536,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.0.0"></script>
+  <script src="app.js?v=1.0.1"></script>
 </body>
 </html>

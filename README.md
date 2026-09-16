@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.0.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.0.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -303,11 +303,34 @@ python -m pip install -r requirements.txt
 | 配置项 | 留空时的行为 |
 | --- | --- |
 | ComfyUI 根目录 | 自动探测常见安装位置（C~H 盘、用户目录） |
+| 额外模型路径配置文件（`extra_model_paths_file`） | 自动在 ComfyUI 根目录及其上一层寻找 `extra_model_paths.yaml` / `.yml` |
+| 各类别模型目录覆盖（`model_dir_overrides`） | 不覆盖，按下面的优先级自动解析 |
 | 原始工作流位置 / 各模式源工作流位置 | 使用插件内置 `workflows/` 副本，**无需填写** |
 | 可切换 API 工作流目录 | 使用插件内置 `workflows/` 目录 |
 | 图片字体（常规 / 粗体） | 自动探测系统中文字体，找不到时回退默认字体 |
 | Anima 提示词模板路径 | 使用插件内置 `knowledge/提示词模版.txt` |
 | ComfyUI 启动脚本路径 | 自动寻找 `run_nvidia_gpu.bat` 或 `run.bat` |
+
+#### 模型目录是怎么找到的
+
+`<ComfyUI根目录>/models/<类别>` 只是 ComfyUI 的默认约定——很多人会用
+`extra_model_paths.yaml` 把 LoRA、VAE、大模型指到别的磁盘。插件因此把三类来源统一解析：
+
+```
+手动覆盖（model_dir_overrides） > extra_model_paths.yaml > <根目录>/models/<类别>
+```
+
+- 三种来源都会参与扫描，**同一个类别的多个目录会被合并**，所以模型放在哪都能被列出来；
+- 控制台的文件夹卡片和「路径」列表会标注每个目录的**来源**（`手动指定` / `额外路径` / `默认位置`），
+  默认位置不加徽标；
+- 免 API 下载、批量导入、删除 LoRA 等所有写操作都落在**优先级最高**的那个目录上；
+- `unet` / `diffusion_models`、`clip` / `text_encoders` 这两组新旧叫法自动互相兜底。
+
+`model_dir_overrides` 支持两种写法（JSON 文本或字典）：
+
+```json
+{ "loras": "F:/my_loras", "vae": "F:/my_vae" }
+```
 
 ### 前置条件
 
@@ -649,6 +672,19 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.0.1
+
+- 🗂️ **模型目录可换也能检测**：新增对 ComfyUI `extra_model_paths.yaml` 的解析，
+  模型放在别的磁盘也能被正确列出（含 `|` 多行路径、引号、行内注释）
+- 🎯 **统一解析优先级**：手动覆盖 → `extra_model_paths.yaml` → `<根目录>/models/<类别>`，
+  同类别的多个目录会合并扫描，不再假设模型一定在默认位置
+- 🏷️ **来源可视化**：控制台文件夹卡片与路径列表标注 `手动指定` / `额外路径` / `默认位置`
+- ⚙️ 新增配置项 `extra_model_paths_file`（留空自动在根目录及上一层寻找）与
+  `model_dir_overrides`（按类别手动指定目录，支持 JSON 文本或字典）
+- 🔁 `unet` / `diffusion_models`、`clip` / `text_encoders` 新旧叫法互相兜底
+- 🎨 修复磨砂玻璃皮肤里文件夹按钮被挤压变形的问题
+- ✅ 新增 40 条模型目录解析回归测试（总计 218 条）
 
 ### v1.0.0
 

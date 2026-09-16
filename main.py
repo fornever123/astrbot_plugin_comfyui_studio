@@ -45,7 +45,15 @@ from .moderation import (
     ModerationConfig,
     ModerationVerdict,
 )
-from .paths import detect_comfyui_root, model_dir
+from .paths import (
+    MODEL_CATEGORIES,
+    ModelDir,
+    category_aliases,
+    detect_comfyui_root,
+    find_extra_model_paths_file,
+    read_extra_model_paths,
+    resolve_model_dirs,
+)
 from .prompting import (
     DrawParams,
     PresetStore,
@@ -68,7 +76,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.0.1"
 
 
 def _log_path(value: object) -> str:
@@ -315,6 +323,7 @@ WRITABLE_CONFIG = {
     "img2img_astrbot_llm_system_prompt", "img2img_astrbot_user_prompt_template",
     "draw_limit_count", "draw_limit_window_seconds", "draw_limit_admin_ids",
     "comfyui_start_script", "image_font_regular", "image_font_bold", "anima_template_path",
+    "extra_model_paths_file", "model_dir_overrides",
     "moderation_enabled", "moderation_input_groups", "moderation_output_groups",
     "moderation_base_url", "moderation_api_key", "moderation_model",
     "moderation_strictness", "moderation_timeout", "moderation_fail_open",
@@ -5235,14 +5244,121 @@ class ComfyUIAIStudio(Star):
             },
         }
 
+    def _extra_model_paths_sections(self) -> tuple[str, dict[str, dict[str, list[str]]]]:
+        """返回（实际使用的配置文件路径，解析结果）。
+
+        未配置时自动在 ComfyUI 根目录及其上一层寻找 extra_model_paths.yaml。
+        结果按「路径 + 修改时间」缓存，避免在循环里反复读盘解析。
+        """
+        path = str(self._get("extra_model_paths_file", "") or "").strip()
+        if not path:
+            root = detect_comfyui_root(str(self._get("comfyui_root", "") or ""))
+            path = find_extra_model_paths_file(root)
+        stamp: tuple[str, int] | None = None
+        if path:
+            try:
+                stamp = (path, Path(path).stat().st_mtime_ns)
+            except OSError:
+                stamp = None
+        cache = getattr(self, "_extra_model_paths_cache", None)
+        if cache is not None and cache[0] == path and cache[1] == stamp and stamp is not None:
+            return path, cache[2]
+        sections = read_extra_model_paths(path)
+        self._extra_model_paths_cache = (path, stamp, sections)
+        return path, sections
+
+    def _model_dir_overrides(self) -> dict[str, str]:
+        """WebUI 的模型目录手动覆盖，兼容 dict 与 JSON 文本两种写法。"""
+        raw = self._get("model_dir_overrides", {})
+        if isinstance(raw, dict):
+            items = list(raw.items())
+        else:
+            text = str(raw or "").strip()
+            if not text:
+                return {}
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError):
+                logger.warning("[%s] 模型目录手动覆盖不是合法 JSON，已忽略", PLUGIN_NAME)
+                return {}
+            items = list(parsed.items()) if isinstance(parsed, dict) else []
+        overrides: dict[str, str] = {}
+        for key, value in items:
+            name = str(key or "").strip()
+            target = str(value or "").strip()
+            if name and target:
+                overrides[name] = target
+        return overrides
+
+    def _model_dirs(self, category: str) -> list[ModelDir]:
+        """按「手动覆盖 > extra_model_paths.yaml > 默认位置」解析模型目录。"""
+        root = detect_comfyui_root(str(self._get("comfyui_root", "") or ""))
+        _, sections = self._extra_model_paths_sections()
+        overrides = self._model_dir_overrides()
+        override = ""
+        for name in category_aliases(category):
+            if overrides.get(name):
+                override = overrides[name]
+                break
+        return resolve_model_dirs(root, category, override=override, sections=sections)
+
+    def _lora_dirs(self) -> list[Path]:
+        return [entry.path for entry in self._model_dirs("loras")]
+
+    def _lora_relative_target(self, file_name: str) -> Path | None:
+        """在全部 LoRA 目录中定位文件，顺带兼容大小写与斜杠差异。"""
+        relative = str(file_name or "").replace("\\", "/").strip(" /")
+        if not relative:
+            return None
+        parts = [part for part in relative.split("/") if part not in {"", ".", ".."}]
+        if not parts:
+            return None
+        directories = self._lora_dirs()
+        for directory in directories:
+            candidate = directory.joinpath(*parts)
+            try:
+                if candidate.is_file():
+                    return candidate
+            except OSError:
+                continue
+        # Windows 通常不区分大小写，但 ComfyUI 的 API 列表可能来自额外模型
+        # 路径，做一次文件名回退，兼容旧配置写入的大小写或斜杠差异。
+        target_name = Path(relative).name.casefold()
+        for directory in directories:
+            try:
+                for path in directory.rglob(Path(relative).name):
+                    if path.is_file() and path.name.casefold() == target_name:
+                        return path
+            except OSError:
+                continue
+        return None
+
+    def _path_sources(self) -> dict[str, str]:
+        """各类别当前生效目录的来源，供 WebUI 标注「默认 / 额外 / 手动」。"""
+        sources: dict[str, str] = {}
+        for category in MODEL_CATEGORIES:
+            entries = self._model_dirs(category)
+            if entries:
+                sources[category] = entries[0].source
+        return sources
+
+    def _describe_model_dirs(self, category: str, title: str) -> list[str]:
+        """把某类别的全部目录格式化成多行文本，标注非默认来源。"""
+        entries = self._model_dirs(category)
+        if not entries:
+            return [f"{title}：未检测到"]
+        lines = [f"{title}：{entries[0].path}（{entries[0].label}）"]
+        for entry in entries[1:]:
+            lines.append(f"{title}（{entry.label}）：{entry.path}")
+        return lines
+
     def _model_folder_path(self, kind: str) -> Path:
         kind = str(kind or "").strip()
-        root = detect_comfyui_root(str(self._get("comfyui_root", "")))
-        categories = {"diffusion_models", "checkpoints", "loras", "upscale_models", "controlnet", "ipadapter", "clip_vision"}
-        if kind in categories:
-            if not root:
-                raise UsageError("未检测到 ComfyUI 根目录")
-            return Path(model_dir(root, kind))
+        if kind in MODEL_CATEGORIES:
+            entries = self._model_dirs(kind)
+            if not entries:
+                raise UsageError("未检测到 ComfyUI 根目录，也没有配置额外模型路径")
+            return entries[0].path
         if kind == "workflows":
             return self._workflow_dir()
         if kind == "source_workflow":
@@ -5725,9 +5841,8 @@ class ComfyUIAIStudio(Star):
             filename = relative.as_posix()
             if filename not in available:
                 return json_response({"error": "LoRA 文件不存在"}, status_code=404)
-            directory = self._model_folder_path("loras").resolve()
-            target = (directory / relative).resolve()
-            if directory not in target.parents or not target.is_file():
+            target = self._lora_relative_target(filename)
+            if target is None:
                 return json_response({"error": "LoRA 路径无效"}, status_code=400)
             startfile = getattr(os, "startfile", None)
             if not callable(startfile):
@@ -6164,11 +6279,9 @@ class ComfyUIAIStudio(Star):
             filename = relative.as_posix()
             if filename not in available:
                 return json_response({"error": "LoRA 文件不存在"}, status_code=404)
-            directory = self._model_folder_path("loras")
-            target = (directory / relative).resolve()
-            if directory.resolve() not in target.parents:
-                return json_response({"error": "LoRA 路径无效"}, status_code=400)
-            if not target.is_file():
+            # 文件可能位于额外模型路径，因此按相对路径在所有 LoRA 目录里查找。
+            target = self._lora_relative_target(filename)
+            if target is None:
                 return json_response({"error": "本地 LoRA 文件不存在"}, status_code=404)
             target.unlink()
             self._lora_names_cache = None
@@ -6238,16 +6351,28 @@ class ComfyUIAIStudio(Star):
             return json_response({"error": str(exc)}, status_code=400)
 
     async def _local_lora_names(self) -> list[str]:
-        """读取本地 LoRA 文件名，管理操作不依赖 ComfyUI 的缓存列表。"""
-        directory = self._model_folder_path("loras")
-        if not directory.is_dir():
-            return []
-        allowed = {".safetensors", ".pt", ".ckpt", ".bin"}
-        names = [
-            path.relative_to(directory).as_posix()
-            for path in directory.rglob("*")
-            if path.is_file() and path.suffix.lower() in allowed
-        ]
+        """读取本地 LoRA 文件名，管理操作不依赖 ComfyUI 的缓存列表。
+
+        模型可能分布在默认位置和 extra_model_paths.yaml 声明的多个目录里，
+        因此逐个扫描后按相对路径合并去重。
+        """
+        allowed = {suffix.lower() for suffix in self.LORA_FILE_SUFFIXES}
+        names: list[str] = []
+        seen: set[str] = set()
+        for directory in self._lora_dirs():
+            try:
+                if not directory.is_dir():
+                    continue
+                for path in directory.rglob("*"):
+                    if not path.is_file() or path.suffix.lower() not in allowed:
+                        continue
+                    name = path.relative_to(directory).as_posix()
+                    if name in seen:
+                        continue
+                    seen.add(name)
+                    names.append(name)
+            except OSError:
+                continue
         return self._order_loras(names)
 
     async def api_upload_workflow(self):
@@ -6294,27 +6419,8 @@ class ComfyUIAIStudio(Star):
         return candidates
 
     def _lora_local_path(self, file_name: str) -> Path | None:
-        """按 ComfyUI 的 LoRA 相对路径找到本地文件。"""
-        root = detect_comfyui_root(str(self._get("comfyui_root", "")))
-        if not root:
-            return None
-        lora_root = Path(root) / "models" / "loras"
-        relative = str(file_name or "").replace("\\", "/").strip(" /")
-        if not relative:
-            return None
-        candidate = lora_root.joinpath(*[part for part in relative.split("/") if part not in {"", ".", ".."}])
-        if candidate.is_file():
-            return candidate
-        # Windows 通常不区分大小写，但 ComfyUI 的 API 列表可能来自额外模型
-        # 路径，做一次文件名回退，兼容旧配置写入的大小写或斜杠差异。
-        target_name = Path(relative).name.casefold()
-        try:
-            for path in lora_root.rglob(Path(relative).name):
-                if path.is_file() and path.name.casefold() == target_name:
-                    return path
-        except OSError:
-            return None
-        return None
+        """按 ComfyUI 的 LoRA 相对路径找到本地文件（含额外模型路径）。"""
+        return self._lora_relative_target(file_name)
 
     def _lora_architecture_profile(self, file_name: str) -> str:
         """识别 LoRA 适用的架构：anima_base、anima_29b、flux2 或 unknown。
@@ -10116,20 +10222,26 @@ class ComfyUIAIStudio(Star):
     async def command_config(self, event: AstrMessageEvent):
         root = detect_comfyui_root(str(self._get("comfyui_root", "")))
         source_workflow = str(self._get("source_workflow", ""))
-        yield event.plain_result(
-            "当前绘画配置\n"
-            f"ComfyUI 地址：{self._get('comfyui_url', '')}\n"
-            f"核心模型：{self._get('model_name', '')}\n"
-            f"LoRA：{', '.join(self._get('lora_list', []) or []) or '无'}\n"
-            f"AI 服务：{self._get('ai_model', '') or '未配置'}\n"
-            f"ComfyUI 根目录：{root or '未检测到'}\n"
-            f"核心模型目录：{model_dir(root, 'diffusion_models')}\n"
-            f"Checkpoint 模型目录：{model_dir(root, 'checkpoints')}\n"
-            f"LoRA 目录：{model_dir(root, 'loras')}\n"
-            f"工作流目录：{self._workflow_dir()}\n"
-            f"原始工作流：{source_workflow}\n"
-            f"输出目录：{self.output_dir}"
-        )
+        extra_paths_file, _ = self._extra_model_paths_sections()
+        lines = [
+            "当前绘画配置",
+            f"ComfyUI 地址：{self._get('comfyui_url', '')}",
+            f"核心模型：{self._get('model_name', '')}",
+            f"LoRA：{', '.join(self._get('lora_list', []) or []) or '无'}",
+            f"AI 服务：{self._get('ai_model', '') or '未配置'}",
+            f"ComfyUI 根目录：{root or '未检测到'}",
+        ]
+        # 每类目录可能同时存在默认位置和额外路径，这里全部列出并标注来源。
+        lines += self._describe_model_dirs("diffusion_models", "核心模型目录")
+        lines += self._describe_model_dirs("checkpoints", "Checkpoint 模型目录")
+        lines += self._describe_model_dirs("loras", "LoRA 目录")
+        lines += [
+            f"额外模型路径配置：{extra_paths_file or '未使用'}",
+            f"工作流目录：{self._workflow_dir()}",
+            f"原始工作流：{source_workflow}",
+            f"输出目录：{self.output_dir}",
+        ]
+        yield event.plain_result("\n".join(lines))
 
     @filter.command("comfy状态", alias=["comfy"], desc="查询 ComfyUI 状态")
     async def command_status(self, event: AstrMessageEvent):
@@ -11250,17 +11362,21 @@ class ComfyUIAIStudio(Star):
         except Exception as exc:
             logger.exception("[%s] 读取控制台状态失败", PLUGIN_NAME)
             comfy = {"ok": False, "error": f"插件状态接口异常：{type(exc).__name__}: {exc}"}
+        # 模型目录可能来自手动覆盖、extra_model_paths.yaml 或默认位置，
+        # 因此统一走解析器，并把来源一并发给控制台用于标注。
+        model_paths = {
+            category: str(entries[0].path)
+            for category in MODEL_CATEGORIES
+            if (entries := self._model_dirs(category))
+        }
+        extra_paths_file, _ = self._extra_model_paths_sections()
         return json_response({"version": f"v{PLUGIN_VERSION}", "comfy": comfy, "config": self._safe_config(), "draw_limit": self._draw_limit_status(), "paths": {
-            "comfyui_root": root, "diffusion_models": model_dir(root, "diffusion_models"),
-            "checkpoints": model_dir(root, "checkpoints"), "loras": model_dir(root, "loras"),
-            "upscale_models": model_dir(root, "upscale_models"), "unet": model_dir(root, "unet"),
-            "text_encoders": model_dir(root, "text_encoders"), "vae": model_dir(root, "vae"),
-            "controlnet": model_dir(root, "controlnet"), "ipadapter": model_dir(root, "ipadapter"),
-            "clip_vision": model_dir(root, "clip_vision"),
+            "comfyui_root": root, **model_paths,
+            "extra_model_paths_file": extra_paths_file,
             "workflow_dir": str(self._workflow_dir()),
             "source_workflow": str(self._get("source_workflow", "")),
             "output_dir": str(self.output_dir), "data_dir": str(self.data_dir),
-        }})
+        }, "path_sources": self._path_sources()})
 
     async def api_models(self):
         from astrbot.api.web import json_response
