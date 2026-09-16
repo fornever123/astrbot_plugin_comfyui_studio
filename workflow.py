@@ -769,6 +769,7 @@ def adapt_flux2_klein_img2img(
     vae_name: str,
     lora_name: str = "",
     lora_strength: float = 0.9,
+    keep_source_lora: bool = True,
     # Kept for compatibility with older callers. Flux2 Klein is intentionally
     # restored to the original workflow and no acceleration LoRA is injected.
     size: int = 1280,
@@ -808,7 +809,6 @@ def adapt_flux2_klein_img2img(
         "13": "核心模型",
         "14": "文本编码器",
         "19": "正面提示词",
-        "38": "LoRA",
         "62": "输出",
         "83": "输出画布",
         "95": "采样器",
@@ -895,30 +895,50 @@ def adapt_flux2_klein_img2img(
     required("10", "VAE")["vae_name"] = vae_name
     required("19", "正面提示词").update(text=positive, clip=["14", 0])
 
-    # The source workflow includes one model-only LoRA node. An empty setting
-    # bypasses it by connecting the sampler directly to the selected UNet;
-    # a selected content LoRA uses the original node 38. Do not create any
-    # extra acceleration node: this module must remain the original workflow.
+    # The source workflow carries its own model-only LoRA node (38), normally the
+    # author's content LoRA at a tuned strength. That LoRA is part of the
+    # workflow's *model chain*, so it must survive unless the user explicitly
+    # replaces or disables it:
+    #
+    #   * 独立 LoRA 已填写 -> 用用户选的 LoRA 覆盖 38，采样器接 38；
+    #   * 独立 LoRA 留空、源工作流自带 LoRA 且文件可用 -> 沿用源工作流 LoRA；
+    #   * 源工作流没有 LoRA，或该文件在 ComfyUI 中不可用 -> 移除 38，
+    #     采样器直接接 UNETLoader（调用方需传 keep_source_lora=False）。
+    #
+    # Dropping the source LoRA silently is what previously made Flux2 图生图
+    # look "无效"：采样器跑的是没有内容 LoRA 的裸基模，特征效果永远出不来。
     sampler = required("95", "采样器")
-    lora = required("38", "LoRA")
+    lora = _inputs(workflow, "38")
     model_output: list[Any] = ["13", 0]
-    if lora_name.strip():
+    requested_lora = str(lora_name or "").strip()
+    source_lora = ""
+    if lora is not None:
+        source_lora = str(lora.get("lora_name") or "").strip()
+    if requested_lora:
+        if lora is None:
+            raise WorkflowError("Flux2 Klein 图生图工作流缺少 LoRA 节点：38")
         lora.update(
-            lora_name=lora_name,
+            lora_name=requested_lora,
             strength_model=max(-2.0, min(2.0, float(lora_strength))),
             model=["13", 0],
         )
         model_output = ["38", 0]
-        report.append(f"已启用 Flux2 Klein 独立 LoRA：{lora_name}")
+        report.append(f"已启用 Flux2 Klein 独立 LoRA：{requested_lora}")
+    elif keep_source_lora and source_lora:
+        strength = max(-2.0, min(2.0, float(lora.get("strength_model", lora_strength) or lora_strength)))
+        lora.update(strength_model=strength, model=["13", 0])
+        model_output = ["38", 0]
+        report.append(f"沿用源工作流 LoRA：{source_lora}（强度 {strength:g}）")
     else:
-        # The supplied graph contains an example LoRA node. Leaving that
-        # node in the submitted prompt can fail ComfyUI validation when the
-        # example file is absent, even though the sampler bypasses it.
         workflow.pop("38", None)
-        report.append("Flux2 Klein 独立 LoRA 已关闭")
+        if source_lora:
+            report.append(f"源工作流 LoRA「{source_lora}」在 ComfyUI 中不可用，已自动关闭")
+        else:
+            report.append("源工作流未配置 LoRA，采样器直接使用核心模型")
 
-    # The sampler is connected directly to the source workflow's original
-    # model chain. No acceleration LoRA, KV cache, or other node is added.
+    # The sampler is connected to the source workflow's original model chain,
+    # including its own LoRA node when one is kept. No acceleration LoRA,
+    # KV cache, or other node is added.
     sampler["model"] = model_output
     report.append("Flux2 使用源工作流模型链，不添加加速 LoRA 或 KV Cache")
     if int(size or 0) > 0:

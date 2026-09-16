@@ -158,9 +158,18 @@ class ComfyClient:
     def prepare_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
         """返回真正要提交的可执行图。
 
-        ComfyUI 会校验 payload 里的**每一个**节点，包括输出用不到的节点。
-        内置的 Flux2 工作流还带着作者的示例图片名和示例 GGUF 模型名，
-        这些孤儿节点会让「单图参考」这类任务在校验阶段就被拒绝。
+        实测（ComfyUI 0.3.x）的两条校验规则并不一样：
+
+        * 不可达节点的**文件类输入**不会被校验——带着一个指向不存在图片的
+          孤儿 ``LoadImage``，``/prompt`` 依然返回 200 并正常出图。
+        * 不可达节点的**节点类型**会被逐个校验——只要有一个节点用了本机
+          没安装的自定义节点类型，``/prompt`` 会直接以 ``missing_node_type``
+          拒绝整包，与它是否参与出图无关。
+
+        内置与用户自带的 Flux2 工作流里都留着依赖 **ComfyUI-GGUF**
+        （``UnetLoaderGGUF`` / ``CLIPLoaderGGUF``）和 **rgthree**
+        （``Image Comparer`` / ``Power Lora Loader``）的孤儿节点。没装这些扩展的
+        用户会让整次绘图直接失败，而报错只提自定义节点缺失，很难定位。
         统一在这里裁剪，任何调用方都不会漏掉。
         """
         pruned, removed = prune_unreachable(workflow)

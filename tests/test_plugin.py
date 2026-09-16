@@ -45,7 +45,7 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v1.1.0" in page
+    assert "版本 v1.1.1" in page
 
 
 @pytest.mark.parametrize(
@@ -2621,7 +2621,10 @@ def test_flux2_uses_source_model_chain_without_acceleration_nodes() -> None:
         vae_name="flux2-vae.safetensors",
     )
 
-    assert adapted["95"]["inputs"]["model"] == ["13", 0]
+    # 源工作流自带的 LoRA（节点 38）属于模型链，独立 LoRA 留空时必须保留；
+    # 但绝不能注入「Flux2 加速 LoRA」这类额外节点。
+    assert adapted["95"]["inputs"]["model"] == ["38", 0]
+    assert adapted["38"]["inputs"]["lora_name"] == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
     assert adapted["95"]["inputs"]["denoise"] == 1.0
     assert not any(
         node.get("_meta", {}).get("title") == "Flux2 加速 LoRA"
@@ -2646,7 +2649,8 @@ def test_flux2_does_not_inject_kv_cache() -> None:
         cfg=1.0,
     )
 
-    assert adapted["95"]["inputs"]["model"] == ["13", 0]
+    # 采样器仍然走源工作流的模型链（含它自带的 LoRA），但不得出现 KV Cache 节点。
+    assert adapted["95"]["inputs"]["model"] == ["38", 0]
     assert not any(node.get("class_type") == "FluxKVCache" for node in adapted.values())
     assert adapted["95"]["inputs"]["positive"] == ["74", 0]
     assert any("不添加加速 LoRA 或 KV Cache" in item for item in report)

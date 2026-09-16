@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.1.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.1.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -114,7 +114,7 @@
 | 核心模型 | 独立 UNet（GGUF） | 独立 diffusion model |
 | 文本编码器 | 独立 Qwen VL（GGUF） | 独立 text encoder |
 | VAE | 独立 VAE | 独立 VAE |
-| LoRA | 独立 LoRA | 独立 LoRA |
+| LoRA | 独立 LoRA | 独立 LoRA（留空则沿用工作流自带 LoRA） |
 | 采样参数 | 独立步数 / CFG / 种子 / 采样器 / 调度器 / 重绘幅度 | 同一套独立参数 |
 | AI 提示词模板 | 独立中文编辑规则 | 独立中文编辑规则 |
 
@@ -131,6 +131,12 @@
 1. **后端强隔离** —— 图生图分支的长期 LoRA 只从 `img2img_lora_name`（或 `img2img_flux2_lora_name`）读取，代码里显式声明并写日志；文生图的 `lora_list` 和画风 LoRA 链路在图生图中被完全跳过。
 2. **WebUI 显著标注** —— “图生图”和“图生图 Flux2”两个页面顶部都有蓝色【特别标注】横幅，独立 LoRA 字段本身也带 `★` 高亮边框，一眼就能和文生图 LoRA 区分开。
 3. **聊天里也说明** —— 每次图生图任务提交后的开始提示会自动带上这句特别标注，群里的人也能看明白规则。
+
+> **Flux2 的一个例外**：Flux2 的工作流里本来就带一个作者调好权重的 LoRA 节点（例如
+> `flux-2-klein-NSFW.safetensors`，强度 0.9），它是这份工作流**模型链的一部分**，不是插件的
+> LoRA 列表。`img2img_flux2_lora_name` 留空时插件会**原样沿用**它，而不是把它删掉——
+> 否则你画出来的东西会和直接在 ComfyUI 里跑同一份工作流完全不同。想彻底不用它，就在
+> 独立 LoRA 里选一个替代的 LoRA，或把源工作流里的那个节点删掉。
 
 ### 中文编辑，只改你要改的
 
@@ -623,7 +629,7 @@ img2img_engine        = qwen
 img2img_flux2_unet_name = flux-2-klein\flux-2-klein-9b-fp8.safetensors
 img2img_flux2_clip_name = qwen_3_8b_fp8mixed.safetensors
 img2img_flux2_vae_name  = flux2-vae.safetensors
-img2img_flux2_lora_name = （独立 LoRA，留空关闭）
+img2img_flux2_lora_name = （独立 LoRA；留空则沿用源工作流自带的 LoRA）
 ```
 
 Flux2 源工作流路径可在 WebUI 配置。插件启动时会把它转换成 `workflows/图生图_flux2_klein.json`，**不改写源文件**。默认工作流支持 1~3 张参考图（第一张主参考，第二三张接入后续参考条件链），超过 3 张只取前三张。
@@ -696,14 +702,28 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 
 ## 📝 更新日志
 
+### v1.1.1
+
+- 🩹 **修复图生图 Flux2「特征效果永远出不来」**：Flux2 工作流的节点 38 是作者调好权重的
+  `LoraLoaderModelOnly`（如 `flux-2-klein-NSFW.safetensors`，强度 0.9），它属于工作流的
+  **模型链**。此前「独立 LoRA」留空时会把这个节点整个删掉，采样器实际跑的是没有内容 LoRA
+  的裸基模，画出来的东西和你在 ComfyUI 里跑同一份工作流完全不同
+- 🎛️ **新的 LoRA 语义**：独立 LoRA 留空 = **沿用源工作流自带的 LoRA**（含它调好的权重）；
+  填写 = 用它替换。控制台上两个字段的文案已同步说明
+- 🛡️ **不可用的源 LoRA 会自动降级**：提交前用 ComfyUI 的 LoRA 列表核对源工作流的 LoRA 文件，
+  不存在时自动关闭并在兼容提示里写明原因，不会让你看到一句莫名的 `Value not in list`
+- 📌 **修正 v1.1.0 的说明**：实测 ComfyUI 0.3.x 对不可达节点的**文件输入**并不校验
+  （带一个指向不存在图片的孤儿 `LoadImage` 依然能正常出图）；真正会让整单被拒的是
+  不可达节点引用了**未安装的自定义节点类型**（`missing_node_type`）。剪枝的真实价值在于
+  后者——内置工作流里留着依赖 ComfyUI-GGUF 与 rgthree 的孤儿节点，没装这些扩展的用户
+  会让整次绘图直接失败
+- ✅ 新增 6 条 Flux2 模型链 LoRA 回归测试（总计 297 条）
+
 ### v1.1.0
 
-- 🩹 **修复图生图 Flux2「提交了却像没生效」**：单图 / 两图模式下，工作流里未被使用的
-  参考图分支仍带着作者示例图片名（`jimeng-…png`、`11 (92).png`）。ComfyUI 会校验
-  payload 里的**每一个**节点，找不到文件就整单拒绝，任务因此永远跑不起来。
-  现在提交前只保留输出真正依赖的子图
-- 🧹 **提交图自动瘦身**：洗图 / 扩图 / 多角度里未被连接的 GGUF 加载器同样会被剔除，
-  少一次校验失败的可能，也少占一份显存
+- 🧹 **提交图自动瘦身**：只保留输出真正依赖的子图。内置工作流里留着作者的示例图片名、
+  示例 GGUF 模型名，以及依赖 ComfyUI-GGUF / rgthree 的孤儿节点；没装这些自定义扩展时，
+  ComfyUI 会以 `missing_node_type` 拒绝整包，任务根本跑不起来
 - 🧭 **控制台重新排布**：侧栏改为「绘制 / 图像工具 / LoRA 与预设 / 系统」四组，
   每个功能页新增一行定位说明；「默认图生图引擎」从 Flux2 页移回图生图页
 - 🗑️ **清理失效与重复项**：删除 5 个早已不生效的 Qwen 加速 LoRA 控件、

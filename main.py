@@ -80,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.1.0"
+PLUGIN_VERSION = "1.1.1"
 
 
 def _log_path(value: object) -> str:
@@ -8241,6 +8241,39 @@ class ComfyUIAIStudio(Star):
             size = requested_size if size <= 0 else min(size, requested_size)
         batch = params.batch if params.batch != 1 else as_int(configured("batch", 1), 1)
         workflow = load_workflow(self._workflow_path("img2img_flux2"))
+
+        # 源工作流自带的 LoRA（节点 38）属于它「模型链」的一部分，独立 LoRA 留空时
+        # 必须沿用，否则采样器会退化成没有内容 LoRA 的裸基模——这正是此前
+        # Flux2 图生图看起来「无效」的原因。只有该文件在 ComfyUI 中确实不可用，
+        # 才自动关闭并给出提示，避免直接提交失败。
+        keep_source_lora = True
+        source_lora_name = ""
+        source_lora_node = workflow.get("38")
+        if isinstance(source_lora_node, dict):
+            source_lora_name = str(
+                (source_lora_node.get("inputs") or {}).get("lora_name") or ""
+            ).strip()
+        if not str(lora_name or "").strip() and source_lora_name:
+            try:
+                available_loras = {
+                    name.replace("\\", "/").casefold()
+                    for name in await self._available_loras()
+                }
+            except Exception as exc:  # noqa: BLE001 - 查询失败时保守沿用，交给 ComfyUI 报错
+                logger.warning(
+                    "[%s] 查询 ComfyUI LoRA 列表失败，暂按源工作流 LoRA 处理：%s",
+                    PLUGIN_NAME,
+                    exc,
+                )
+                available_loras = set()
+            if available_loras and source_lora_name.replace("\\", "/").casefold() not in available_loras:
+                keep_source_lora = False
+                logger.warning(
+                    "[%s] 源工作流 LoRA 在 ComfyUI 中不可用，将自动关闭：%s",
+                    PLUGIN_NAME,
+                    source_lora_name,
+                )
+
         patched, report = adapt_flux2_klein_img2img(
             workflow,
             positive=positive,
@@ -8251,6 +8284,7 @@ class ComfyUIAIStudio(Star):
             vae_name=vae_name,
             lora_name=lora_name,
             lora_strength=as_float(configured("lora_strength", 0.9), 0.9),
+            keep_source_lora=keep_source_lora,
             size=size,
             steps=params.steps or as_int(configured("steps", FLUX2_IMG2IMG_STEPS_DEFAULT), FLUX2_IMG2IMG_STEPS_DEFAULT),
             cfg=params.cfg or as_float(configured("cfg", FLUX2_IMG2IMG_CFG_DEFAULT), FLUX2_IMG2IMG_CFG_DEFAULT),
@@ -8269,7 +8303,7 @@ class ComfyUIAIStudio(Star):
             PLUGIN_NAME,
             len(uploaded_names),
             model_name,
-            lora_name or "关闭",
+            lora_name or (source_lora_name if keep_source_lora and source_lora_name else "关闭"),
             positive[:300],
             "；".join(report) or "无",
         )

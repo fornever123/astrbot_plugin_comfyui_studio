@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.1.0</p>
+        <p id="version" class="version">版本 v1.1.1</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -327,9 +327,9 @@
         <label>核心模型<select id="img2img_flux2_unet_name" class="select"></select></label>
         <label>文本编码器<select id="img2img_flux2_clip_name" class="select"></select></label>
         <label>VAE<select id="img2img_flux2_vae_name" class="select"></select></label>
-        <label class="lora-isolated-field">★ 独立 LoRA（Flux2 唯一长期生效）<select id="img2img_flux2_lora_name" class="select"><option value="">不使用</option></select></label>
+        <label class="lora-isolated-field">★ 独立 LoRA（留空=沿用源工作流 LoRA）<select id="img2img_flux2_lora_name" class="select"><option value="">沿用源工作流 LoRA</option></select></label>
         <label>LoRA 权重<input id="img2img_flux2_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
-        <p class="field-hint wide">Flux2 按源工作流运行，不会额外加入加速 LoRA、KV Cache 或其它节点。</p>
+        <p class="field-hint wide">Flux2 按源工作流运行：留空时沿用该工作流自带的 LoRA（模型链的一部分，含权重），填写则用它替换。不会额外加入加速 LoRA、KV Cache 或其它节点。</p>
         <label>参考图最大边<input id="img2img_flux2_size" class="input" type="number" min="0" step="64"><small class="field-hint">0 表示沿用工作流；按最长边等比例缩放，不改变原图宽高比。</small></label>
         <label>采样步数<input id="img2img_flux2_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">源工作流默认 6 步</small></label>
         <label>CFG<input id="img2img_flux2_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">源工作流默认 1.0</small></label>
@@ -579,6 +579,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.1.0"></script>
+  <script src="app.js?v=1.1.1"></script>
 </body>
 </html>
