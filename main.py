@@ -80,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.1.2"
+PLUGIN_VERSION = "1.1.1"
 
 
 def _log_path(value: object) -> str:
