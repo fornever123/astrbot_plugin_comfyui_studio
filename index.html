@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.1.3</p>
+        <p id="version" class="version">版本 v1.1.4</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -132,7 +132,7 @@
     <section class="band style-lora-band">
       <div class="section-head">
         <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>画风 LoRA</h2><p>这里只显示分类为“画风”的 LoRA。它和普通 LoRA长期启用列表分开；简称没有自定义时按画风1、画风2、画风3生成。每张卡片默认简洁显示，只展开当前点击的一张。</p></div>
-        <div class="button-row"><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入并归类为画风"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入画风 LoRA<input id="styleLoraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label><button id="saveStyleLora" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存画风选择</button></div>
+        <div class="button-row"><label class="upload-button" title="可一次选择多个 LoRA 文件批量导入并归类为画风"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>批量导入画风 LoRA<input id="styleLoraFile" type="file" multiple accept=".safetensors,.pt,.ckpt,.bin"></label><button id="styleLoraIncludeAll" class="secondary" type="button" title="把当前所有画风 LoRA 一次性纳入随机候选"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>全部纳入随机候选</button><button id="saveStyleLora" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存画风选择</button></div>
       </div>
       <div class="style-lora-notice">自动使用方式：关闭时不自动加载；随机模式会从勾选的候选中抽取不重复的 LoRA；使用全部时加载所有勾选候选。常态打开的画风 LoRA 不占随机数量。用户明确写出画风简称或专属预设简称时，只使用命中的画风 LoRA，本次不会再随机叠加其它画风；指令或自然语言写“不用画风”可临时全部跳过。</div>
       <div class="form-grid style-lora-settings">
@@ -579,6 +579,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.1.3"></script>
+  <script src="app.js?v=1.1.4"></script>
 </body>
 </html>

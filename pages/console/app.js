@@ -718,7 +718,11 @@ function renderLoraCompactCard(item, file, options = {}) {
   const thumb = item.show_images === false || !(item.images || []).length
     ? ""
     : `<div class="lora-simple-thumb">${civitai.images}</div>`;
-  return `<article class="lora-card lora-card-simple${style ? " style-lora-card-simple" : ""}${options.selected ? " selected" : ""}">${thumb}<div class="lora-simple-head"><strong title="${file}">${escapeHtml(item.alias || item.file_name)}</strong><span class="lora-simple-alias" title="指令简称">简称：${escapeHtml(aliasText)}</span><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">展开</button></div></article>`;
+  // 画风简洁卡：直接给出「长期启用 / 纳入随机候选」两个开关，勾选即保存，不必先展开卡片。
+  const switches = style
+    ? `<div class="lora-simple-switches"><label class="check lora-simple-switch${options.enabled ? " is-on" : ""}" title="常态打开：每次出图都会加载，不占随机数量"><input type="checkbox" data-lora-enabled-checkbox="${file}" ${options.enabled ? "checked" : ""}><span>长期启用</span></label><label class="check lora-simple-switch${options.selected ? " is-on" : ""}" title="纳入随机候选：随机模式下会被抽到"><input type="checkbox" data-style-lora-file="${file}" ${options.selected ? "checked" : ""}><span>纳入随机候选</span></label></div>`
+    : "";
+  return `<article class="lora-card lora-card-simple${style ? " style-lora-card-simple" : ""}${options.selected ? " selected" : ""}">${thumb}<div class="lora-simple-head"><strong title="${file}">${escapeHtml(item.alias || item.file_name)}</strong><span class="lora-simple-alias" title="指令简称">简称：${escapeHtml(aliasText)}</span><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">展开</button></div>${switches}</article>`;
 }
 
 function renderLoraFullCard(item, file, options = {}) {
@@ -1422,9 +1426,27 @@ document.getElementById("loraClearAll").onclick = () => {
 document.getElementById("loraSaveSelection").onclick = async () => {
   try { await saveSimpleLoraSelection(); show("当前分类的 LoRA 选择已保存"); } catch (e) { show(e.message); }
 };
-document.getElementById("saveStyleLora").onclick = async () => {
-  try {
-    const selected = [...document.querySelectorAll("[data-style-lora-file]")]
+// 画风 LoRA 设置保存：可被「保存画风选择」按钮、简洁卡勾选、批量纳入按钮复用。
+// candidates 显式给出时直接用它作为候选名单（批量纳入用），否则取页面上所有勾选项。
+// 勾选即保存时只就地同步状态类，不整表重绘：否则请求飞行期间用户点的下一个开关
+// 会被重绘吞掉（重绘依据的 config 还没有那次改动）。整表重绘只用于显式保存 / 全部纳入。
+function syncStyleLoraSwitchUI() {
+  document.querySelectorAll("#styleLoras .lora-simple-switch").forEach(label => {
+    const input = label.querySelector('input[type="checkbox"]');
+    if (input) label.classList.toggle("is-on", input.checked);
+  });
+  document.querySelectorAll("#styleLoras [data-style-lora-file]").forEach(input => {
+    const card = input.closest(".lora-card-simple");
+    if (card) card.classList.toggle("selected", input.checked);
+  });
+}
+
+// 串行队列：连续快速勾选会排成队列逐个提交，每个请求都在上一个提交并更新 config 之后
+// 才读取 DOM，因此不会出现「后发先至」把前一次改动覆盖掉，也不会静默丢弃点击。
+let styleLoraSaveChain = Promise.resolve();
+async function saveStyleLoraSettings({silent = false, candidates = null, rerender = null} = {}) {
+  const run = async () => {
+    const selected = candidates ?? [...document.querySelectorAll("[data-style-lora-file]")]
       .filter(input => input.checked)
       .map(input => input.dataset.styleLoraFile);
     const aliases = config.style_lora_aliases && typeof config.style_lora_aliases === "object" ? {...config.style_lora_aliases} : {};
@@ -1448,10 +1470,55 @@ document.getElementById("saveStyleLora").onclick = async () => {
     };
     const result = await post(`${API}/config`, payload);
     Object.assign(config, payload, result || {});
-    renderStyleLoras();
-    show("画风 LoRA 设置已保存，下一次文生图生效");
-  } catch (e) { show(e.message); }
+    const needRerender = rerender === null ? (!silent || candidates !== null) : rerender;
+    if (needRerender) renderStyleLoras(); else syncStyleLoraSwitchUI();
+    if (!silent) show("画风 LoRA 设置已保存，下一次文生图生效");
+    return true;
+  };
+  const queued = styleLoraSaveChain.then(run, run);
+  styleLoraSaveChain = queued.catch(() => {});
+  try { return await queued; } catch (e) { show(e.message); return false; }
 }
+document.getElementById("saveStyleLora").onclick = () => saveStyleLoraSettings();
+
+// 画风简洁卡的「长期启用」：写入 lora_list（常态加载），勾选即生效。
+async function setStyleLoraPersistent(file, enabled) {
+  const weight = currentLoraSelection()[file] || "0.8";
+  const next = Object.entries(currentLoraSelection())
+    .filter(([name]) => name !== file)
+    .map(([name, value]) => `${name}:${value}`);
+  if (enabled) next.push(`${file}:${weight}`);
+  const unique = [...new Set(next)];
+  const result = await post(`${API}/config`, {lora_list: unique});
+  config.lora_list = result.lora_list || unique;
+  syncStyleLoraSwitchUI();
+  show(enabled ? "已设为长期启用，下一次文生图生效" : "已取消长期启用");
+}
+
+// 画风简洁卡上的两个开关都是「勾选即保存」，不要求先展开卡片。
+document.getElementById("styleLoras").addEventListener("change", async event => {
+  const input = event.target;
+  if (!input || input.type !== "checkbox") return;
+  try {
+    if (input.dataset.styleLoraFile !== undefined) {
+      const ok = await saveStyleLoraSettings({silent: true});
+      if (ok) show(input.checked ? "已纳入随机候选" : "已从随机候选移除");
+    } else if (input.dataset.loraEnabledCheckbox !== undefined) {
+      await setStyleLoraPersistent(input.dataset.loraEnabledCheckbox, input.checked);
+    }
+  } catch (e) { show(e.message); }
+});
+
+// 一键把当前所有画风 LoRA 纳入随机候选。
+document.getElementById("styleLoraIncludeAll").onclick = async () => {
+  const files = (loraItems.length ? loraItems : [])
+    .filter(item => (item.category || "未分类") === "画风")
+    .map(item => item.file_name)
+    .filter(Boolean);
+  if (!files.length) { show("当前没有画风 LoRA"); return; }
+  const ok = await saveStyleLoraSettings({silent: true, candidates: files});
+  if (ok) show(`已把 ${files.length} 个画风 LoRA 全部纳入随机候选`);
+};
 document.getElementById("loras").onclick = handleLoraClick;
 document.getElementById("styleLoras").onclick = handleLoraClick;
 bindLoraPreviewDrop(document.getElementById("loras"));

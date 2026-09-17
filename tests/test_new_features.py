@@ -453,11 +453,11 @@ def test_bundled_workflows_cover_every_mode():
         assert (PLUGIN_DIR / "workflows" / filename).is_file(), mode
 
 
-def test_plugin_version_is_1_1_3_everywhere():
-    assert 'PLUGIN_VERSION = "1.1.3"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    assert "version: 1.1.3" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-    assert "版本 v1.1.3" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
-    assert "版本-1.1.3-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
+def test_plugin_version_is_1_1_4_everywhere():
+    assert 'PLUGIN_VERSION = "1.1.4"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    assert "version: 1.1.4" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
+    assert "版本 v1.1.4" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
+    assert "版本-1.1.4-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
     assert "0.10.3" not in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
 
 
@@ -491,3 +491,168 @@ def test_text_files_keep_lf_line_endings():
         "tests/test_new_features.py",
     ):
         assert crlf not in (PLUGIN_DIR / name).read_bytes(), name
+
+
+# ------------------------------------------- 画风简洁卡：长期启用 / 纳入随机候选
+
+def test_style_lora_group_has_include_all_button():
+    """画风组顶部有「全部纳入随机候选」，且排在「保存画风选择」之前。"""
+    html = (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
+    assert 'id="styleLoraIncludeAll"' in html
+    assert "全部纳入随机候选" in html
+    assert html.index('id="styleLoraIncludeAll"') < html.index('id="saveStyleLora"')
+    # 按钮必须落在画风组里，而不是普通 LoRA 组
+    style_group = html[html.index('id="styleLoras"') - 4000:html.index('id="styleLoras"')]
+    assert 'id="styleLoraIncludeAll"' in style_group
+
+
+def test_compact_style_card_exposes_both_switches():
+    js = (PLUGIN_DIR / "app.js").read_text(encoding="utf-8")
+    card = js[js.index("function renderLoraCompactCard"):js.index("function renderLoraFullCard")]
+    assert "lora-simple-switches" in card
+    assert "data-lora-enabled-checkbox" in card and "长期启用" in card
+    assert "data-style-lora-file" in card and "纳入随机候选" in card
+    # 开关行只在画风简洁卡出现（整个渲染函数里只有一处）
+    assert card.count("lora-simple-switches") == 1
+    # 状态类由 JS 显式输出，不依赖 :has() —— 老 WebView 不支持
+    assert "is-on" in card
+    assert ":has(" not in card
+
+
+def test_persistent_switch_writes_lora_list_without_duplicates():
+    """「长期启用」写入 lora_list，保留既有项与权重，并去重。"""
+    js = (PLUGIN_DIR / "app.js").read_text(encoding="utf-8")
+    fn = js[js.index("async function setStyleLoraPersistent"):]
+    fn = fn[:fn.index("\n}\n")]
+    assert "currentLoraSelection()" in fn
+    assert "${file}:${weight}" in fn
+    assert "new Set(" in fn                    # 去重
+    assert "lora_list" in fn
+    assert "syncStyleLoraSwitchUI" in fn        # 就地同步状态，不整表重绘
+
+
+def test_switch_saves_are_queued_and_never_dropped():
+    """连续勾选必须串行排队逐个提交；不允许用锁把并发点击静默丢弃。"""
+    js = (PLUGIN_DIR / "app.js").read_text(encoding="utf-8")
+    assert "styleLoraSaveChain" in js
+    assert "styleLoraSaveChain.then(run, run)" in js
+    assert "let styleLoraSaving" not in js
+    assert "if (styleLoraSaving) return false" not in js
+    # 勾选即保存走 silent + 不重绘，靠 syncStyleLoraSwitchUI 就地更新
+    assert "function syncStyleLoraSwitchUI" in js
+    assert "if (needRerender) renderStyleLoras(); else syncStyleLoraSwitchUI();" in js
+
+
+def test_include_all_only_collects_style_category():
+    js = (PLUGIN_DIR / "app.js").read_text(encoding="utf-8")
+    block = js[js.index('document.getElementById("styleLoraIncludeAll").onclick'):]
+    block = block[:block.index("\n};")]
+    assert '(item.category || "未分类") === "画风"' in block
+    assert "candidates: files" in block
+
+
+def test_style_switch_row_css_present():
+    css = (PLUGIN_DIR / "style.css").read_text(encoding="utf-8")
+    assert ".lora-simple-switches" in css
+    # 选择器必须带 label. 前缀，否则被原版 label.check 的 !important 吃掉状态色
+    assert "label.lora-simple-switch {" in css
+    assert "label.lora-simple-switch.is-on" in css
+    assert "label.lora-simple-switch:hover" in css
+
+
+def _css_block(css: str, header: str) -> str:
+    start = css.index(header)
+    return css[start:css.index("}", start)]
+
+
+def _hex(text: str, var: str) -> str:
+    m = re.search(re.escape(var) + r"\s*:\s*(#[0-9A-Fa-f]{3,6})", text)
+    assert m, "未在 CSS 块里找到 " + var
+    return m.group(1)
+
+
+def _rgba(text: str, var: str):
+    m = re.search(re.escape(var) + r"\s*:\s*rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)", text)
+    assert m, "未在 CSS 块里找到 " + var
+    return tuple(float(m.group(i)) for i in (1, 2, 3, 4))
+
+
+def _srgb(channel: float) -> float:
+    s = channel / 255.0
+    return s / 12.92 if s <= 0.03928 else ((s + 0.055) / 1.055) ** 2.4
+
+
+def _lum(rgb) -> float:
+    r, g, b = (_srgb(v) for v in rgb)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast(fg, bg) -> float:
+    a, b = _lum(fg), _lum(bg)
+    hi, lo = max(a, b), min(a, b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def _unhex(value: str):
+    value = value.lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _composite(over, under):
+    r, g, b, a = over
+    return tuple(over[i] * a + under[i] * (1 - a) for i in range(3))
+
+
+def _skin_layer() -> str:
+    """只取尾部的 T4-E 换肤层——原版第 60 行有同样的深色块头，不切层会读错块。"""
+    css = (PLUGIN_DIR / "style.css").read_text(encoding="utf-8")
+    start = css.index("/* ===== T4-E 换肤层")
+    return css[start:css.index("/* ===== T4-E 换肤层 · END", start)]
+
+
+def test_switch_label_color_meets_wcag_aa_in_both_themes():
+    """未勾选开关的文字必须达到 AA（4.5:1）——浅色皮肤最容易在这里翻车。
+
+    深色下曾整条压成浅色字面量导致几乎不可见；浅色下 muted 白底只有 3.4:1。
+    这里直接读已发布的 style.css，按卡片真实表面色算对比度。
+    """
+    layer = _skin_layer()
+    light = _css_block(layer, ':root, :root[data-ui-theme="light"], :root.theme-light')
+    dark = _css_block(layer, ':root[data-ui-theme="dark"], :root.theme-dark')
+
+    light_bg = _unhex(_hex(light, "--bg"))
+    dark_bg = _unhex(_hex(dark, "--bg"))
+
+    # 卡片用 --glass-strong 取表面色；深色是半透明，需合成到页面底色上
+    light_surface = _unhex(_hex(light, "--glass-strong"))
+    dark_surface = _composite(_rgba(dark, "--glass-strong"), dark_bg)
+
+    for theme, block, surface in (
+        ("light", light, light_surface),
+        ("dark", dark, dark_surface),
+    ):
+        fg = _unhex(_hex(block, "--simple-switch-idle"))
+        ratio_surface = _contrast(fg, surface)
+        assert ratio_surface >= 4.5, "{} 开关文字对卡片表面仅 {:.2f}:1".format(theme, ratio_surface)
+        ratio_bg = _contrast(fg, light_bg if theme == "light" else dark_bg)
+        assert ratio_bg >= 4.5, "{} 开关文字对页面底色仅 {:.2f}:1".format(theme, ratio_bg)
+
+        # 已勾选态用强调色，同样要达标
+        ratio_accent = _contrast(_unhex(_hex(block, "--accent-strong")), surface)
+        assert ratio_accent >= 4.5, "{} 已勾选态强调色仅 {:.2f}:1".format(theme, ratio_accent)
+
+
+def test_style_layer_has_dark_counterpart_for_switch_row():
+    """换肤层里凡带 !important 的浅色规则都要有深色跟随；开关行的取色必须走主题变量。"""
+    layer = _skin_layer()
+    row = layer[layer.index("label.lora-simple-switch"):]
+    row = row[:row.index("input {")]
+    assert "var(--simple-switch-idle)" in row
+    assert "var(--accent-strong)" in row
+    # 状态类由 JS 输出，这里不允许依赖 :has()
+    assert ":has(" not in row
+    # 不允许出现写死的颜色字面量（原版 CSS 里 :has() 另有 14 处，与此无关）
+    assert not re.search(r":\s*#[0-9A-Fa-f]{3,6}\s*;", row)
+    assert not re.search(r":\s*rgba?\(\d", row)

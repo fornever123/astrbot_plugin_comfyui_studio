@@ -45,7 +45,7 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v1.1.3" in page
+    assert "版本 v1.1.4" in page
 
 
 @pytest.mark.parametrize(
