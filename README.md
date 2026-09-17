@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.1.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.1.2-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -701,6 +701,25 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.1.2
+
+- ✨ **提升控制台质感，消除廉价观感**：在样式表末尾追加一层「质感精修层」，
+  不改动已有的 40 层覆盖规则（可整段移除回退），从设计令牌、圆角、阴影、
+  玻璃质感、控件、导航、芯片、图片框到面板头部逐项精修
+- 🧱 **背景纹理**：新增极淡网格 + 噪点（`feTurbulence`）叠层，
+  消除大片渐变常见的「塑料感」，并带 90s 极缓慢平移
+- 🎯 **圆角语义化**：容器 24px / 中容器 18px / 内嵌块 14px / 控件 10px，
+  修复原先一律 `999px` 导致的小按钮变药丸观感
+- 🌗 **阴影体系重做**：把原 29 处中性黑阴影换成**蓝调氛围阴影**，采用
+  「接触阴影 + 中景 + 远景氛围 + 顶部内高光」四层叠加，深色模式下主按钮
+  改为亮蓝实心，语义更清晰
+- 🧩 **补齐 6 个缺失选择器**：`.path-setting-row.checked`、
+  `.lora-card.style-lora-card-full.style-selected`、`.band.tool-panel`、
+  `.form-grid.draw-settings-grid`、`.band.lora-management-band`、`.path-chip-slot`
+- 🚫 **没有删减任何动画**（特意满足「不要变单调」的要求）：实测 `@keyframes` 13 → 14
+  （新增 `grid-pan`）、玻璃层 28 → 32、渐变 48 → 72、文字阴影 6 → 8、
+  过渡 33 → 45，所有质感指标**只增不减**，被删除的动画数为 **0**
 
 ### v1.1.1
 

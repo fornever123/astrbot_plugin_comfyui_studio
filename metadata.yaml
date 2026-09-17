@@ -13,7 +13,7 @@ desc: |
   公共 LoRA 无需任何密钥，也可在 auto / nokey / token 三种方式间切换。
   支持中文指令、多核心模型、AI 提示词优化、LLM 自然语言绘画、普通中文翻译、绘图限额、
   图片安全审核、队列提示和管理员启停 ComfyUI，并提供完整的 AstrBot WebUI 控制台。
-version: 1.1.1
+version: 1.1.2
 author: fornever123
 repo: https://github.com/fornever123/astrbot_plugin_comfyui_studio
 license: MIT
