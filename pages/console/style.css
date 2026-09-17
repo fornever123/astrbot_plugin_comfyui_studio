@@ -2725,3 +2725,507 @@ button .ui-ic, label.upload-button .ui-ic { width: 14px; height: 14px; }
   line-height: 1.62;
   color: var(--muted);
 }
+
+/* ===== T4-E 换肤层 · BEGIN（衬线标题 × 柔和黏土） ===== */
+
+/* ==== 全量换肤 · T4-E · 衬线标题 · 编辑质感（柔和黏土底） ==== */
+
+/* ---------- 1. 主题变量（三块全盖） ---------- */
+:root, :root[data-ui-theme="light"], :root.theme-light {
+  --bg: #F6F4FB; --bg-grad: linear-gradient(180deg,#F1EDFA 0%,#F8F6FC 52%,#FCFBFE 100%);
+  --blob-1: #E9E2FB; --blob-2: #E0EFFF; --blob-3: #FDE9F1;
+  --glass: #FFFFFF; --glass-strong: #FFFFFF; --glass-soft: rgba(120,110,170,.12);
+  --line: rgba(120,110,170,.12); --line-hi: rgba(255,255,255,.9);
+  --text: #332E4A; --muted: #8C86A8;
+  --accent: #7C5CFC; --accent-strong: #6B4FD8; --accent-soft: rgba(124,92,252,.12);
+  --danger: #D64560;
+  --shadow: 0 10px 24px -14px rgba(112,96,180,.3);
+  --btn-bg: #FFFFFF; --btn-bg-hover: #FFFFFF;
+  --field-bg: #FAF9FE; --field-bg-hover: #FAF9FE;
+  --radius: 22px;
+}
+:root[data-ui-theme="dark"], :root.theme-dark {
+  --bg: #14121F; --bg-grad: linear-gradient(180deg,#100E1A 0%,#141220 52%,#181527 100%);
+  --blob-1: #241F3A; --blob-2: #1C2440; --blob-3: #331F33;
+  --glass: rgba(26,23,40,.85); --glass-strong: rgba(26,23,40,.85); --glass-soft: rgba(255,255,255,.09);
+  --line: rgba(255,255,255,.09); --line-hi: rgba(255,255,255,.16);
+  --text: #ECE9F5; --muted: #9E98B8;
+  --accent: #9D85FF; --accent-strong: #B3A0FF; --accent-soft: rgba(157,133,255,.18);
+  --danger: #FF8FA0;
+  --shadow: 0 10px 26px -14px rgba(0,0,0,.6);
+  --btn-bg: linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04)); --btn-bg-hover: linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04));
+  --field-bg: rgba(10,8,18,.7); --field-bg-hover: rgba(10,8,18,.7);
+}
+
+/* ---------- 2. 背景 + 光斑 ---------- */
+body { background: var(--bg-grad) !important; color: var(--text); }
+body { text-shadow: none !important; }
+:root[data-ui-theme="dark"] body, :root.theme-dark body { text-shadow: none !important; }
+body::before { background: radial-gradient(closest-side, #E9E2FB, transparent) !important; opacity:.9; }
+body::after  { background: radial-gradient(closest-side, #E0EFFF, transparent) !important; opacity:.9; }
+.shell::before { background: radial-gradient(closest-side, #FDE9F1, transparent) !important; opacity:.8; }
+.shell::after  { background: radial-gradient(closest-side, #E9E2FB, transparent) !important; opacity:.6; }
+
+/* ---------- 3. 玻璃面板 ---------- */
+.sidebar, .topbar, .band, .folder-card, .lora-card, .preset, .path-setting-row,
+.path-browser-box, .lora-preset-editor {
+  background: linear-gradient(170deg,#FFFFFF,#FDFCFF) !important;
+  border: 1px solid rgba(120,110,170,.12) !important;
+  box-shadow: 0 10px 24px -14px rgba(112,96,180,.3) !important;
+  backdrop-filter: blur(16px) saturate(160%) !important;
+}
+.sidebar { border-radius: 26px !important; }
+.band { border-radius: 22px !important; }
+.folder-card, .lora-card, .preset, .path-setting-row, .path-browser-box, .lora-preset-editor {
+  border-radius: 18px !important;
+  transition: transform .2s cubic-bezier(.22,.61,.36,1), box-shadow .24s cubic-bezier(.22,.61,.36,1), border-color .24s cubic-bezier(.22,.61,.36,1) !important;
+}
+.folder-card:hover, .lora-card:hover, .preset:hover, .path-setting-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px -14px rgba(112,96,180,.42) !important;
+}
+:root[data-ui-theme="dark"] .sidebar, :root.theme-dark .sidebar,
+:root[data-ui-theme="dark"] .topbar, :root.theme-dark .topbar,
+:root[data-ui-theme="dark"] .band, :root.theme-dark .band,
+:root[data-ui-theme="dark"] .folder-card, :root.theme-dark .folder-card,
+:root[data-ui-theme="dark"] .lora-card, :root.theme-dark .lora-card,
+:root[data-ui-theme="dark"] .preset, :root.theme-dark .preset,
+:root[data-ui-theme="dark"] .path-setting-row, :root.theme-dark .path-setting-row,
+:root[data-ui-theme="dark"] .path-browser-box, :root.theme-dark .path-browser-box,
+:root[data-ui-theme="dark"] .lora-preset-editor, :root.theme-dark .lora-preset-editor {
+  background: linear-gradient(170deg,#211D33,#171426) !important;
+  border-color: rgba(255,255,255,.09) !important;
+  box-shadow: 0 10px 26px -14px rgba(0,0,0,.6) !important;
+}
+
+/* ---------- 4. 文字 ---------- */
+h1, .brand h1, .page-head h2, .section-head h2, .band h2 { color: var(--text) !important; }
+.page-head p, .section-head p, .muted, .field-hint { color: var(--muted) !important; }
+.eyebrow { color: #8C86A8 !important; letter-spacing: 2.5px !important; }
+.version { color: var(--muted) !important; }
+code { background: rgba(124,92,252,.12) !important; color: var(--accent-strong) !important;
+  border: 1px solid rgba(124,92,252,.12) !important; border-radius: 14px !important; }
+::selection { background: rgba(124,92,252,.12) !important; color: var(--text) !important; }
+
+/* ---------- 5. 侧栏导航 ---------- */
+.page-tab { color: var(--muted) !important; border-radius: 14px !important;
+  transition: background .16s cubic-bezier(.22,.61,.36,1), color .16s cubic-bezier(.22,.61,.36,1) !important; }
+.page-tab:hover { background: rgba(124,92,252,.12) !important; color: var(--text) !important; }
+.page-tab.active { background: rgba(124,92,252,.12) !important; color: var(--accent-strong) !important;
+  box-shadow: inset 2.5px 0 0 #7C5CFC !important; font-weight: 600; }
+.page-tab.active::before { background: transparent !important; box-shadow: none !important; }
+.nav-group-head { color: var(--muted) !important; }
+.nav-group-head:hover { color: var(--text) !important; }
+.nav-chevron { color: var(--muted) !important; }
+
+/* ---------- 6. 主按钮 / 次按钮 ---------- */
+button, .upload-button { border-radius: 14px !important; }
+button.primary, .upload-button, .folder-card > button[data-open-folder].primary {
+  background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important;
+  border: 1px solid rgba(255,255,255,.35) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.18), 0 6px 16px -6px rgba(124,92,252,.55),
+              inset 0 1px 0 rgba(255,255,255,.35) !important;
+  transition: transform .18s cubic-bezier(.22,.61,.36,1), box-shadow .2s cubic-bezier(.22,.61,.36,1), filter .18s cubic-bezier(.22,.61,.36,1) !important;
+}
+button.primary:hover, .upload-button:hover, .folder-card > button[data-open-folder].primary:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow: 0 2px 3px rgba(0,0,0,.2), 0 10px 22px -6px rgba(124,92,252,.55),
+              inset 0 1px 0 rgba(255,255,255,.4) !important;
+}
+button.primary:active { transform: translateY(0); filter: brightness(.97); }
+button.secondary {
+  background: linear-gradient(180deg,#F7F5FC,#F1EEFA) !important;
+  border: 1px solid rgba(124,92,252,.18) !important;
+  color: #5C5678 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95) !important;
+}
+button.secondary:hover { border-color: #7C5CFC !important; color: var(--accent-strong) !important; }
+button.primary.dirty, button.primary.dirty:hover {
+  background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important;
+  border-color: rgba(255,255,255,.35) !important; color: #FFFFFF !important;
+  box-shadow: 0 6px 16px -6px rgba(124,92,252,.55) !important;
+}
+:root[data-ui-theme="dark"] button.primary, :root.theme-dark button.primary,
+:root[data-ui-theme="dark"] .upload-button, :root.theme-dark .upload-button,
+:root[data-ui-theme="dark"] .folder-card > button[data-open-folder].primary,
+:root.theme-dark .folder-card > button[data-open-folder].primary,
+:root[data-ui-theme="dark"] button.primary.dirty, :root.theme-dark button.primary.dirty {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; color: #FFFFFF !important;
+  border: 1px solid rgba(255,255,255,.35) !important;
+  box-shadow: 0 6px 18px -6px rgba(124,92,252,.55), inset 0 1px 0 rgba(255,255,255,.25) !important;
+}
+:root[data-ui-theme="dark"] button.secondary, :root.theme-dark button.secondary {
+  background: linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04)) !important; border: 1px solid rgba(255,255,255,.15) !important;
+  color: #ECE9F5 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,.1) !important;
+}
+:root[data-ui-theme="dark"] button.secondary:hover, :root.theme-dark button.secondary:hover {
+  border-color: #9D85FF !important; color: #B3A0FF !important;
+}
+.folder-card > button[data-open-folder], .folder-actions > button, .folder-actions > .upload-button {
+  border-radius: 14px !important;
+}
+
+/* ---------- 7. 输入控件 ---------- */
+input, select, textarea, .select, .input, .textarea {
+  background: #FAF9FE !important;
+  border: 1px solid rgba(124,92,252,.2) !important;
+  color: var(--text) !important;
+  border-radius: 14px !important;
+  box-shadow: inset 0 1px 2px rgba(124,92,252,.05) !important;
+  transition: border-color .18s cubic-bezier(.22,.61,.36,1), box-shadow .18s cubic-bezier(.22,.61,.36,1) !important;
+}
+input:hover, select:hover, textarea:hover { border-color: #7C5CFC !important; }
+input:focus, select:focus, textarea:focus, .select:focus, .input:focus, .textarea:focus {
+  background: #FAF9FE !important;
+  border-color: #7C5CFC !important;
+  box-shadow: 0 0 0 3px rgba(124,92,252,.12) !important;
+  outline: none !important;
+}
+input::placeholder, textarea::placeholder { color: var(--muted) !important; opacity:.7; }
+select option { background: #F6F4FB; color: #332E4A; }
+:root[data-ui-theme="dark"] select option, :root.theme-dark select option {
+  background: #14121F; color: #ECE9F5; }
+label { color: var(--text); }
+.form-grid label, .lora-category-toolbar label, .lora-download-row label,
+.lora-batch-row label, label.check { color: var(--text) !important; }
+.form-grid label .field-hint { color: var(--muted) !important; }
+
+/* ---------- 7b. 深色输入控件（覆盖第 7 节的全局浅色规则） ---------- */
+:root[data-ui-theme="dark"] input, :root.theme-dark input,
+:root[data-ui-theme="dark"] select, :root.theme-dark select,
+:root[data-ui-theme="dark"] textarea, :root.theme-dark textarea,
+:root[data-ui-theme="dark"] .select, :root.theme-dark .select,
+:root[data-ui-theme="dark"] .input, :root.theme-dark .input,
+:root[data-ui-theme="dark"] .textarea, :root.theme-dark .textarea {
+  background: rgba(10,8,18,.7) !important;
+  border-color: rgba(255,255,255,.13) !important;
+  color: #ECE9F5 !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.35) !important;
+}
+:root[data-ui-theme="dark"] input:hover, :root.theme-dark input:hover,
+:root[data-ui-theme="dark"] select:hover, :root.theme-dark select:hover,
+:root[data-ui-theme="dark"] textarea:hover, :root.theme-dark textarea:hover {
+  border-color: #9D85FF !important;
+}
+:root[data-ui-theme="dark"] input:focus, :root.theme-dark input:focus,
+:root[data-ui-theme="dark"] select:focus, :root.theme-dark select:focus,
+:root[data-ui-theme="dark"] textarea:focus, :root.theme-dark textarea:focus,
+:root[data-ui-theme="dark"] .select:focus, :root.theme-dark .select:focus,
+:root[data-ui-theme="dark"] .input:focus, :root.theme-dark .input:focus,
+:root[data-ui-theme="dark"] .textarea:focus, :root.theme-dark .textarea:focus {
+  background: rgba(10,8,18,.7) !important;
+  border-color: #9D85FF !important;
+  box-shadow: 0 0 0 3px rgba(157,133,255,.18) !important;
+  outline: none !important;
+}
+:root[data-ui-theme="dark"] input::placeholder, :root.theme-dark input::placeholder,
+:root[data-ui-theme="dark"] textarea::placeholder, :root.theme-dark textarea::placeholder {
+  color: #9E98B8 !important; opacity:.7;
+}
+:root[data-ui-theme="dark"] .lora-preset-alias, :root.theme-dark .lora-preset-alias,
+:root[data-ui-theme="dark"] .lora-preset-row .textarea, :root.theme-dark .lora-preset-row .textarea {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.13) !important; color: #ECE9F5 !important;
+}
+:root[data-ui-theme="dark"] .lora-card.selected, :root.theme-dark .lora-card.selected,
+:root[data-ui-theme="dark"] .lora-card.style-selected, :root.theme-dark .lora-card.style-selected {
+  border-color: #9D85FF !important;
+  box-shadow: 0 0 0 1.5px #9D85FF, 0 10px 26px -14px rgba(0,0,0,.6) !important;
+}
+:root[data-ui-theme="dark"] ::selection, :root.theme-dark ::selection {
+  background: rgba(157,133,255,.18) !important; color: #ECE9F5 !important;
+}
+:root[data-ui-theme="dark"] code, :root.theme-dark code {
+  background: rgba(157,133,255,.18) !important; color: #B3A0FF !important;
+  border-color: rgba(157,133,255,.18) !important;
+}
+
+/* ---------- 8. 复选框 ---------- */
+.check input[type="checkbox"], .lora-check input[type="checkbox"] {
+  background: #FAF9FE !important;
+  border: 1.5px solid rgba(124,92,252,.2) !important;
+  box-shadow: inset 0 1px 2px rgba(124,92,252,.05) !important;
+  border-radius: 14px !important;
+  transition: border-color .16s, box-shadow .16s, background .16s !important;
+}
+.check input[type="checkbox"]::before, .lora-check input[type="checkbox"]::before {
+  background: rgba(255,255,255,.95) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.6) !important;
+}
+.check input[type="checkbox"]:checked, .lora-check input[type="checkbox"]:checked {
+  background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important;
+  border-color: #7C5CFC !important;
+  box-shadow: 0 2px 8px rgba(124,92,252,.55) !important;
+}
+:root[data-ui-theme="dark"] .check input[type="checkbox"], :root.theme-dark .check input[type="checkbox"] {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.13) !important;
+}
+:root[data-ui-theme="dark"] .check input[type="checkbox"]::before, :root.theme-dark .check input[type="checkbox"]::before {
+  background: rgba(255,255,255,.16) !important;
+}
+:root[data-ui-theme="dark"] .check input[type="checkbox"]:checked, :root.theme-dark .check input[type="checkbox"]:checked {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; border-color: #9D85FF !important;
+}
+
+/* ---------- 9. LoRA 卡片细节 ---------- */
+.lora-card-full, .style-lora-card-full {
+  background: linear-gradient(170deg,#FFFFFF,#FDFCFF) !important;
+  border: 1px solid rgba(120,110,170,.12) !important;
+  box-shadow: 0 10px 24px -14px rgba(112,96,180,.3) !important;
+}
+:root[data-ui-theme="dark"] .lora-card-full, :root.theme-dark .lora-card-full,
+:root[data-ui-theme="dark"] .style-lora-card-full, :root.theme-dark .style-lora-card-full {
+  background: linear-gradient(170deg,#211D33,#171426) !important; border-color: rgba(255,255,255,.09) !important;
+  box-shadow: 0 10px 26px -14px rgba(0,0,0,.6) !important;
+}
+.lora-card.selected, .lora-card.style-selected {
+  border-color: #7C5CFC !important;
+  box-shadow: 0 0 0 1.5px #7C5CFC, 0 10px 24px -14px rgba(112,96,180,.3) !important;
+}
+.lora-card-simple:not(:has(.lora-simple-thumb))::before,
+.style-lora-card-simple:not(:has(.lora-simple-thumb))::before {
+  border: 1.5px dashed rgba(124,92,252,.2) !important;
+  background: #FAF9FE !important; color: var(--muted) !important;
+}
+.lora-simple-thumb .civitai-image, .lora-card-full .civitai-image,
+.style-lora-card-full .civitai-image {
+  background: #FAF9FE !important; border: 1px solid rgba(120,110,170,.12) !important;
+}
+:root[data-ui-theme="dark"] .lora-simple-thumb .civitai-image, :root.theme-dark .lora-simple-thumb .civitai-image,
+:root[data-ui-theme="dark"] .lora-card-full .civitai-image, :root.theme-dark .lora-card-full .civitai-image {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.09) !important;
+}
+.lora-trigger-preview { border: 1px solid rgba(124,92,252,.12) !important;
+  background: rgba(124,92,252,.12) !important; border-radius: 14px !important; }
+.lora-trigger-preview code { background: transparent !important; border: none !important;
+  color: var(--accent-strong) !important; }
+.lora-preset-title strong::before { background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important;
+  box-shadow: 0 2px 6px rgba(124,92,252,.55) !important; }
+:root[data-ui-theme="dark"] .lora-preset-title strong::before, :root.theme-dark .lora-preset-title strong::before {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; box-shadow: 0 2px 6px rgba(124,92,252,.55) !important; }
+.lora-preset-alias, .lora-preset-row .textarea { background: #FAF9FE !important;
+  border: 1px solid rgba(124,92,252,.2) !important; color: var(--text) !important; }
+.lora-preset-alias:focus, .lora-preset-row .textarea:focus {
+  border-color: #7C5CFC !important; box-shadow: 0 0 0 3px rgba(124,92,252,.12) !important; }
+.lora-preset-editor > button[data-lora-action="add-lora-preset"] {
+  border: 1.5px dashed #7C5CFC !important; color: var(--accent-strong) !important;
+  background: rgba(124,92,252,.12) !important; border-radius: 14px !important; }
+.lora-preset-row > button[data-lora-action="remove-lora-preset"]:hover {
+  color: #D64560 !important; background: rgba(214,69,96,.1) !important; border-color: rgba(214,69,96,.28) !important; }
+
+/* ---------- 10. 分段切换 ---------- */
+.lora-section-switcher { background: #FAF9FE !important;
+  border: 1px solid rgba(120,110,170,.12) !important; border-radius: 18px !important; }
+.lora-section-tab { border-radius: 14px !important; background: transparent !important;
+  color: var(--muted) !important; box-shadow: none !important; }
+.lora-section-tab:hover { color: var(--text) !important; }
+.lora-section-tab.active { background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important; color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(124,92,252,.55) !important; font-weight: 600; }
+:root[data-ui-theme="dark"] .lora-section-tab.active, :root.theme-dark .lora-section-tab.active {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; box-shadow: 0 2px 8px rgba(124,92,252,.55) !important; }
+
+/* ---------- 11. 状态与徽标 ---------- */
+.status { border-radius: 999px !important;
+  background: rgba(124,92,252,.12) !important; border: 1px solid rgba(124,92,252,.12) !important;
+  color: var(--accent-strong) !important; }
+.status.ok { color: #2E9E6B !important; background: rgba(46,158,107,.1) !important; border-color: rgba(46,158,107,.28) !important; }
+.status.pending { color: #B97F1E !important; background: rgba(185,127,30,.1) !important; border-color: rgba(185,127,30,.28) !important; }
+.status.bad { color: #D64560 !important; background: rgba(214,69,96,.1) !important; border-color: rgba(214,69,96,.28) !important; }
+.path-chip { border-radius: 999px !important; }
+.path-chip.ok { color: #2E9E6B !important; background: rgba(46,158,107,.1) !important; border-color: rgba(46,158,107,.28) !important; }
+.path-chip.warn { color: #B97F1E !important; background: rgba(185,127,30,.1) !important; border-color: rgba(185,127,30,.28) !important; }
+.path-chip.bad { color: #D64560 !important; background: rgba(214,69,96,.1) !important; border-color: rgba(214,69,96,.28) !important; }
+:root[data-ui-theme="dark"] .path-chip.ok, :root.theme-dark .path-chip.ok { color: #6DDC9E !important; }
+:root[data-ui-theme="dark"] .path-chip.warn, :root.theme-dark .path-chip.warn { color: #F0C674 !important; }
+:root[data-ui-theme="dark"] .path-chip.bad, :root.theme-dark .path-chip.bad { color: #FF8FA0 !important; }
+:root[data-ui-theme="dark"] .status.ok, :root.theme-dark .status.ok { color: #6DDC9E !important; }
+:root[data-ui-theme="dark"] .status.pending, :root.theme-dark .status.pending { color: #F0C674 !important; }
+
+/* ---------- 12. 路径面板 / C 站弹窗 ---------- */
+.paths-wrap summary { background: linear-gradient(180deg,#F7F5FC,#F1EEFA) !important;
+  border: 1px solid rgba(120,110,170,.12) !important; border-radius: 14px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95) !important; }
+.paths-wrap summary::before { background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important;
+  box-shadow: 0 2px 6px rgba(124,92,252,.55) !important; }
+:root[data-ui-theme="dark"] .paths-wrap summary::before, :root.theme-dark .paths-wrap summary::before {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; box-shadow: 0 2px 6px rgba(124,92,252,.55) !important; }
+.paths { background: #FAF9FE !important; border: 1px solid rgba(120,110,170,.12) !important;
+  color: var(--text) !important; box-shadow: inset 0 1px 2px rgba(124,92,252,.05) !important; }
+.path-browser { background: rgba(8, 12, 20, .55) !important; }
+.path-browser-box { background: linear-gradient(170deg,#FFFFFF,#FDFCFF) !important; }
+:root[data-ui-theme="dark"] .path-browser, :root.theme-dark .path-browser {
+  background: rgba(0, 0, 0, .6) !important; }
+:root[data-ui-theme="dark"] .path-browser-box, :root.theme-dark .path-browser-box {
+  background: linear-gradient(170deg,#211D33,#171426) !important; }
+
+/* ---------- 13. 进度条 / 下载 ---------- */
+.download-progress { background: #FAF9FE !important; border: 1px solid rgba(120,110,170,.12) !important;
+  border-radius: 18px !important; }
+progress { border-radius: 999px !important; }
+progress::-webkit-progress-bar { background: rgba(124,92,252,.12) !important; border-radius: 999px !important; }
+progress::-webkit-progress-value { background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important; border-radius: 999px !important; }
+progress.indeterminate::-webkit-progress-value { background: linear-gradient(180deg,#8B6EFF,#7C5CFC 60%,#6B4FD8) !important; }
+:root[data-ui-theme="dark"] progress::-webkit-progress-value, :root.theme-dark progress::-webkit-progress-value,
+:root[data-ui-theme="dark"] progress.indeterminate::-webkit-progress-value, :root.theme-dark progress.indeterminate::-webkit-progress-value {
+  background: linear-gradient(180deg,#9D85FF,#7C5CFC 60%,#6B4FD8) !important; }
+
+/* ---------- 14. 滚动条 / 焦点 ---------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(124,92,252,.12) !important; border-radius: 999px !important;
+  border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #7C5CFC !important; border: 2px solid transparent;
+  background-clip: padding-box; }
+:focus-visible { outline: 2px solid #7C5CFC !important; outline-offset: 2px; }
+
+/* ---------- 15. 顶栏 / 杂项 ---------- */
+.top-actions .status { border-radius: 999px !important; }
+.paths-count { color: var(--muted) !important; }
+a { color: var(--accent-strong) !important; }
+button.link, .link { color: var(--accent-strong) !important; }
+.lora-isolation-notice { background: rgba(185,127,30,.1) !important; border: 1px solid rgba(185,127,30,.28) !important;
+  color: #B97F1E !important; border-radius: 18px !important; }
+
+/* ---------- 16. 深色跟随补全（浅色规则缺深色态的全部 20+ 处） ---------- */
+:root[data-ui-theme="dark"] body::before, :root.theme-dark body::before {
+  background: radial-gradient(closest-side, #241F3A, transparent) !important; }
+:root[data-ui-theme="dark"] body::after, :root.theme-dark body::after {
+  background: radial-gradient(closest-side, #1C2440, transparent) !important; }
+:root[data-ui-theme="dark"] .shell::before, :root.theme-dark .shell::before {
+  background: radial-gradient(closest-side, #331F33, transparent) !important; }
+:root[data-ui-theme="dark"] .shell::after, :root.theme-dark .shell::after {
+  background: radial-gradient(closest-side, #241F3A, transparent) !important; }
+:root[data-ui-theme="dark"] .eyebrow, :root.theme-dark .eyebrow { color: #9E98B8 !important; }
+:root[data-ui-theme="dark"] .page-tab:hover, :root.theme-dark .page-tab:hover {
+  background: rgba(157,133,255,.18) !important; }
+:root[data-ui-theme="dark"] .page-tab.active, :root.theme-dark .page-tab.active {
+  background: rgba(157,133,255,.18) !important; color: #B3A0FF !important;
+  box-shadow: inset 2.5px 0 0 #9D85FF !important; }
+:root[data-ui-theme="dark"] .lora-card-simple:not(:has(.lora-simple-thumb))::before,
+:root.theme-dark .lora-card-simple:not(:has(.lora-simple-thumb))::before,
+:root[data-ui-theme="dark"] .style-lora-card-simple:not(:has(.lora-simple-thumb))::before,
+:root.theme-dark .style-lora-card-simple:not(:has(.lora-simple-thumb))::before {
+  border-color: rgba(255,255,255,.13) !important; background: rgba(10,8,18,.7) !important; }
+:root[data-ui-theme="dark"] .lora-trigger-preview, :root.theme-dark .lora-trigger-preview {
+  border-color: rgba(157,133,255,.18) !important; background: rgba(157,133,255,.18) !important; }
+:root[data-ui-theme="dark"] .lora-preset-editor > button[data-lora-action="add-lora-preset"],
+:root.theme-dark .lora-preset-editor > button[data-lora-action="add-lora-preset"] {
+  border-color: #9D85FF !important; color: #B3A0FF !important;
+  background: rgba(157,133,255,.18) !important; }
+:root[data-ui-theme="dark"] .lora-preset-row > button[data-lora-action="remove-lora-preset"]:hover,
+:root.theme-dark .lora-preset-row > button[data-lora-action="remove-lora-preset"]:hover {
+  color: #FF8FA0 !important; background: rgba(255,143,160,0.12) !important; border-color: rgba(255,143,160,0.32) !important; }
+:root[data-ui-theme="dark"] .lora-section-switcher, :root.theme-dark .lora-section-switcher {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.09) !important; }
+:root[data-ui-theme="dark"] .status, :root.theme-dark .status {
+  background: rgba(157,133,255,.18) !important; border-color: rgba(157,133,255,.18) !important; }
+:root[data-ui-theme="dark"] .status.ok, :root.theme-dark .status.ok {
+  color: #6DDC9E !important; background: rgba(109,220,158,0.12) !important; border-color: rgba(109,220,158,0.32) !important; }
+:root[data-ui-theme="dark"] .status.pending, :root.theme-dark .status.pending {
+  color: #F0C674 !important; background: rgba(240,198,116,0.12) !important; border-color: rgba(240,198,116,0.32) !important; }
+:root[data-ui-theme="dark"] .status.bad, :root.theme-dark .status.bad {
+  color: #FF8FA0 !important; background: rgba(255,143,160,0.12) !important; border-color: rgba(255,143,160,0.32) !important; }
+:root[data-ui-theme="dark"] .path-chip.ok, :root.theme-dark .path-chip.ok {
+  color: #6DDC9E !important; background: rgba(109,220,158,0.12) !important; border-color: rgba(109,220,158,0.32) !important; }
+:root[data-ui-theme="dark"] .path-chip.warn, :root.theme-dark .path-chip.warn {
+  color: #F0C674 !important; background: rgba(240,198,116,0.12) !important; border-color: rgba(240,198,116,0.32) !important; }
+:root[data-ui-theme="dark"] .path-chip.bad, :root.theme-dark .path-chip.bad {
+  color: #FF8FA0 !important; background: rgba(255,143,160,0.12) !important; border-color: rgba(255,143,160,0.32) !important; }
+:root[data-ui-theme="dark"] .paths-wrap summary, :root.theme-dark .paths-wrap summary {
+  background: linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.04)) !important; border-color: rgba(255,255,255,.15) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.1) !important; }
+:root[data-ui-theme="dark"] .paths, :root.theme-dark .paths {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.09) !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.35) !important; }
+:root[data-ui-theme="dark"] .download-progress, :root.theme-dark .download-progress {
+  background: rgba(10,8,18,.7) !important; border-color: rgba(255,255,255,.09) !important; }
+:root[data-ui-theme="dark"] progress::-webkit-progress-bar, :root.theme-dark progress::-webkit-progress-bar {
+  background: rgba(157,133,255,.18) !important; }
+:root[data-ui-theme="dark"] ::-webkit-scrollbar-thumb, :root.theme-dark ::-webkit-scrollbar-thumb {
+  background: rgba(157,133,255,.18) !important; border: 2px solid transparent; background-clip: padding-box; }
+:root[data-ui-theme="dark"] ::-webkit-scrollbar-thumb:hover, :root.theme-dark ::-webkit-scrollbar-thumb:hover {
+  background: #9D85FF !important; border: 2px solid transparent; background-clip: padding-box; }
+:root[data-ui-theme="dark"] :focus-visible, :root.theme-dark :focus-visible {
+  outline-color: #9D85FF !important; }
+:root[data-ui-theme="dark"] .lora-isolation-notice, :root.theme-dark .lora-isolation-notice {
+  background: rgba(240,198,116,0.12) !important; border-color: rgba(240,198,116,0.32) !important; color: #F0C674 !important; }
+
+/* ===== 排版系统 · 基础体 ===== */
+:root {
+  /* 字号阶梯：替代原有 13/12.5/12/11.5/11/10.5 的碎片化取值 */
+  --fs-2xs: 10.5px; --fs-xs: 11.5px; --fs-sm: 12.5px; --fs-base: 13px;
+  --fs-md: 14px;   --fs-lg: 16px;   --fs-xl: 19px;   --fs-2xl: 23px;
+  /* 字重语义：替代 750/700/650/600/550 的零散取值 */
+  --fw-normal: 400; --fw-medium: 500; --fw-semi: 600; --fw-bold: 700;
+  /* 行高 */
+  --lh-tight: 1.28; --lh-snug: 1.45; --lh-base: 1.6; --lh-loose: 1.75;
+  --ls-tight: -.01em; --ls-normal: 0; --ls-wide: .02em; --ls-wider: .08em;
+  --font-sans: "Microsoft YaHei UI","Microsoft YaHei",-apple-system,"Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB",sans-serif;
+  --font-mono: "Cascadia Code",Consolas,"Courier New",ui-monospace,monospace;
+}
+
+html, body { font-family: var(--font-sans) !important; }
+body { font-size: var(--fs-base) !important; line-height: var(--lh-base) !important;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  font-variant-numeric: tabular-nums; }
+code, pre, .paths, .version, .folder-card code, .path-row code, .lora-main code,
+.lora-card code, .lora-trigger-preview code {
+  font-family: var(--font-mono) !important;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* 标题层级 */
+h1, .brand h1 { font-size: var(--fs-xl) !important; font-weight: var(--fw-bold) !important;
+  line-height: var(--lh-tight) !important; letter-spacing: var(--ls-tight) !important; }
+h2, .band h2, .page-head h2, .section-head h2 {
+  font-size: var(--fs-lg) !important; font-weight: var(--fw-bold) !important;
+  line-height: var(--lh-tight) !important; letter-spacing: var(--ls-tight) !important; }
+h3, .band h3, .lora-category-module-head h3, .ai-config-subhead h3 {
+  font-size: var(--fs-md) !important; font-weight: var(--fw-semi) !important;
+  line-height: var(--lh-snug) !important; }
+.eyebrow { font-size: var(--fs-2xs) !important; font-weight: var(--fw-semi) !important;
+  letter-spacing: var(--ls-wider) !important; text-transform: uppercase; }
+.version { font-size: var(--fs-2xs) !important; letter-spacing: var(--ls-wide) !important; }
+
+/* 正文 / 说明 / 标签 */
+.page-head p, .section-head p, .muted, .field-hint {
+  font-size: var(--fs-sm) !important; line-height: var(--lh-base) !important; }
+.field-hint { font-size: var(--fs-xs) !important; line-height: var(--lh-snug) !important; }
+label, .form-grid label, .form-grid label.check, .lora-download-row label,
+.lora-category-toolbar label, .style-lora-settings label, .workflow-grid label,
+.preset-add label { font-size: var(--fs-sm) !important; font-weight: var(--fw-semi) !important; }
+.form-grid label .field-hint { font-size: var(--fs-xs) !important; }
+
+/* 控件内文字 */
+button, .upload-button { font-size: var(--fs-sm) !important; font-weight: var(--fw-semi) !important;
+  letter-spacing: var(--ls-normal) !important; }
+button.primary, .upload-button { font-weight: var(--fw-semi) !important; }
+input, select, textarea, .select, .input, .textarea {
+  font-size: var(--fs-sm) !important; line-height: var(--lh-snug) !important; }
+.nav-group-body .page-tab { font-size: var(--fs-base) !important; font-weight: var(--fw-medium) !important; }
+.status { font-size: var(--fs-xs) !important; font-weight: var(--fw-semi) !important; }
+.paths-wrap summary { font-size: var(--fs-sm) !important; font-weight: var(--fw-medium) !important; }
+.paths-count { font-size: var(--fs-2xs) !important; }
+.path-chip { font-size: var(--fs-2xs) !important; font-weight: var(--fw-semi) !important;
+  letter-spacing: var(--ls-wide) !important; }
+
+/* T4：衬线标题 */
+h1, .brand h1, h2, .band h2, .page-head h2, .section-head h2, h3,
+.band h3, .lora-category-module-head h3 {
+  font-family: "Times New Roman","宋体",SimSun,"Songti SC",serif !important;
+  letter-spacing: .006em !important; font-weight: 600 !important; }
+h1, .brand h1 { font-size: 21px !important; }
+h2, .band h2, .page-head h2, .section-head h2 { font-size: 17.5px !important; }
+.page-head, .section-head { margin-bottom: 16px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line); }
+.band { padding: 24px 26px; }
+.page-head p, .section-head p { letter-spacing: .008em; }
+.form-grid { gap: 17px 19px; }
+.lora-card, .folder-card, .preset { padding: 16px 18px; }
+.page-tab { letter-spacing: .02em; }
+button, .upload-button { letter-spacing: .022em; }
+
+/* 本方案的字体族覆盖 */
+html, body { font-family: "Times New Roman","宋体",SimSun,"Songti SC",serif !important; }
+
+/* ===== T4-E 换肤层 · END ===== */
