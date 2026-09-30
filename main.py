@@ -80,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.1.4"
+PLUGIN_VERSION = "1.1.5"
 
 
 def _log_path(value: object) -> str:
@@ -371,7 +371,7 @@ WRITABLE_CONFIG = {
     "img2img_largest_size", "img2img_crop", "img2img_sampling_shift",
     "img2img_filename_prefix",
     "lora_list", "default_positive", "default_negative", "quality_prefix", "artist_preset", "ai_base_url",
-    "style_lora_mode", "style_lora_random_count", "style_lora_list", "style_lora_aliases", "style_lora_weights",
+    "style_lora_mode", "style_lora_random_count", "style_lora_random_preset_mode", "style_lora_list", "style_lora_aliases", "style_lora_weights",
     "ai_api_key", "ai_model", "civitai_base_url", "civitai_token", "civitai_download_mode",
     "width", "height", "steps", "cfg", "seed",
     "sampler_name", "scheduler", "denoise", "hires_scale",
@@ -617,6 +617,7 @@ class ComfyUIAIStudio(Star):
             self.artist_presets.add(DEFAULT_ARTIST_PRESET_NAME, DEFAULT_ARTIST_PRESET_TAGS)
         self.lora_aliases_path = self.data_dir / "lora_aliases.json"
         self.lora_command_aliases_path = self.data_dir / "lora_command_aliases.json"
+        self.lora_trigger_weights_path = self.data_dir / "lora_trigger_weights.json"
         self.lora_categories_path = self.data_dir / "lora_categories.json"
         self.lora_category_entries_path = self.data_dir / "lora_category_entries.json"
         self.civitai_cache_path = self.data_dir / "civitai_lora_cache.json"
@@ -628,6 +629,7 @@ class ComfyUIAIStudio(Star):
         self.lora_presets_path = self.data_dir / "lora_presets.json"
         self.lora_aliases = self._load_map(self.lora_aliases_path)
         self.lora_command_aliases = self._load_map(self.lora_command_aliases_path)
+        self.lora_trigger_weights = self._load_map(self.lora_trigger_weights_path)
         self.lora_categories = self._load_map(self.lora_categories_path)
         self.lora_category_entries = self._load_map(self.lora_category_entries_path)
         self.civitai_cache = self._load_map(self.civitai_cache_path)
@@ -1212,6 +1214,9 @@ class ComfyUIAIStudio(Star):
 
     def _save_lora_command_aliases(self) -> None:
         self._write_map(self.lora_command_aliases_path, self.lora_command_aliases)
+
+    def _save_lora_trigger_weights(self) -> None:
+        self._write_map(self.lora_trigger_weights_path, self.lora_trigger_weights)
 
     def _save_lora_categories(self) -> None:
         self._write_map(self.lora_categories_path, self.lora_categories)
@@ -3246,6 +3251,36 @@ class ComfyUIAIStudio(Star):
             value = min(value, candidate_count)
         return value
 
+    def _style_lora_random_preset_mode(self) -> str:
+        """返回随机画风 LoRA 的专属预设策略。"""
+        value = str(self._get("style_lora_random_preset_mode", "random") or "random").strip().casefold()
+        return value if value in {"off", "random", "all"} else "random"
+
+    def _random_style_lora_preset(self, file_name: str) -> tuple[str, str]:
+        """为随机命中的画风 LoRA 选择一组专属预设内容。
+
+        随机画风只选一组预设，避免同一个 LoRA 的角色、服装等多个场景
+        预设一起注入；没有可用专属预设时返回空值，不会把 CivitAI
+        trainedWords 当成绘图提示词。
+        """
+        entries = [
+            item for item in self._lora_preset_entries(file_name)
+            if str(item.get("content", "") or "").strip()
+        ]
+        if not entries or self._style_lora_random_preset_mode() == "off":
+            return "", ""
+        selected = random.choice(entries) if self._style_lora_random_preset_mode() == "random" else None
+        values = [selected] if selected is not None else entries
+        content = self._merge_prompt_fragments(
+            *(str(item.get("content", "") or "").strip() for item in values)
+        )
+        tags = "、".join(
+            str(item.get("tag", "") or "").strip()
+            for item in values
+            if str(item.get("tag", "") or "").strip()
+        )
+        return content, tags
+
     def _style_lora_alias(self, file_name: str, index: int, available: list[str] | None = None) -> str:
         self._ensure_style_lora_aliases(available, persist=True)
         aliases = self._get("style_lora_aliases", {})
@@ -3319,13 +3354,29 @@ class ComfyUIAIStudio(Star):
         return True
 
     def _select_style_loras(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """按配置决定本次实际使用的画风 LoRA，随机模式不重复抽取。"""
+        """按配置决定本次实际使用的画风 LoRA，随机模式按权重且不重复。"""
         mode = self._style_lora_mode()
         if mode == "off" or not entries:
             return []
         if mode == "all":
             return list(entries)
-        return random.sample(entries, k=self._style_lora_random_count(len(entries)))
+        count = self._style_lora_random_count(len(entries))
+        pool = list(entries)
+        selected: list[dict[str, Any]] = []
+        for _ in range(min(count, len(pool))):
+            weights: list[float] = []
+            for item in pool:
+                try:
+                    weights.append(max(0.0, float(item.get("weight", 0.8) or 0.0)))
+                except (TypeError, ValueError):
+                    weights.append(0.8)
+            if not any(weights):
+                choice = random.choice(pool)
+            else:
+                choice = random.choices(pool, weights=weights, k=1)[0]
+            selected.append(choice)
+            pool.remove(choice)
+        return selected
 
     def _style_lora_candidates_without_persistent(
         self,
@@ -3363,6 +3414,34 @@ class ComfyUIAIStudio(Star):
             if normalized == target or Path(normalized).name == target_name:
                 return value
         return default
+
+    @staticmethod
+    def _split_lora_weight(value: Any) -> tuple[str, str, bool]:
+        """拆分 LoRA 名称和本次权重，兼容 ``简称:0.8`` 与 ``简称=0.8``。"""
+        text = str(value or "").strip()
+        match = re.match(r"^(.*?)(?::|=)(\d+(?:\.\d+)?)$", text)
+        if not match:
+            return text, "", False
+        try:
+            number = max(0.0, min(2.0, float(match.group(2))))
+        except (TypeError, ValueError):
+            return text, "", False
+        return match.group(1).strip(), f"{number:g}", True
+
+    def _lora_trigger_weight(self, file_name: str, default: float = 0.8) -> float:
+        """读取没有显式写权重时，指令临时加载所使用的默认权重。"""
+        value = self._lora_map_value(
+            getattr(self, "lora_trigger_weights", {}),
+            file_name,
+            default,
+        )
+        try:
+            return max(0.0, min(2.0, float(value)))
+        except (TypeError, ValueError):
+            return max(0.0, min(2.0, float(default)))
+
+    def _lora_trigger_weight_text(self, file_name: str, default: float = 0.8) -> str:
+        return f"{self._lora_trigger_weight(file_name, default):g}"
 
     def _lora_command_aliases(self, file_name: str) -> list[str]:
         """返回一个 LoRA 的全部自定义指令简称，并迁移旧版单字符串配置。"""
@@ -4201,13 +4280,22 @@ class ComfyUIAIStudio(Star):
         extracted: list[str] = []
         remaining: list[str] = []
 
-        # 结构化 LLM 工具可能已经把简称放入 params.loras，先把对应的
-        # 专属预设记下来，后面的提示词生成仍然只使用这条简称。
+        # 结构化 LLM 工具可能已经把简称放入 params.loras。先解析成实际
+        # 文件名，并为没有显式权重的简称套用 WebUI 的“指令触发权重”。
+        # 这样 LLM 工具、斜杠指令和自然语言触发会走同一套权重规则。
+        normalized_loras: list[str] = []
         for item in list(params.loras):
-            raw_name = str(item or "").rsplit(":", 1)[0].strip()
+            raw_name, parsed_weight, explicit_weight = self._split_lora_weight(item)
             actual = self._resolve_lora(raw_name, available)
             if actual:
+                weight = parsed_weight if explicit_weight else self._lora_trigger_weight_text(actual)
+                # 保留 LLM/指令传入的简称文本，后续统一解析时再换成实际文件名。
+                # 这样不会改变工具参数的可读性，也兼容旧版调用方对简称的判断。
+                normalized_loras.append(f"{raw_name}:{weight}")
                 self._remember_lora_preset_match(params, actual, raw_name)
+            else:
+                normalized_loras.append(str(item or "").strip())
+        params.loras = normalized_loras
 
         def existing_names() -> set[str]:
             result: set[str] = set()
@@ -4217,26 +4305,35 @@ class ComfyUIAIStudio(Star):
                 result.add((resolved or raw_name).casefold())
             return result
 
-        def append_lora(actual: str, weight: str) -> None:
-            if actual.casefold() not in existing_names():
-                item = f"{actual}:{weight}"
-                params.loras.append(item)
-                extracted.append(item)
+        def append_lora(actual: str, weight: str, *, explicit: bool = False) -> None:
+            target = actual.casefold()
+            for index, current in enumerate(params.loras):
+                current_name, _, _ = self._split_lora_weight(current)
+                resolved = self._resolve_lora(current_name, available) or current_name
+                if resolved.casefold() != target:
+                    continue
+                if explicit:
+                    item = f"{actual}:{weight}"
+                    params.loras[index] = item
+                    extracted.append(item)
+                return
+            item = f"{actual}:{weight}"
+            params.loras.append(item)
+            extracted.append(item)
 
-        def resolve_piece(piece: str) -> tuple[str | None, str | None, str | None]:
+        def resolve_piece(piece: str) -> tuple[str | None, str | None, str | None, bool]:
             value = piece.strip(" \t\r\n,，")
-            name, separator, possible_weight = value.rpartition(":")
-            weight = "0.8"
-            if separator and re.fullmatch(r"\d+(?:\.\d+)?", possible_weight):
-                value, weight = name.strip(), possible_weight
+            value, weight, explicit_weight = self._split_lora_weight(value)
             actual = self._resolve_lora_command_alias_only(value, available)
             if not actual:
-                return None, None, None
+                return None, None, None, False
+            if not explicit_weight:
+                weight = self._lora_trigger_weight_text(actual)
             # 同名普通提示词预设要保留给 PresetStore 展开，这样一个词可以同时
             # 触发临时 LoRA 和提示词预设；带权重时保留不带权重的预设名称。
             keep_for_prompt_preset = value if value in self.presets.items else None
             preset_tag = self._lora_preset_tag_for_alias(actual, value)
-            return f"{actual}:{weight}", keep_for_prompt_preset, preset_tag
+            return f"{actual}:{weight}", keep_for_prompt_preset, preset_tag, explicit_weight
 
         for token in params.prompt.split():
             pieces = [piece for piece in re.split(r"[,，]", token) if piece.strip()]
@@ -4245,7 +4342,7 @@ class ComfyUIAIStudio(Star):
                 for item in resolved:
                     if item[0] is not None:
                         actual_name, _, actual_weight = item[0].rpartition(":")
-                        append_lora(actual_name, actual_weight)
+                        append_lora(actual_name, actual_weight, explicit=item[3])
                         if item[2] is not None:
                             self._remember_lora_preset_match(params, actual_name, item[2])
                 kept = [item[1] for item in resolved if item[1] is not None]
@@ -4274,13 +4371,17 @@ class ComfyUIAIStudio(Star):
             if not alias:
                 continue
             pattern = re.compile(
-                rf"(?<![A-Za-z0-9_]){re.escape(alias)}(?::(?P<weight>\d+(?:\.\d+)?))?(?![A-Za-z0-9_])",
+                rf"(?<![A-Za-z0-9_]){re.escape(alias)}(?:(?::|=)(?P<weight>\d+(?:\.\d+)?))?(?![A-Za-z0-9_])",
                 re.IGNORECASE,
             )
 
             def replace(match: re.Match[str]) -> str:
-                weight = match.group("weight") or "0.8"
-                append_lora(actual, weight)
+                weight = match.group("weight")
+                append_lora(
+                    actual,
+                    weight or self._lora_trigger_weight_text(actual),
+                    explicit=bool(weight),
+                )
                 self._remember_lora_preset_match(params, actual, alias)
                 exact_prompt_aliases.add(alias.casefold())
                 return alias if alias in self.presets.items else " "
@@ -4295,11 +4396,16 @@ class ComfyUIAIStudio(Star):
                 if not alias:
                     continue
                 pattern = re.compile(
-                    rf"(?<![A-Za-z0-9_]){re.escape(alias)}(?::(?P<weight>\d+(?:\.\d+)?))?(?![A-Za-z0-9_])",
+                    rf"(?<![A-Za-z0-9_]){re.escape(alias)}(?:(?::|=)(?P<weight>\d+(?:\.\d+)?))?(?![A-Za-z0-9_])",
                     re.IGNORECASE,
                 )
                 for match in pattern.finditer(source_text):
-                    append_lora(actual, match.group("weight") or "0.8")
+                    weight = match.group("weight")
+                    append_lora(
+                        actual,
+                        weight or self._lora_trigger_weight_text(actual),
+                        explicit=bool(weight),
+                    )
                     self._remember_lora_preset_match(params, actual, alias)
                     exact_prompt_aliases.add(alias.casefold())
 
@@ -4323,7 +4429,7 @@ class ComfyUIAIStudio(Star):
             for alias, actual, _, _, _ in self._fuzzy_lora_alias_matches(fuzzy_source_text, fuzzy_pairs):
                 if actual.casefold() in existing_names():
                     continue
-                append_lora(actual, "0.8")
+                append_lora(actual, self._lora_trigger_weight_text(actual))
                 self._remember_lora_preset_match(params, actual, alias)
 
         # 预设名称和 LoRA 指令简称相同时，预设不能吞掉 LoRA 控制项。
@@ -4339,7 +4445,7 @@ class ComfyUIAIStudio(Star):
                 continue
             for alias, actual in alias_pairs:
                 if alias.casefold() == target:
-                    append_lora(actual, "0.8")
+                    append_lora(actual, self._lora_trigger_weight_text(actual))
                     self._remember_lora_preset_match(params, actual, alias)
                     if self._resolve_preset_name(str(preset_name)) is None:
                         lora_only_presets.add(target)
@@ -4411,6 +4517,7 @@ class ComfyUIAIStudio(Star):
 
         text = params.prompt
         original = str(extra_text or "")
+        matched_names: list[str] = []
         for name in sorted(self.presets.items, key=len, reverse=True):
             aliases = self._preset_aliases(name)
             prompt_aliases = [alias for alias in aliases if self._preset_alias_found(text, alias)]
@@ -4418,8 +4525,18 @@ class ComfyUIAIStudio(Star):
             explicit_hit = name in params.presets
             if not prompt_aliases and not original_hit and not explicit_hit:
                 continue
+            # 预设名称可能互相包含，例如“夏空服饰”包含“夏空”。自动识别时
+            # 只保留最长命中的预设，避免一个预设把另一个预设再次展开；
+            # 通过 --preset 明确写出的短预设仍然保留，代表用户确实要叠加它。
+            if not explicit_hit and any(
+                len(matched) > len(name)
+                and name.casefold() in matched.casefold()
+                for matched in matched_names
+            ):
+                continue
             if name not in params.presets:
                 params.presets.append(name)
+            matched_names.append(name)
             # 只有命中 LLM prompt 的别名才从画面描述中移除；用户原话只负责
             # 锁定预设，不能把动作、服装或场景文字删掉。
             for alias in prompt_aliases:
@@ -4432,10 +4549,25 @@ class ComfyUIAIStudio(Star):
                         re.IGNORECASE,
                     )
                 text = pattern.sub(" ", text)
-            # 已命中预设时，清掉 LLM 可能重新生成的同角色 Danbooru 身份词。
-            # 预设内容由 WebUI 决定，不能被 AI 的角色词条替换或叠加。
-            if (original_hit or explicit_hit) and not prompt_aliases:
+            # 已命中预设时，清掉 LLM 可能重新生成的同角色 Danbooru 身份词，
+            # 以及预设内容中的每个提示词片段。预设由插件统一注入一次；
+            # 否则 ``ciaccona, 1girl, solo, beach`` 会和完整预设再次合并，
+            # 造成角色、人数和外观标签重复。
+            if original_hit or explicit_hit:
                 effective = self.presets.effective(name)
+                for fragment in self._prompt_fragments(effective):
+                    normalized = str(fragment or "").strip()
+                    if not normalized:
+                        continue
+                    if re.search(r"[\u4e00-\u9fff]", normalized):
+                        text = re.sub(re.escape(normalized), " ", text, flags=re.IGNORECASE)
+                    else:
+                        text = re.sub(
+                            rf"(?<![A-Za-z0-9_]){re.escape(normalized)}(?![A-Za-z0-9_])",
+                            " ",
+                            text,
+                            flags=re.IGNORECASE,
+                        )
                 first_fragment = re.split(r"[,，\n]+", effective, maxsplit=1)[0].strip()
                 first_word = re.split(r"[\s,(，、_\-]+", first_fragment, maxsplit=1)[0].strip("\\()[]{}")
                 if len(first_word) >= 3 and re.fullmatch(r"[A-Za-z0-9_ -]+", first_word):
@@ -5293,6 +5425,7 @@ class ComfyUIAIStudio(Star):
                 "command_aliases": self._lora_command_aliases_for(name, names),
                 "manual_command_aliases": self._lora_command_aliases(name),
                 "command_alias": self._lora_command_alias(name, names),
+                "trigger_weight": self._lora_trigger_weight(name),
                 "category": category,
                 "style_alias": self._style_lora_alias(name, style_index, names) if category == "画风" else "",
                 "style_weight": self._lora_map_value(style_weights, name, 0.8),
@@ -5851,6 +5984,18 @@ class ComfyUIAIStudio(Star):
                     "style_lora_weights": dict(self._get("style_lora_weights", {}) or {}),
                     **(await self._lora_payload()),
                 })
+            if action in {"set_trigger_weight", "trigger_weight"}:
+                if file_name not in available:
+                    return json_response({"error": "LoRA 不存在"}, status_code=404)
+                try:
+                    trigger_weight = float(data.get("trigger_weight", data.get("weight", 0.8)))
+                except (TypeError, ValueError):
+                    return json_response({"error": "指令触发权重必须是数字"}, status_code=400)
+                if not 0 <= trigger_weight <= 2:
+                    return json_response({"error": "指令触发权重范围必须是 0 到 2"}, status_code=400)
+                self.lora_trigger_weights[file_name] = trigger_weight
+                self._save_lora_trigger_weights()
+                return json_response({"ok": True, "file_name": file_name, "trigger_weight": trigger_weight, **(await self._lora_payload())})
             if action in {"save_lora", "save"}:
                 if file_name not in available:
                     return json_response({"error": "LoRA 不存在"}, status_code=404)
@@ -5987,6 +6132,14 @@ class ComfyUIAIStudio(Star):
                     return json_response({"error": "LoRA 权重必须是数字"}, status_code=400)
                 if not 0 <= weight <= 2:
                     return json_response({"error": "LoRA 权重范围必须是 0 到 2"}, status_code=400)
+                if "trigger_weight" in data:
+                    try:
+                        trigger_weight = float(data.get("trigger_weight", 0.8) or 0.8)
+                    except (TypeError, ValueError):
+                        return json_response({"error": "指令触发权重必须是数字"}, status_code=400)
+                    if not 0 <= trigger_weight <= 2:
+                        return json_response({"error": "指令触发权重范围必须是 0 到 2"}, status_code=400)
+                    self.lora_trigger_weights[file_name] = trigger_weight
                 enabled = bool(data.get("enabled", False))
                 current = list(self._get("lora_list", []) or [])
                 kept = [
@@ -6038,6 +6191,7 @@ class ComfyUIAIStudio(Star):
                     self._ensure_style_lora_aliases(available, persist=True)
                 self._save_lora_aliases()
                 self._save_lora_command_aliases()
+                self._save_lora_trigger_weights()
                 self._save_lora_categories()
                 self._save_civitai_overrides()
                 self._save_lora_presets()
@@ -6623,6 +6777,7 @@ class ComfyUIAIStudio(Star):
             for key in metadata_keys:
                 self.lora_aliases.pop(key, None)
                 self.lora_command_aliases.pop(key, None)
+                self.lora_trigger_weights.pop(key, None)
                 self.lora_categories.pop(key, None)
                 self.lora_download_order.pop(key, None)
                 self.civitai_cache.pop(key, None)
@@ -6669,6 +6824,7 @@ class ComfyUIAIStudio(Star):
                     )
             self._save_lora_aliases()
             self._save_lora_command_aliases()
+            self._save_lora_trigger_weights()
             self._save_lora_categories()
             self._save_lora_download_order()
             self._save_civitai_cache()
@@ -6684,7 +6840,7 @@ class ComfyUIAIStudio(Star):
         except (ComfyError, OSError, UsageError) as exc:
             return json_response({"error": str(exc)}, status_code=400)
 
-    async def _local_lora_names(self) -> list[str]:
+    async def _local_lora_names(self) -> list[str]:  # api_lora_fallback_remote
         """读取本地 LoRA 文件名，管理操作不依赖 ComfyUI 的缓存列表。
 
         模型可能分布在默认位置和 extra_model_paths.yaml 声明的多个目录里，
@@ -6707,7 +6863,18 @@ class ComfyUIAIStudio(Star):
                     names.append(name)
             except OSError:
                 continue
-        return self._order_loras(names)
+        names = self._order_loras(names)
+        if names:
+            return names
+        # Remote ComfyUI: the plugin process cannot see the model disk.
+        # Fall back to the list published by ComfyUI itself so that the
+        # console actions (enable/disable/weight/category/preview) keep
+        # working. Same strategy as _lora_details().
+        try:
+            remote = await self._client().models("loras")
+        except Exception:
+            return []
+        return self._order_loras([str(item) for item in remote])
 
     async def api_upload_workflow(self):
         from astrbot.api.web import json_response, request
@@ -8316,6 +8483,65 @@ class ComfyUIAIStudio(Star):
         self.last_images[self._origin(event)] = str(images[0])
         return images
 
+    def _drop_ungrounded_llm_controls(
+        self,
+        params: DrawParams,
+        original_text: str,
+    ) -> list[str]:
+        """丢弃 LLM 自行回填、但用户本轮原话并未提及的控制项。
+
+        LLM 绘图工具会把系统提示里列出的画风简称或专属预设名当成「可选项」
+        填进 preset / lora 参数。它们一旦进入控制项，文生图的画风随机链路就会
+        被 explicit_style_lora 整段跳过（见 _generate），表现为「画风永远一样、
+        角色 LoRA 永远被加载」。用户真正写出的简称不受影响：在随后调用
+        _extract_inline_presets / _extract_inline_loras 时，插件仍会从用户原话
+        或 LLM 生成的提示词里把它们重新识别出来。
+        """
+        text = str(original_text or "").casefold()
+        dropped: list[str] = []
+        if not text:
+            return dropped
+
+        kept_presets: list[str] = []
+        for value in list(params.presets):
+            raw = str(value or "").strip()
+            if not raw:
+                continue
+            if self._llm_control_grounded(raw, text):
+                kept_presets.append(value)
+            else:
+                dropped.append(raw)
+        params.presets = kept_presets
+
+        kept_loras: list[str] = []
+        for value in list(params.loras):
+            raw = str(value or "").strip()
+            if not raw:
+                continue
+            if self._llm_control_grounded(raw, text):
+                kept_loras.append(value)
+            else:
+                dropped.append(raw)
+        params.loras = kept_loras
+        return dropped
+
+    def _llm_control_grounded(self, value: str, text: str) -> bool:
+        """判断 LLM 传入的预设名 / LoRA 简称是否真的出现在用户原话中。"""
+        target, separator, suffix = str(value or "").strip().rpartition(":")
+        if not separator or not re.fullmatch(r"\d+(?:\.\d+)?", suffix):
+            target = str(value or "").strip()
+        candidates = {target.casefold()}
+        stem = Path(target).stem.strip()
+        if stem:
+            candidates.add(stem.casefold())
+        resolved = self._resolve_preset_name(target)
+        if resolved:
+            candidates.update(
+                str(alias or "").strip().casefold()
+                for alias in self._preset_aliases(resolved)
+            )
+        return any(candidate and candidate in text for candidate in candidates)
+
     async def _generate(
         self,
         event: AstrMessageEvent,
@@ -8480,6 +8706,8 @@ class ComfyUIAIStudio(Star):
         loras: list[str] = []
         resolved_loras: dict[str, str] = {}
         params.style_loras_used = []
+        random_style_prompt_values: dict[str, list[str]] = {}
+        random_style_preset_disabled: set[str] = set()
 
         def remember_style_lora(
             file_name: str,
@@ -8534,6 +8762,7 @@ class ComfyUIAIStudio(Star):
                     "display_name": self._lora_alias(str(entry["file_name"])),
                     "weight": numeric_weight,
                     "source": str(source or "").strip(),
+                    "preset": "",
                 }
             )
 
@@ -8567,11 +8796,24 @@ class ComfyUIAIStudio(Star):
             for item in selected_style:
                 actual = str(item["file_name"])
                 resolved_loras[actual.casefold()] = f"{actual}:{float(item['weight']):g}"
+                if style_mode == "random":
+                    if self._style_lora_random_preset_mode() == "off":
+                        random_style_preset_disabled.add(actual.casefold())
+                        preset_content, preset_tag = "", ""
+                    else:
+                        preset_content, preset_tag = self._random_style_lora_preset(actual)
+                        if preset_content:
+                            random_style_prompt_values[actual.casefold()] = [preset_content]
                 remember_style_lora(
                     actual,
                     item["weight"],
                     "随机选择" if self._style_lora_mode() == "random" else "自动全部",
                 )
+                if preset_tag:
+                    for used in params.style_loras_used:
+                        if str(used.get("file_name", "")).replace("\\", "/").casefold() == actual.replace("\\", "/").casefold():
+                            used["preset"] = preset_tag
+                            break
             if selected_style:
                 logger.info(
                     "[%s] 文生图自动选择画风 LoRA：模式=%s；数量=%s；文件=%s",
@@ -8588,7 +8830,11 @@ class ComfyUIAIStudio(Star):
         prompt_loras = list(loras)
         for item in prompt_loras:
             actual = item.rsplit(":", 1)[0]
-            lora_prompt_values.extend(self._lora_prompt_values_for_task(params, actual))
+            key = actual.replace("\\", "/").casefold()
+            if key in random_style_prompt_values:
+                lora_prompt_values.extend(random_style_prompt_values[key])
+            elif key not in random_style_preset_disabled:
+                lora_prompt_values.extend(self._lora_prompt_values_for_task(params, actual))
         lora_prompt_values = self._normalize_civitai_tags(lora_prompt_values)
         if mode == "img2img":
             # 图生图使用 Qwen Image Edit 的独立模型链。兼容性检查不能再
@@ -9140,9 +9386,11 @@ class ComfyUIAIStudio(Star):
                 item.get("display_name", "") or item.get("file_name", "")
             ).strip()
             source = str(item.get("source", "") or "已加载").strip()
+            preset = str(item.get("preset", "") or "").strip()
             file_name = str(item.get("file_name", "") or "").strip()
+            preset_text = f"｜预设：{preset}" if preset else ""
             lines.append(
-                f"{alias}｜{display_name}｜{source}｜文件：{file_name}｜权重：{weight:g}"
+                f"{alias}｜{display_name}｜{source}｜文件：{file_name}｜权重：{weight:g}{preset_text}"
             )
         return "\n".join(lines)
 
@@ -9476,27 +9724,24 @@ class ComfyUIAIStudio(Star):
         图片丢失。因此 LLM 工具只返回“已提交”状态，实际结果统一走插件的
         普通发送路径；这样也保留了“画图期间可以继续聊天”。
         """
-        # 开始提示直接发送，不再写入 event.result。LLM 工具执行器会把
-        # event.result 当成 tool_direct_result 再发送一次，旧做法容易在
-        # 工具结束后留下空 AT/空回复消息。
+        # 开始提示写入 event.result。LLM 工具执行器会把
+        # event.result 作为 tool_direct_result 发出；这是 AstrBot 本地
+        # LLM 工具的标准发送通道，直接 event.send() 在部分适配器中会被
+        # 工具执行流程吞掉。
         start_reply = await self._llm_draw_start_reply(event, params, mode)
         if start_reply:
             try:
                 start_result = event.plain_result(start_reply)
-                sender = getattr(event, "send", None)
-                if callable(sender):
-                    await sender(start_result)
-                    clear_result = getattr(event, "clear_result", None)
-                    if callable(clear_result):
-                        # 防止工具执行器在看到本轮事件结果时再次发送一条
-                        # 空的 At/Reply；开始提示已经由 send() 发出。
-                        clear_result()
+                set_result = getattr(event, "set_result", None)
+                if callable(set_result):
+                    # call_local_llm_tool 会读取这个结果并包装成
+                    # tool_direct_result，随后由 AstrBot 统一发送一次。
+                    set_result(start_result)
                 else:
-                    # 兼容没有 send() 的最小测试事件；真实 AstrBot 事件
-                    # 都会走上面的直接发送路径。
-                    set_result = getattr(event, "set_result", None)
-                    if callable(set_result):
-                        set_result(start_result)
+                    # 兼容没有事件结果接口的最小运行环境。
+                    sender = getattr(event, "send", None)
+                    if callable(sender):
+                        await sender(start_result)
             except Exception as exc:
                 logger.warning("[%s] LLM 绘图开始提示发送失败，继续执行任务：%s", PLUGIN_NAME, exc)
         task = asyncio.create_task(
@@ -9603,11 +9848,11 @@ class ComfyUIAIStudio(Star):
             "/扩图 中文要求（可附多张图片，只使用第一张，其余忽略；扩展边距在 WebUI 设置）\n"
             "/多角度 中文要求（可附多张图片，只使用第一张，其余忽略；角度参数在 WebUI 设置）\n"
             "在画图指令中单独写 ai 可开启本次 AI 提示词优化，例如：/文生图 ai 夏空；ai 不会进入最终提示词。也可写 noai 或继续使用 --ai=开、--noai。\n"
-            "画图指令末尾可直接写 LoRA 指令简称临时加载，例如：/文生图 夏空海边 1号lora；也支持 1号lora:0.6，任务结束后不会保存为默认 LoRA\n"
+            "画图指令末尾可直接写 LoRA 指令简称临时加载，例如：/文生图 夏空海边 1号lora；权重可写 1号lora:0.6、1号lora=0.6，未写时使用 WebUI 的“指令触发权重”。\n"
             "本次不想使用任何画风 LoRA 时，可在指令或自然语言中写“不用画风”；它会同时跳过常态画风和随机画风，不影响普通 LoRA。\n"
             "如果 LoRA 指令简称与普通提示词预设同名，直接写名称会同时启用 LoRA 和预设；只使用预设可写 --预设=名称\n"
             "/模型 列表 或 /模型 名称\n"
-            "/lora 或 /.lora 查看全部 LoRA 总览图片（含每个 LoRA 一张预览图、分类、简称和开启状态）；/lora 1号lora 查看单个 LoRA；/loraon 1号lora 开启 LoRA；/lora 添加或删除 指令简称\n"
+            "/lora 或 /.lora 查看全部 LoRA 总览图片（含每个 LoRA 一张预览图、分类、简称和开启状态）；/lora 1号lora 查看单个 LoRA；/loraon 1号lora 或 /loraon 1号lora 0.6 开启 LoRA；/lora权重 1号lora 0.6 修改指令触发默认权重；/lora 添加或删除 指令简称\n"
             "/预设 列表 查看按 LoRA 分类的指令简称与预设图片；/预设 添加 夏空=ciaccona；/预设 修改 夏空=新内容；/预设 翻译 夏空；/预设 删除 夏空\n"
             "/画师串 列表；/画师串 使用 画风001；/画师串 添加 名称=画师 tags；/画师串 关闭\n"
             "/工作流 列表；/工作流 文生图 文件名；/工作流 图生图 文件名；/工作流 高清放大 文件名；/工作流 洗图 文件名；/工作流 扩图 文件名；/工作流 多角度 文件名\n"
@@ -9905,7 +10150,8 @@ class ComfyUIAIStudio(Star):
                     "/lora 或 /.lora：发送包含预览图的全部 LoRA 总览图片",
                     "/lora 简称：查看单个 LoRA 的 C站信息",
                     "/loraon 简称 开启或关闭 LoRA",
-                    "画图内容后写 LoRA 简称，可临时加载且任务结束自动关闭",
+                    "/lora权重 简称 数值：修改该 LoRA 的指令触发默认权重",
+                    "画图内容后写 LoRA 简称:数值 或 简称=数值，可临时加载且任务结束自动关闭",
                     "预设和 LoRA 简称同名时会同时生效",
                 ],
             ),
@@ -10306,6 +10552,78 @@ class ComfyUIAIStudio(Star):
                     continue
         return chain
 
+    def _resolve_lora_command_specs(
+        self,
+        raw: str,
+        available: list[str],
+        *,
+        use_trigger_default: bool = True,
+    ) -> tuple[list[str], list[str]]:
+        """解析管理指令中的 LoRA，并统一支持 ``:``、``=`` 和空格权重。"""
+        resolved: list[str] = []
+        missing: list[str] = []
+        for token in (item.strip() for item in str(raw or "").split(",") if item.strip()):
+            name, weight, explicit = self._split_lora_weight(token)
+            if not explicit:
+                parts = name.rsplit(None, 1)
+                if len(parts) == 2 and re.fullmatch(r"\d+(?:\.\d+)?", parts[1]):
+                    name, weight, explicit = parts[0].strip(), parts[1], True
+            actual = self._resolve_lora(name, available)
+            if not actual:
+                missing.append(name)
+                continue
+            if not explicit:
+                weight = self._lora_trigger_weight_text(actual) if use_trigger_default else "0.8"
+            resolved.append(f"{actual}:{weight}")
+        return resolved, missing
+
+    async def _set_lora_trigger_weight_command(
+        self,
+        event: AstrMessageEvent,
+        value: str,
+    ):
+        """设置某个 LoRA 的指令触发默认权重，不改变长期启用状态。"""
+        raw = str(value or "").strip()
+        if not raw:
+            yield event.plain_result("用法：/lora权重 指令简称 0.8；也支持 /lora 权重 指令简称=0.8")
+            return
+        name, weight, explicit = self._split_lora_weight(raw)
+        if not explicit:
+            parts = name.rsplit(None, 1)
+            if len(parts) == 2 and re.fullmatch(r"\d+(?:\.\d+)?", parts[1]):
+                name, weight, explicit = parts[0].strip(), parts[1], True
+        if not explicit:
+            yield event.plain_result("请填写权重，例如：/lora权重 维里奈 0.8")
+            return
+        try:
+            numeric_weight = float(weight)
+        except (TypeError, ValueError):
+            yield event.plain_result("LoRA 权重必须是数字，范围为 0 到 2")
+            return
+        if not 0 <= numeric_weight <= 2:
+            yield event.plain_result("LoRA 权重范围必须是 0 到 2")
+            return
+        try:
+            available = await self._client().models("loras")
+        except ComfyError as exc:
+            yield event.plain_result(f"查询失败：{exc}")
+            return
+        actual = self._resolve_lora(name, available)
+        if not actual:
+            yield event.plain_result(f"LoRA 不存在或指令简称未设置：{name}")
+            return
+        self.lora_trigger_weights[actual] = numeric_weight
+        self._save_lora_trigger_weights()
+        yield event.plain_result(
+            f"已设置 LoRA「{self._lora_alias(actual)}」的指令触发默认权重：{numeric_weight:g}。"
+            "绘图指令未写权重时使用此值，显式写 :数值 或 =数值 时以显式值为准。"
+        )
+
+    @filter.command("lora权重", alias=["loraweight"], desc="设置 LoRA 指令触发默认权重")
+    async def command_lora_weight(self, event: AstrMessageEvent, arg: GreedyStr):
+        async for result in self._set_lora_trigger_weight_command(event, str(arg or "")):
+            yield result
+
     @filter.command("loraon", desc="使用指定简称开启 LoRA")
     async def command_loraon(self, event: AstrMessageEvent, arg: GreedyStr):
         value = str(arg or "").strip()
@@ -10319,15 +10637,7 @@ class ComfyUIAIStudio(Star):
             return
         items: list[str] = []
         missing: list[str] = []
-        for token in (x.strip() for x in value.split(",") if x.strip()):
-            name, separator, possible_weight = token.rpartition(":")
-            if not separator or not re.fullmatch(r"\d+(?:\.\d+)?", possible_weight):
-                name, possible_weight = token, "0.8"
-            actual = self._resolve_lora(name, available)
-            if not actual:
-                missing.append(name)
-                continue
-            items.append(f"{actual}:{possible_weight}")
+        items, missing = self._resolve_lora_command_specs(value, available)
         if missing:
             yield event.plain_result("LoRA 不存在或指令简称未设置：" + "、".join(sorted(missing)))
             return
@@ -10383,22 +10693,8 @@ class ComfyUIAIStudio(Star):
             self._save_lora_aliases()
             yield event.plain_result(f"LoRA 昵称已设置：{alias}（{actual}）")
             return
-        def resolve_items(raw: str) -> tuple[list[str], list[str]]:
-            resolved: list[str] = []
-            missing: list[str] = []
-            for token in (x.strip() for x in raw.split(",") if x.strip()):
-                name, separator, possible_weight = token.rpartition(":")
-                if not separator or not re.fullmatch(r"\d+(?:\.\d+)?", possible_weight):
-                    name, possible_weight = token, "0.8"
-                actual = self._resolve_lora(name, available)
-                if not actual:
-                    missing.append(name)
-                    continue
-                resolved.append(f"{actual}:{possible_weight}")
-            return resolved, missing
-
         if sub in {"启用", "添加", "增加", "enable", "add"}:
-            items, missing = resolve_items(rest)
+            items, missing = self._resolve_lora_command_specs(rest, available)
             if missing:
                 yield event.plain_result("LoRA 不存在或昵称未设置：" + "、".join(sorted(missing)))
                 return
@@ -10409,7 +10705,11 @@ class ComfyUIAIStudio(Star):
             yield event.plain_result("已增加 LoRA：" + "、".join(self._lora_alias(x.rsplit(":", 1)[0]) for x in items))
             return
         if sub in {"停用", "删除", "减少", "disable", "remove", "del"}:
-            targets, missing = resolve_items(rest)
+            targets, missing = self._resolve_lora_command_specs(
+                rest,
+                available,
+                use_trigger_default=False,
+            )
             if missing:
                 yield event.plain_result("LoRA 不存在或昵称未设置：" + "、".join(sorted(missing)))
                 return
@@ -10424,7 +10724,11 @@ class ComfyUIAIStudio(Star):
             self._save_config()
             yield event.plain_result("已清空全部 LoRA")
             return
-        yield event.plain_result("用法：/lora 或 /.lora（查看全部图片）、/lora 指令简称（查看单个 C站图片）、/lora 添加、删除、昵称、清空；开启使用 /loraon 指令简称")
+        if sub in {"权重", "weight", "strength", "设置权重"}:
+            async for result in self._set_lora_trigger_weight_command(event, rest):
+                yield result
+            return
+        yield event.plain_result("用法：/lora 或 /.lora（查看全部图片）、/lora 指令简称（查看单个 C站图片）、/lora 添加、删除、权重、昵称、清空；开启使用 /loraon 指令简称 [权重]")
 
     @filter.command("预设", alias=["preset"], desc="管理提示词预设")
     async def command_preset(self, event: AstrMessageEvent, arg: GreedyStr):
@@ -11074,6 +11378,19 @@ class ComfyUIAIStudio(Star):
             # verina_(wuthering_waves) 后，仍会根据同名 LoRA 简称临时加载 LoRA。
             # 用户原话中的控制项依旧具有最高优先级。
             original_text = str(getattr(event, "message_str", "") or "").strip() or str(params.prompt or "").strip()
+            # LLM 工具经常把系统提示里列出的画风简称、专属预设名当成「可选项」
+            # 自行填进 preset / lora。这些值一旦成为显式控制项，文生图的画风随机
+            # 链路就会被 explicit_style_lora 整段跳过，表现为「画风永远一样、
+            # 角色 LoRA 永远被加载」。这里只保留用户本轮原话里确实出现过的
+            # LLM 控制项；用户真写了的简称随后仍会被 _extract_inline_presets /
+            # _extract_inline_loras 从原话或 LLM 提示词里重新识别出来。
+            dropped_llm_controls = self._drop_ungrounded_llm_controls(params, original_text)
+            if dropped_llm_controls:
+                logger.info(
+                    "[%s] 已丢弃 LLM 自行回填但用户原话未提及的控制项：%s",
+                    PLUGIN_NAME,
+                    "、".join(dropped_llm_controls),
+                )
             if mode == "txt2img":
                 params.prompt = self._sanitize_llm_txt2img_prompt(
                     params.prompt,

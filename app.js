@@ -325,6 +325,8 @@ function fillConfig() {
   if (styleMode) styleMode.value = config.style_lora_mode || "random";
   const styleRandomCount = document.getElementById("style_lora_random_count");
   if (styleRandomCount) styleRandomCount.value = Math.max(1, Math.min(16, Number(config.style_lora_random_count || 1)));
+  const styleRandomPresetMode = document.getElementById("style_lora_random_preset_mode");
+  if (styleRandomPresetMode) styleRandomPresetMode.value = config.style_lora_random_preset_mode || "random";
   document.getElementById("draw_limit_count").value = config.draw_limit_count ?? 0;
   document.getElementById("draw_limit_window_seconds").value = config.draw_limit_window_seconds ?? 3600;
   const queueLimitEnabled = document.getElementById("draw_queue_limit_enabled");
@@ -709,6 +711,7 @@ function renderLoraCivitaiInfo(item) {
 
 function renderLoraCompactCard(item, file, options = {}) {
   const style = Boolean(options.style);
+  const triggerWeight = Number(options.triggerWeight ?? item.trigger_weight ?? 0.8).toFixed(2);
   const aliases = Array.isArray(item.command_aliases)
     ? [...item.command_aliases]
     : (item.command_alias ? [item.command_alias] : []);
@@ -716,13 +719,13 @@ function renderLoraCompactCard(item, file, options = {}) {
   const aliasText = [...new Set(aliases.map(value => String(value || "").trim()).filter(Boolean))].join("、") || "暂无简称";
   const civitai = renderLoraCivitaiInfo(item);
   const thumb = item.show_images === false || !(item.images || []).length
-    ? ""
+    ? `<div class="lora-simple-thumb lora-simple-thumb-empty"><span>暂无图片</span></div>`
     : `<div class="lora-simple-thumb">${civitai.images}</div>`;
   // 画风简洁卡：直接给出「长期启用 / 纳入随机候选」两个开关，勾选即保存，不必先展开卡片。
   const switches = style
-    ? `<div class="lora-simple-switches"><label class="check lora-simple-switch${options.enabled ? " is-on" : ""}" title="常态打开：每次出图都会加载，不占随机数量"><input type="checkbox" data-lora-enabled-checkbox="${file}" ${options.enabled ? "checked" : ""}><span>长期启用</span></label><label class="check lora-simple-switch${options.selected ? " is-on" : ""}" title="纳入随机候选：随机模式下会被抽到"><input type="checkbox" data-style-lora-file="${file}" ${options.selected ? "checked" : ""}><span>纳入随机候选</span></label></div>`
+    ? `<div class="lora-simple-switches"><label class="check lora-simple-switch${options.enabled ? " is-on" : ""}" title="常态打开：每次出图都会加载，不占随机数量"><input type="checkbox" data-lora-enabled-checkbox="${file}" ${options.enabled ? "checked" : ""}><span>长期启用</span></label><label class="check lora-simple-switch${options.selected ? " is-on" : ""}" title="纳入随机候选：随机模式下会被抽到"><input type="checkbox" data-style-lora-file="${file}" ${options.selected ? "checked" : ""}><span>纳入随机候选</span></label><label class="style-simple-weight">随机权重<input class="weight" data-style-lora-weight="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.styleWeight ?? "0.8")}"></label></div>`
     : "";
-  return `<article class="lora-card lora-card-simple${style ? " style-lora-card-simple" : ""}${options.selected ? " selected" : ""}">${thumb}<div class="lora-simple-head"><strong title="${file}">${escapeHtml(item.alias || item.file_name)}</strong><span class="lora-simple-alias" title="指令简称">简称：${escapeHtml(aliasText)}</span><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">展开</button></div>${switches}</article>`;
+  return `<article class="lora-card lora-card-simple${style ? " style-lora-card-simple" : ""}${options.selected ? " selected" : ""}">${thumb}<div class="lora-simple-head"><strong title="${file}">${escapeHtml(item.alias || item.file_name)}</strong><span class="lora-simple-alias" title="指令简称">简称：${escapeHtml(aliasText)}</span><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">展开</button></div><div class="lora-compact-trigger-weight"><label>指令触发权重<input class="weight" data-trigger-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(triggerWeight)}"></label><button type="button" class="secondary" data-lora-action="save-trigger-weight" data-file="${file}">保存</button></div>${switches}</article>`;
 }
 
 function renderLoraFullCard(item, file, options = {}) {
@@ -743,7 +746,7 @@ function renderLoraFullCard(item, file, options = {}) {
     ? `<label>随机画风权重<input class="weight" data-style-lora-weight="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.styleWeight ?? "0.8")}"></label>`
     : "";
   const info = renderLoraCivitaiInfo(item);
-  return `<article class="lora-card${style ? " style-lora-card-full" : " lora-card-full"}"><div class="lora-main"><div class="lora-full-head"><div class="lora-check-row">${enabledInput}${candidate}</div><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">收起简洁选择</button></div><h3>${escapeHtml(item.alias || item.file_name)}</h3><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>详细昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias || "")}"></label><label>长期启用权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.activeWeight ?? "0.8")}"></label>${styleWeight}${styleAlias}${renderCommandAliasEditor(item, file)}<label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${info.customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapeHtml(externalUrl(item.custom_url))}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div><div class="civitai-info">${info.info}<div class="civitai-gallery lora-image-dropzone" data-lora-image-dropzone="${file}" title="将图片拖入此区域替换预览图">${info.images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
+  return `<article class="lora-card${style ? " style-lora-card-full" : " lora-card-full"}"><div class="lora-main"><div class="lora-full-head"><div class="lora-check-row">${enabledInput}${candidate}</div><button class="secondary lora-card-toggle" type="button" data-lora-action="toggle-lora-details" data-file="${file}">收起简洁选择</button></div><h3>${escapeHtml(item.alias || item.file_name)}</h3><code>${file}</code><div class="lora-controls"><label>分类<select class="select lora-category-input" data-lora-category-file="${file}">${categoryOptions}</select></label><label>详细昵称<input class="input alias-input" data-alias-file="${file}" value="${escapeHtml(item.alias || "")}"></label><label>长期启用权重<input class="weight" data-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.activeWeight ?? "0.8")}"></label><label>指令触发默认权重<input class="weight" data-trigger-weight-file="${file}" type="number" min="0" max="2" step="0.05" value="${escapeHtml(options.triggerWeight ?? item.trigger_weight ?? "0.8")}"></label>${styleWeight}${styleAlias}${renderCommandAliasEditor(item, file)}<label class="civitai-name-label">CivitAI 显示名称<input class="input" data-civitai-name-file="${file}" value="${info.customName}" placeholder="留空使用链接自动查询名称"></label><label class="civitai-url-label">我的 CivitAI 链接<input class="input civitai-url-input" data-civitai-url-file="${file}" value="${escapeHtml(externalUrl(item.custom_url))}" placeholder="保存后立即更新图片和链接"></label><label class="check lora-show-images"><input type="checkbox" data-show-images-file="${file}" ${item.show_images !== false ? "checked" : ""}>显示 CivitAI 图片</label></div>${renderLoraPresetEditor(item, file)}<div class="lora-card-actions"><button class="primary" data-lora-action="save-lora" data-file="${file}">保存此 LoRA 全部设置</button><button class="secondary" data-lora-action="open-lora" data-file="${file}">打开 LoRA 文件位置</button></div></div><div class="civitai-info">${info.info}<div class="civitai-gallery lora-image-dropzone" data-lora-image-dropzone="${file}" title="将图片拖入此区域替换预览图">${info.images || `<span class="muted">暂无 CivitAI 图片</span>`}</div></div></article>`;
 }
 
 function renderLorasRaw() {
@@ -761,7 +764,7 @@ function renderLorasRaw() {
   const renderCard = item => {
     const rawFile = String(item.file_name || "");
     const file = escapeHtml(rawFile);
-    const options = {enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] || "0.8"};
+    const options = {enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] || "0.8", triggerWeight: item.trigger_weight ?? "0.8"};
     return expandedLoraFile === rawFile ? renderLoraFullCard(item, file, options) : renderLoraCompactCard(item, file, options);
   };
   const grouped = new Map();
@@ -812,7 +815,7 @@ function renderStyleLoras() {
     const rawStyleAlias = aliases[rawFile] ?? aliases[rawFile.replace(/\\/g, "/")] ?? item.style_alias;
     const styleAlias = String(rawStyleAlias || `画风${styleIndex + 1}`).trim();
     const styleWeight = weights[rawFile] ?? weights[rawFile.replace(/\\/g, "/")] ?? item.style_weight ?? 0.8;
-    const options = {style: true, selected: selectedItem, enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] ?? "0.8", styleAlias, styleWeight, styleIndex: styleIndex + 1};
+    const options = {style: true, selected: selectedItem, enabled: active[rawFile] !== undefined, activeWeight: active[rawFile] ?? "0.8", triggerWeight: item.trigger_weight ?? "0.8", styleAlias, styleWeight, styleIndex: styleIndex + 1};
     return expandedLoraFile === rawFile ? renderLoraFullCard(item, file, options) : renderLoraCompactCard(item, file, options);
   };
   container.innerHTML = ordered.length ? ordered.map(renderCard).join("") : '<div class="empty">当前没有分类为“画风”的 LoRA。请先在 LoRA 管理中把目标文件分类为“画风”，或在本页上传并归类。</div>';
@@ -1288,6 +1291,25 @@ async function handleLoraClick(event) {
       show("LoRA 预览图已清除");
       return;
     }
+    if (button.dataset.loraAction === "save-trigger-weight") {
+      const input = button.closest(".lora-card")?.querySelector("[data-trigger-weight-file]");
+      const value = Number(input?.value);
+      if (!Number.isFinite(value) || value < 0 || value > 2) {
+        show("指令触发权重必须是 0 到 2 的数字");
+        return;
+      }
+      const result = await post(`${API}/lora_info`, {
+        action: "set_trigger_weight",
+        file_name: file,
+        trigger_weight: value,
+      });
+      loraItems = result.items || loraItems;
+      loraCategories = result.categories || loraCategories;
+      renderLoraCategories();
+      renderLoras();
+      show(`指令触发默认权重已保存：${value.toFixed(2)}`);
+      return;
+    }
     if (button.dataset.loraAction === "open-lora") {
       await post(API + "/open_lora", {file_name: file});
       show("已打开 LoRA 所在文件夹");
@@ -1315,6 +1337,7 @@ async function handleLoraClick(event) {
       const enabledInput = document.querySelector(`[data-lora-checkbox="${CSS.escape(file)}"]`);
       const styleSelectedInput = document.querySelector(`[data-style-lora-file="${CSS.escape(file)}"]`);
       const styleAliasInput = document.querySelector(`[data-style-lora-alias="${CSS.escape(file)}"]`);
+      const triggerWeightInput = document.querySelector(`[data-trigger-weight-file="${CSS.escape(file)}"]`);
       const presetList = document.querySelector(`[data-lora-preset-list="${CSS.escape(file)}"]`);
       const loraPresets = [...(presetList?.querySelectorAll("[data-lora-preset-row]") || [])].flatMap(row => {
         const content = row.querySelector("[data-lora-preset-content]")?.value.trim() || "";
@@ -1332,6 +1355,7 @@ async function handleLoraClick(event) {
         command_aliases: commandList ? [...commandList.querySelectorAll("[data-command-alias-value]")].map(chip => chip.dataset.commandAliasValue) : (Array.isArray(item.command_aliases) ? item.command_aliases : []),
         category: categoryInput?.value || item.category || "未分类",
         weight: weightInput?.value || currentLoraSelection()[file] || "0.8",
+        trigger_weight: triggerWeightInput?.value ?? item.trigger_weight ?? "0.8",
         civitai_name: nameInput?.value ?? item.custom_name ?? "",
         civitai_url: urlInput?.value ?? item.custom_url ?? "",
         show_images: showImagesInput ? showImagesInput.checked : item.show_images !== false,
@@ -1464,6 +1488,7 @@ async function saveStyleLoraSettings({silent = false, candidates = null, rerende
     const payload = {
       style_lora_mode: document.getElementById("style_lora_mode").value,
       style_lora_random_count: Math.max(1, Math.min(16, Number(document.getElementById("style_lora_random_count")?.value || 1))),
+      style_lora_random_preset_mode: document.getElementById("style_lora_random_preset_mode")?.value || "random",
       style_lora_list: selected,
       style_lora_aliases: aliases,
       style_lora_weights: weights,
@@ -1498,13 +1523,16 @@ async function setStyleLoraPersistent(file, enabled) {
 // 画风简洁卡上的两个开关都是「勾选即保存」，不要求先展开卡片。
 document.getElementById("styleLoras").addEventListener("change", async event => {
   const input = event.target;
-  if (!input || input.type !== "checkbox") return;
+  if (!input) return;
   try {
     if (input.dataset.styleLoraFile !== undefined) {
       const ok = await saveStyleLoraSettings({silent: true});
       if (ok) show(input.checked ? "已纳入随机候选" : "已从随机候选移除");
     } else if (input.dataset.loraEnabledCheckbox !== undefined) {
       await setStyleLoraPersistent(input.dataset.loraEnabledCheckbox, input.checked);
+    } else if (input.dataset.styleLoraWeight !== undefined) {
+      const ok = await saveStyleLoraSettings({silent: true});
+      if (ok) show("画风随机权重已保存");
     }
   } catch (e) { show(e.message); }
 });

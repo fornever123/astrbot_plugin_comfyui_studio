@@ -1,0 +1,192 @@
+{
+  "1": {
+    "inputs": {
+      "model_name": "anima-base-v1.0.safetensors",
+      "sage_attention": "disabled",
+      "torch_compile": false
+    },
+    "class_type": "AnimaBoosterLoader",
+    "_meta": {
+      "title": "① Anima 模型加载"
+    }
+  },
+  "2": {
+    "inputs": {
+      "threshold": 0.15,
+      "teacache_version": "v2 (Standard Precise)",
+      "adaptive_mode": true,
+      "early_steps_factor": 0.4,
+      "late_steps_factor": 1.8,
+      "start_percent": 0,
+      "end_percent": 1,
+      "cache_device": "cuda",
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "AnimaTeaCache",
+    "_meta": {
+      "title": "② Anima TeaCache 加速"
+    }
+  },
+  "3": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "qwen_image",
+      "device": "cpu"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "③ 文本编码器 (Qwen3-0.6B)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "④ VAE"
+    }
+  },
+  "5": {
+    "inputs": {
+      "image": "put_your_reference_image.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "⑤ ControlNet 参考图"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "masterpiece, best quality, amazing quality, very aesthetic, extremely detailed, absurdres, newest, highres, 1girl, solo",
+      "clip": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "⑥ 正面提示词"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "worst quality, low quality, blurry, jpeg artifacts, lowres, bad anatomy",
+      "clip": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "⑦ 负面提示词"
+    }
+  },
+  "8": {
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "lllite_name": "Anima-LLLite\\anima-lllite-any-test-like-1-step2000.safetensors",
+      "image": [
+        "5",
+        0
+      ],
+      "strength": 0.68,
+      "start_percent": 0,
+      "end_percent": 1,
+      "preserve_wrapper": true
+    },
+    "class_type": "AnimaLLLiteApply_sdscripts",
+    "_meta": {
+      "title": "⑧ ControlNet-LLLite 控制（Anima）"
+    }
+  },
+  "9": {
+    "inputs": {
+      "model": [
+        "8",
+        0
+      ],
+      "shift": 3.0
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "⑨ Anima AuraFlow 采样适配"
+    }
+  },
+  "10": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "⑩ 空 Latent (1024x1024)"
+    }
+  },
+  "11": {
+    "inputs": {
+      "model": [
+        "9",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "10",
+        0
+      ],
+      "seed": 123456789012345,
+      "steps": 30,
+      "cfg": 5.0,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1.0
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "⑪ 采样"
+    }
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "⑫ VAE 解码"
+    }
+  },
+  "13": {
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "filename_prefix": "astrbot/anima_controlnet"
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "⑬ 保存图像"
+    }
+  }
+}

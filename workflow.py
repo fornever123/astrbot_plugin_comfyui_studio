@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import random
 from pathlib import Path
 from typing import Any
 
@@ -281,6 +282,508 @@ def prune_unreachable(workflow: dict[str, Any]) -> tuple[dict[str, Any], list[st
     if not removed:
         return workflow, []
     return {node_id: node for node_id, node in workflow.items() if node_id in keep}, removed
+
+
+# ---------------------------------------------------------------------------
+# 通用工作流识别与适配
+
+# ComfyUI 自定义节点的命名很多，但输入字段通常仍遵循这些约定。通用层
+# 只修改实际存在的字段，未知节点和未知输入会原样保留。
+_TEXT_INPUT_NAMES = {
+    "text", "prompt", "positive_prompt", "negative_prompt", "string", "value",
+}
+_OUTPUT_CLASS_MARKERS = ("saveimage", "previewimage", "saveanimated", "videocombine")
+_SAMPLER_CLASS_MARKERS = ("ksampler", "samplercustom", "sampler")
+_MODEL_INPUT_NAMES = {"ckpt_name", "unet_name", "model_name", "diffusion_model"}
+_CLIP_INPUT_NAMES = {"clip_name", "text_encoder", "text_encoder_name"}
+_VAE_INPUT_NAMES = {"vae_name"}
+_SEED_INPUT_NAMES = {"seed", "noise_seed", "random_seed"}
+
+
+def _generic_title(node: dict[str, Any]) -> str:
+    meta = node.get("_meta")
+    if isinstance(meta, dict) and meta.get("title"):
+        return str(meta["title"])
+    return str(node.get("class_type", ""))
+
+
+def _generic_candidate(
+    node_id: str,
+    input_name: str,
+    *,
+    title: str,
+    value: Any,
+    reason: str,
+) -> dict[str, Any]:
+    current = value
+    if isinstance(current, (list, tuple)):
+        current = f"连接到节点 {current[0] if current else '?'}"
+    elif isinstance(current, dict):
+        current = "对象输入"
+    else:
+        current = str(current)[:180]
+    return {
+        "node_id": str(node_id),
+        "input": str(input_name),
+        "title": title,
+        "current": current,
+        "reason": reason,
+    }
+
+
+def _generic_text_kind(title: str, input_name: str) -> str:
+    lowered = f"{title} {input_name}".casefold()
+    if any(word in lowered for word in ("negative", "负面", "反向", "负提示")):
+        return "negative_text"
+    if any(word in lowered for word in ("positive", "正面", "prompt", "提示", "正向")):
+        return "positive_text"
+    return "text"
+
+
+def _generic_is_output_node(node: dict[str, Any]) -> bool:
+    class_type = str(node.get("class_type", ""))
+    title = _generic_title(node)
+    lowered = f"{class_type} {title}".casefold()
+    if any(marker in lowered for marker in _OUTPUT_CLASS_MARKERS):
+        return True
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict):
+        return False
+    has_image_output = any(str(name).casefold() in {"image", "images", "output_image"} for name in inputs)
+    return has_image_output and any(marker in lowered for marker in ("output", "输出", "save", "preview"))
+
+
+def inspect_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """生成适合展示和交给 AI 判断的工作流摘要。
+
+    这是只读操作，不会修改 ``workflow``。摘要刻意省略大段节点数据，避免
+    把整个工作流原文塞进模型上下文；AI 只需要节点 ID、类别、输入名和当前值。
+    """
+    if not isinstance(workflow, dict) or not workflow:
+        raise WorkflowError("工作流为空，无法分析")
+
+    candidates: dict[str, list[dict[str, Any]]] = {
+        "positive_text": [],
+        "negative_text": [],
+        "images": [],
+        "model": [],
+        "clip": [],
+        "vae": [],
+        "loras": [],
+        "samplers": [],
+        "sizes": [],
+        "outputs": [],
+    }
+    text_candidates: list[dict[str, Any]] = []
+    nodes: list[dict[str, Any]] = []
+
+    for node_id, raw_node in workflow.items():
+        if not isinstance(raw_node, dict) or not raw_node.get("class_type"):
+            continue
+        class_type = str(raw_node.get("class_type", ""))
+        title = _generic_title(raw_node)
+        inputs = raw_node.get("inputs")
+        if not isinstance(inputs, dict):
+            inputs = {}
+        class_lower = class_type.casefold()
+        title_lower = title.casefold()
+        node_info = {
+            "id": str(node_id),
+            "class_type": class_type,
+            "title": title,
+            "inputs": {
+                str(name): (
+                    f"连接到节点 {value[0]}"
+                    if isinstance(value, (list, tuple)) and value
+                    else str(value)[:180]
+                )
+                for name, value in inputs.items()
+            },
+        }
+        nodes.append(node_info)
+
+        is_output = _generic_is_output_node(raw_node)
+        if is_output:
+            candidates["outputs"].append({"node_id": str(node_id), "title": title})
+
+        for raw_name, value in inputs.items():
+            input_name = str(raw_name)
+            input_lower = input_name.casefold()
+            candidate = None
+
+            is_text_field = (
+                input_lower in _TEXT_INPUT_NAMES
+                or input_lower.endswith("_prompt")
+                or input_lower in {"positive", "negative"} and not isinstance(value, (list, tuple))
+            )
+            if not is_output and (
+                "cliptextencode" in class_lower
+                or "textencode" in class_lower
+                or is_text_field
+                or "prompt" in title_lower
+            ) and is_text_field and not isinstance(value, (list, tuple)):
+                candidate = _generic_candidate(
+                    str(node_id), input_name, title=title, value=value,
+                    reason="文本编码或提示词输入",
+                )
+                text_candidates.append(candidate)
+                kind = _generic_text_kind(title, input_name)
+                if kind in {"positive_text", "negative_text"}:
+                    candidates[kind].append(candidate)
+                continue
+
+            if not is_output and (
+                "loadimage" in class_lower
+                or input_lower == "image"
+                or (input_lower.startswith("image") and input_lower[5:].isdigit())
+            ):
+                # 只有文件型输入才是可替换的参考图；图像连接不能被文件名覆盖。
+                if isinstance(value, str) or "loadimage" in class_lower:
+                    candidates["images"].append(_generic_candidate(
+                        str(node_id), input_name, title=title, value=value,
+                        reason="参考图输入",
+                    ))
+
+            if input_lower in _MODEL_INPUT_NAMES and not any(
+                marker in class_lower for marker in ("upscale", "lora", "controlnet")
+            ):
+                candidates["model"].append(_generic_candidate(
+                    str(node_id), input_name, title=title, value=value,
+                    reason="核心模型输入",
+                ))
+            if input_lower in _CLIP_INPUT_NAMES or (
+                "cliploader" in class_lower and input_lower.endswith("name")
+            ):
+                candidates["clip"].append(_generic_candidate(
+                    str(node_id), input_name, title=title, value=value,
+                    reason="文本编码器输入",
+                ))
+            if input_lower in _VAE_INPUT_NAMES or (
+                "vaeloader" in class_lower and input_lower.endswith("name")
+            ):
+                candidates["vae"].append(_generic_candidate(
+                    str(node_id), input_name, title=title, value=value,
+                    reason="VAE 输入",
+                ))
+            if "lora" in class_lower and (
+                input_lower == "lora_name" or input_lower.startswith("lora_")
+            ):
+                candidates["loras"].append(_generic_candidate(
+                    str(node_id), input_name, title=title, value=value,
+                    reason="LoRA 输入",
+                ))
+
+        sampler_fields = {
+            name for name in inputs
+            if str(name).casefold() in (
+                _SEED_INPUT_NAMES | {"steps", "cfg", "sampler_name", "scheduler", "denoise", "noise"}
+            )
+        }
+        if any(marker in class_lower for marker in _SAMPLER_CLASS_MARKERS) or sampler_fields:
+            candidates["samplers"].append({
+                "node_id": str(node_id),
+                "title": title,
+                "inputs": sorted(str(name) for name in sampler_fields),
+            })
+
+        size_fields = {
+            name for name in inputs
+            if str(name).casefold() in {"width", "height", "batch_size", "count"}
+        }
+        if size_fields and (
+            "latent" in class_lower or "resize" in class_lower
+            or {str(name).casefold() for name in size_fields} >= {"width", "height"}
+        ):
+            candidates["sizes"].append({
+                "node_id": str(node_id),
+                "title": title,
+                "inputs": sorted(str(name) for name in size_fields),
+            })
+
+    # 很多工作流没有写 Positive/Negative 标题，按文本节点出现顺序做保守兜底。
+    if not candidates["positive_text"]:
+        for item in text_candidates:
+            if item not in candidates["negative_text"]:
+                candidates["positive_text"].append(item)
+                break
+    if not candidates["negative_text"] and len(text_candidates) > 1:
+        for item in text_candidates[1:]:
+            candidates["negative_text"].append(item)
+
+    return {
+        "nodes": nodes,
+        "candidate_inputs": candidates,
+        "node_count": len(nodes),
+        "output_count": len(candidates["outputs"]),
+    }
+
+
+def infer_workflow_mapping(workflow: dict[str, Any], mode: str = "txt2img") -> dict[str, Any]:
+    """不调用 AI 的通用映射推断，作为一键适配的离线兜底。"""
+    summary = inspect_workflow(workflow)
+    mapping = copy.deepcopy(summary["candidate_inputs"])
+    mapping["mode"] = str(mode or "txt2img")
+    mapping["warnings"] = []
+    if not mapping["positive_text"]:
+        mapping["warnings"].append("没有识别到正面提示词输入，请在工作流页面手动修正映射")
+    if not mapping["outputs"]:
+        mapping["warnings"].append("没有识别到图片输出节点")
+    if str(mode).lower() == "img2img" and not mapping["images"]:
+        mapping["warnings"].append("没有识别到参考图输入，图生图无法提交")
+    return mapping
+
+
+def validate_workflow_mapping(
+    workflow: dict[str, Any], mapping: dict[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """校验 AI 或用户编辑的映射，过滤不存在的节点和输入字段。"""
+    raw = mapping if isinstance(mapping, dict) else {}
+    valid: dict[str, Any] = {}
+    warnings: list[str] = []
+    list_categories = (
+        "positive_text", "negative_text", "images", "model", "clip", "vae", "loras",
+    )
+    for category in list_categories:
+        accepted: list[dict[str, Any]] = []
+        values = raw.get(category, [])
+        if not isinstance(values, list):
+            values = [values]
+        for entry in values:
+            if not isinstance(entry, dict):
+                continue
+            node_id = str(entry.get("node_id", ""))
+            input_name = str(entry.get("input", ""))
+            node = _node(workflow, node_id)
+            inputs = node.get("inputs") if node else None
+            if not isinstance(inputs, dict) or input_name not in inputs:
+                warnings.append(f"映射已忽略：节点 {node_id}.{input_name} 不存在")
+                continue
+            accepted.append({"node_id": node_id, "input": input_name})
+        valid[category] = accepted
+
+    sampler_values = raw.get("samplers", [])
+    if not isinstance(sampler_values, list):
+        sampler_values = [sampler_values]
+    valid_samplers: list[dict[str, Any]] = []
+    for entry in sampler_values:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("node_id", ""))
+        node = _node(workflow, node_id)
+        inputs = node.get("inputs") if node else None
+        if not isinstance(inputs, dict):
+            warnings.append(f"映射已忽略：采样器节点 {node_id} 不存在")
+            continue
+        names = entry.get("inputs", [])
+        if not isinstance(names, list):
+            names = list(inputs)
+        names = [str(name) for name in names if str(name) in inputs]
+        if names:
+            valid_samplers.append({"node_id": node_id, "inputs": names})
+    valid["samplers"] = valid_samplers
+
+    size_values = raw.get("sizes", [])
+    if not isinstance(size_values, list):
+        size_values = [size_values]
+    valid_sizes: list[dict[str, Any]] = []
+    for entry in size_values:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("node_id", ""))
+        node = _node(workflow, node_id)
+        inputs = node.get("inputs") if node else None
+        if not isinstance(inputs, dict):
+            continue
+        names = entry.get("inputs", [])
+        if not isinstance(names, list):
+            names = list(inputs)
+        names = [str(name) for name in names if str(name) in inputs]
+        if names:
+            valid_sizes.append({"node_id": node_id, "inputs": names})
+    valid["sizes"] = valid_sizes
+
+    outputs = raw.get("outputs", [])
+    if not isinstance(outputs, list):
+        outputs = [outputs]
+    valid_outputs: list[str] = []
+    for raw_output in outputs:
+        node_id = raw_output.get("node_id") if isinstance(raw_output, dict) else raw_output
+        node_id = str(node_id or "")
+        node = workflow.get(node_id)
+        if (
+            isinstance(node, dict)
+            and _generic_is_output_node(node)
+        ):
+            valid_outputs.append(node_id)
+    valid["outputs"] = valid_outputs
+    if not valid["positive_text"]:
+        warnings.append("没有有效的正面提示词映射")
+    if not valid["outputs"]:
+        warnings.append("没有有效的输出节点映射")
+    return valid, warnings
+
+
+def _generic_set_input(
+    workflow: dict[str, Any], node_id: str, input_name: str, value: Any,
+) -> bool:
+    inputs = _inputs(workflow, node_id)
+    if inputs is None or input_name not in inputs:
+        return False
+    inputs[input_name] = value
+    return True
+
+
+def _generic_set_sampler_input(inputs: dict[str, Any], field: str, values: dict[str, Any]) -> bool:
+    lowered = str(field).casefold()
+    if lowered in _SEED_INPUT_NAMES:
+        inputs[field] = values["seed"]
+    elif lowered == "steps":
+        inputs[field] = values["steps"]
+    elif lowered == "cfg":
+        inputs[field] = values["cfg"]
+    elif lowered == "sampler_name":
+        inputs[field] = values["sampler_name"]
+    elif lowered == "scheduler":
+        inputs[field] = values["scheduler"]
+    elif lowered == "denoise":
+        inputs[field] = values["denoise"]
+    else:
+        return False
+    return True
+
+
+def adapt_generic(
+    source: dict[str, Any],
+    *,
+    mode: str,
+    positive: str,
+    negative: str = "",
+    image_names: list[str] | None = None,
+    model_name: str = "",
+    clip_name: str = "",
+    vae_name: str = "",
+    loras: list[str] | None = None,
+    width: int = 0,
+    height: int = 0,
+    steps: int = 20,
+    cfg: float = 5.0,
+    seed: int = -1,
+    sampler_name: str = "euler",
+    scheduler: str = "normal",
+    denoise: float = 1.0,
+    batch: int = 1,
+    filename_prefix: str = "astrbot/generic",
+    mapping: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """把常见绘图输入写入任意 API 工作流。
+
+    ``mapping`` 可以来自 ``infer_workflow_mapping`` 或 AI 一键适配结果。
+    除了映射到的输入，原始图结构、节点参数和自定义节点都不被重写。
+    """
+    if not isinstance(source, dict) or not source:
+        raise WorkflowError("工作流为空，无法适配")
+    workflow = copy.deepcopy(source)
+    inferred = infer_workflow_mapping(workflow, mode)
+    chosen = mapping if isinstance(mapping, dict) else inferred
+    valid, warnings = validate_workflow_mapping(workflow, chosen)
+    # AI 可能只返回部分字段，缺失字段使用离线推断；AI 返回的有效字段优先。
+    for category in ("positive_text", "negative_text", "images", "model", "clip", "vae", "loras", "samplers", "sizes", "outputs"):
+        if not valid.get(category):
+            valid[category] = inferred.get(category, [])
+    report = list(warnings)
+    if not valid.get("positive_text"):
+        raise WorkflowError("通用适配没有找到正面提示词输入，请在工作流页面使用 AI 一键适配或手动编辑映射")
+    if not valid.get("outputs"):
+        raise WorkflowError("通用适配没有找到 SaveImage/PreviewImage 输出节点")
+
+    positive_text = str(positive or "").strip()
+    if not positive_text:
+        raise WorkflowError("请提供正面提示词或画面描述")
+    for entry in valid["positive_text"]:
+        if _generic_set_input(workflow, entry["node_id"], entry["input"], positive_text):
+            pass
+    if str(negative or "").strip():
+        for entry in valid.get("negative_text", []):
+            _generic_set_input(workflow, entry["node_id"], entry["input"], str(negative).strip())
+
+    images = [str(name).strip() for name in (image_names or []) if str(name).strip()]
+    if str(mode or "").casefold() == "img2img" and not images:
+        raise WorkflowError("图生图至少需要一张参考图片")
+    image_entries = valid.get("images", [])
+    for entry, image_name in zip(image_entries, images):
+        if _generic_set_input(workflow, entry["node_id"], entry["input"], image_name):
+            pass
+    if len(images) > len(image_entries):
+        report.append(f"当前工作流只识别到 {len(image_entries)} 个参考图输入，额外的 {len(images) - len(image_entries)} 张图片未接入")
+
+    def set_loader(category: str, value: str, label: str) -> None:
+        if not str(value or "").strip():
+            return
+        entries = valid.get(category, [])
+        changed = False
+        for entry in entries:
+            changed = _generic_set_input(workflow, entry["node_id"], entry["input"], str(value).strip()) or changed
+        if not changed:
+            report.append(f"没有找到{label}输入，保留工作流原设置")
+
+    set_loader("model", model_name, "核心模型")
+    set_loader("clip", clip_name, "文本编码器")
+    set_loader("vae", vae_name, "VAE")
+
+    parsed_loras = [_parse_lora(item) for item in (loras or []) if str(item).strip()]
+    lora_entries = valid.get("loras", [])
+    for entry, (name, strength) in zip(lora_entries, parsed_loras):
+        node_id, input_name = entry["node_id"], entry["input"]
+        inputs = _inputs(workflow, node_id) or {}
+        current = inputs.get(input_name)
+        if isinstance(current, dict):
+            replacement = dict(current)
+            replacement.update(on=True, lora=name, strength=strength)
+            inputs[input_name] = replacement
+        else:
+            inputs[input_name] = name
+            if "strength_model" in inputs:
+                inputs["strength_model"] = strength
+            if "strength_clip" in inputs:
+                inputs["strength_clip"] = strength
+    if parsed_loras and len(parsed_loras) > len(lora_entries):
+        report.append(f"当前工作流只识别到 {len(lora_entries)} 个 LoRA 输入，剩余 LoRA 未接入")
+
+    sampler_values = {
+        "seed": int(seed if int(seed) >= 0 else random.randint(0, 2**63 - 1)),
+        "steps": max(1, int(steps or 20)),
+        "cfg": max(0.0, float(cfg)),
+        "sampler_name": str(sampler_name or "euler"),
+        "scheduler": str(scheduler or "normal"),
+        "denoise": max(0.0, min(1.0, float(denoise))),
+    }
+    for entry in valid.get("samplers", []):
+        inputs = _inputs(workflow, entry["node_id"])
+        if not inputs:
+            continue
+        for field in entry.get("inputs", []):
+            _generic_set_sampler_input(inputs, field, sampler_values)
+    for entry in valid.get("sizes", []):
+        inputs = _inputs(workflow, entry["node_id"])
+        if not inputs:
+            continue
+        for field in entry.get("inputs", []):
+            lowered = field.casefold()
+            if lowered == "width" and int(width or 0) > 0:
+                inputs[field] = max(64, int(width))
+            elif lowered == "height" and int(height or 0) > 0:
+                inputs[field] = max(64, int(height))
+            elif lowered in {"batch_size", "count"}:
+                inputs[field] = max(1, min(16, int(batch or 1)))
+    for output_id in valid.get("outputs", []):
+        inputs = _inputs(workflow, output_id)
+        if inputs and filename_prefix and "filename_prefix" in inputs:
+            inputs["filename_prefix"] = str(filename_prefix)
+
+    report.append(f"已使用通用适配：识别到 {len(valid['positive_text'])} 个正面提示词输入、{len(valid['outputs'])} 个输出节点")
+    if str(mode or "").casefold() == "img2img":
+        report.append(f"已接入 {min(len(images), len(image_entries))} 张参考图")
+    return workflow, report
 
 
 def _node(workflow: dict[str, Any], node_id: str) -> dict[str, Any] | None:

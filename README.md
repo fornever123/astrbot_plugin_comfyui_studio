@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.1.4-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.1.5-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -23,6 +23,7 @@
 - [内置 Anima 提示词工程师](#-内置-anima-提示词工程师)
 - [安装](#-安装)
 - [快速上手](#-快速上手)
+- [独立桌面端](#-独立桌面端)
 - [指令速查](#-指令速查)
 - [WebUI 控制台](#-webui-控制台)
 - [图片安全审核](#-图片安全审核)
@@ -289,6 +290,7 @@ AstrBot/data/plugins/astrbot_plugin_comfyui_ai_studio/
 ├── style.css
 ├── metadata.yaml
 ├── _conf_schema.json
+├── desktop/
 └── workflows/
 ```
 
@@ -398,6 +400,38 @@ WebUI →「工作流组」→ 填写 ComfyUI 地址（默认 `http://127.0.0.1:
 ```text
 帮我画一张夏空在海边的图片，使用 1号lora
 ```
+
+---
+
+## 🖥️ 独立桌面端
+
+仓库同时提供一个不依赖 AstrBot WebUI 的桌面端入口。桌面端使用 OpenAI 兼容 API 做多轮对话，并直接通过 ComfyUI API 绘图；AstrBot 插件的指令、LLM 工具和 WebUI 不会被替换或删除。
+
+### 启动
+
+在插件根目录双击 `启动桌面端.bat`，或执行：
+
+```powershell
+python desktop\desktop_app.py
+```
+
+桌面端包含「对话、文生图、图生图、工作流、ComfyUI、设置」六个页面。设置和每个工作流的适配映射保存在 `%APPDATA%\AnimaComfyUIStudio\desktop.json`，不会写入工作流源文件。
+
+### 任意工作流适配
+
+进入「工作流」页面选择任意 ComfyUI API 格式或编辑器格式 JSON 后，可以使用：
+
+- **AI 一键适配**：将节点摘要发送给指定的 OpenAI 兼容模型，让模型返回提示词、参考图、核心模型、LoRA、采样参数、尺寸和输出节点映射；映射会校验节点 ID 和输入名后保存。
+- **离线自动适配**：不调用 AI，按节点类型、标题和输入字段自动识别常见输入。
+- **手动修正映射**：右侧映射 JSON 可编辑，适合完全自定义节点。
+
+适配器只覆盖映射到的输入，保留原工作流的节点、连接和其它参数。文生图会写入正面/负面提示词、模型、LoRA、尺寸和采样参数；图生图会先把最多三张参考图上传至 ComfyUI，再写入识别到的参考图输入。完全自定义的节点仍需在 ComfyUI 安装对应节点，桌面端不会伪造缺失节点。
+
+### ComfyUI 页面与当前调用工作流
+
+「ComfyUI」页面可以检查 `http://127.0.0.1:8188` 状态、查看队列、打开本地 ComfyUI 页面，并查看桌面端最后一次实际提交的 API 工作流。桌面端不会内嵌或修改 ComfyUI 网页，切换页面不会中断绘图任务。
+
+桌面端完整说明见 [`desktop/README.md`](desktop/README.md)。
 
 ---
 
@@ -701,6 +735,17 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.1.5
+
+- 🖼️ **新增 ControlNet 动作参考图生图**：内置 `Anima_ControlNet文生图` 工作流，给一张动作参考图即可按该姿势出图
+- 🖥️ **新增独立桌面端**：附带 `desktop/` 桌面端与 `启动桌面端.bat`。通过 OpenAI 兼容 API 对话，
+  AI 一键分析并保存任意 ComfyUI 工作流的输入映射，支持文生图、图生图、工作流查看、
+  ComfyUI 状态与本地 8188 页面切换
+- 🐛 **修复远程 ComfyUI 下 LoRA 管理列表为空**：当 AstrBot 与 ComfyUI 不在同一台机器时，
+  插件进程读不到模型盘，`_local_lora_names()` 返回空，导致控制台的「启用 / 权重 / 分类 / 预览」
+  全部失效。现在本地列表为空时会回退到 ComfyUI 自身上报的 `/models/loras` 列表
+  （与 `_lora_details()` 同一策略）
 
 ### v1.1.4
 

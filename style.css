@@ -1003,6 +1003,10 @@ textarea.textarea { min-height: 64px; resize: vertical; line-height: 1.5; }
 .lora-simple-alias { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--accent); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .lora-simple-status .check { font-size: 12px; }
 .lora-card-toggle { align-self: flex-start; }
+.lora-compact-trigger-weight { display: flex; align-items: flex-end; gap: 7px; }
+.lora-compact-trigger-weight label { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1 1 auto; font-size: 11.5px; color: var(--muted); }
+.lora-compact-trigger-weight input { width: 100%; min-width: 0; }
+.lora-compact-trigger-weight button { flex: 0 0 auto; padding: 7px 10px; }
 
 /* ---------- 画风 LoRA 模块 ---------- */
 .style-lora-band {
@@ -2134,6 +2138,17 @@ details.paths-wrap[open] .paths { animation: ui-open .3s cubic-bezier(.2, .7, .3
 
 /* 简洁卡缩略图：沿用现有小图尺寸（96px 高） */
 .lora-simple-thumb { margin: 0 0 2px; }
+.lora-simple-thumb-empty {
+  min-height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--line-hi);
+  border-radius: 12px;
+  background: var(--glass-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
 .lora-simple-thumb .civitai-image {
   flex: none;
   max-width: 150px;
@@ -3177,6 +3192,8 @@ label.lora-simple-switch > span { white-space: nowrap; }
 label.lora-simple-switch:hover { color: var(--text) !important; }
 label.lora-simple-switch.is-on { color: var(--accent-strong) !important; }
 label.lora-simple-switch input { accent-color: var(--accent); }
+.style-simple-weight { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); font-size: var(--fs-xs, 11.5px); }
+.style-simple-weight .weight { width: 64px; min-height: 28px; padding: 4px 7px; }
 .lora-card-simple.selected .lora-simple-switches { border-top-color: var(--accent-soft); }
 
 /* ===== 排版系统 · 基础体 ===== */

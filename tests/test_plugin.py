@@ -45,7 +45,7 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v1.1.4" in page
+    assert "版本 v1.1.5" in page
 
 
 @pytest.mark.parametrize(
@@ -74,7 +74,7 @@ def test_feature_query_uses_one_sentence_summary(message: str) -> None:
     assert "Qwen/Flux2" not in request.system_prompt
 
 
-def test_llm_draw_sends_start_reply_without_event_result() -> None:
+def test_llm_draw_sends_start_reply_through_event_result() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
     from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
 
@@ -111,8 +111,8 @@ def test_llm_draw_sends_start_reply_without_event_result() -> None:
             await asyncio.gather(*list(star._tasks), return_exceptions=True)
 
     asyncio.run(run())
-    assert event.results == []
-    assert event.sent == ["文生图开始：一只猫"]
+    assert event.results == ["文生图开始：一只猫"]
+    assert event.sent == []
 
 
 def test_llm_tool_arguments_are_unwrapped_and_prompt_can_fall_back_to_event() -> None:
@@ -411,6 +411,47 @@ def test_style_random_mode_falls_back_to_classified_loras() -> None:
     assert len(star._select_style_loras(candidates)) == 1
 
 
+def test_style_random_selection_uses_weights_without_duplicate_loras(monkeypatch) -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {"style_lora_mode": "random", "style_lora_random_count": 2}
+    entries = [
+        {"file_name": "low.safetensors", "weight": 0.1},
+        {"file_name": "high.safetensors", "weight": 1.9},
+        {"file_name": "mid.safetensors", "weight": 0.7},
+    ]
+    calls = []
+
+    def choose(pool, weights, k):
+        calls.append(list(weights))
+        return [pool[-1]]
+
+    monkeypatch.setattr("astrbot_plugin_comfyui_ai_studio.main.random.choices", choose)
+    selected = star._select_style_loras(entries)
+
+    assert [item["file_name"] for item in selected] == ["mid.safetensors", "high.safetensors"]
+    assert calls == [[0.1, 1.9, 0.7], [0.1, 1.9]]
+
+
+def test_random_style_lora_can_select_one_private_preset() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {"style_lora_random_preset_mode": "all"}
+    star.lora_presets = {
+        "style.safetensors": [
+            {"tag": "夏空", "content": "ciaccona, solo"},
+            {"tag": "夏空服饰", "content": "ciaccona, school uniform"},
+        ]
+    }
+
+    content, tag = star._random_style_lora_preset("style.safetensors")
+
+    assert content == "ciaccona, solo, school uniform"
+    assert tag == "夏空、夏空服饰"
+
+
 def test_style_usage_text_reports_random_selection_source() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
     from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
@@ -516,6 +557,75 @@ def test_preset_update_keeps_matching_translation_only() -> None:
 
         store.add("夏空", "ciaccona, green eyes")
         assert store.effective("夏空") == "ciaccona, green eyes"
+
+
+def test_llm_prompt_does_not_duplicate_selected_preset_fragments() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams, PresetStore
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_llm_preset_dedup_test_") as temp:
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(temp) / "presets.json")
+        star.artist_presets = PresetStore(Path(temp) / "artists.json")
+        star.presets.add("夏空", "ciaccona, 1girl, solo")
+        star.config = {
+            "artist_preset": "无",
+            "default_positive": "",
+            "default_negative": "",
+        }
+        star._get = lambda key, default="": star.config.get(key, default)
+
+        params = DrawParams(
+            prompt="ciaccona, 1girl, solo, beach",
+            presets=["夏空"],
+            llm_invocation=True,
+        )
+        positive, _, _ = asyncio.run(star._prompt_text(None, params, mode="txt2img"))
+
+    assert positive == "ciaccona, 1girl, solo, beach"
+
+
+def test_llm_prompt_removes_role_tag_variant_when_preset_is_locked() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams, PresetStore
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_llm_role_variant_test_") as temp:
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(temp) / "presets.json")
+        star.artist_presets = PresetStore(Path(temp) / "artists.json")
+        star.presets.add("维里奈", "verina, loli, petite")
+        star.config = {
+            "artist_preset": "无",
+            "default_positive": "",
+            "default_negative": "",
+        }
+        star._get = lambda key, default="": star.config.get(key, default)
+
+        params = DrawParams(
+            prompt="verina_(wuthering_waves), loli, petite, in a garden",
+            presets=["维里奈"],
+            llm_invocation=True,
+        )
+        positive, _, _ = asyncio.run(star._prompt_text(None, params, mode="txt2img"))
+
+    assert positive == "verina, loli, petite, in a garden"
+
+
+def test_nested_preset_name_only_matches_the_longest_preset() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams, PresetStore
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_nested_preset_test_") as temp:
+        star = object.__new__(ComfyUIAIStudio)
+        star.presets = PresetStore(Path(temp) / "presets.json")
+        star.artist_presets = PresetStore(Path(temp) / "artists.json")
+        star.presets.add("夏空", "ciaccona")
+        star.presets.add("夏空服饰", "ciaccona, school uniform")
+
+        params = DrawParams(prompt="ciaccona, school uniform")
+        star._extract_inline_presets(params, "帮我画一张夏空服饰")
+
+    assert params.presets == ["夏空服饰"]
 
 
 def test_plain_translation_keeps_network_out_of_ai_path(monkeypatch) -> None:
@@ -678,6 +788,58 @@ def test_llm_fuzzy_lora_alias_keeps_private_preset_and_command_exactness() -> No
         )
     )
     assert command_params.loras == []
+
+
+def test_lora_trigger_weight_is_used_and_explicit_weight_wins() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+    from astrbot_plugin_comfyui_ai_studio.prompting import DrawParams
+
+    class Presets:
+        items = {}
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.config = {
+        "style_lora_list": [],
+        "style_lora_aliases": {},
+        "style_lora_weights": {},
+    }
+    star.lora_aliases = {}
+    star.lora_categories = {}
+    star.lora_category_entries = {}
+    star.lora_command_aliases = {"demo.safetensors": ["demo"]}
+    star.lora_trigger_weights = {"demo.safetensors": 0.55}
+    star.lora_presets = {}
+    star.presets = Presets()
+
+    async def available(*, force=False):
+        return ["demo.safetensors"]
+
+    star._available_loras = available
+
+    default_params = DrawParams(prompt="demo")
+    asyncio.run(star._extract_inline_loras(default_params))
+    assert default_params.loras == ["demo.safetensors:0.55"]
+
+    explicit_params = DrawParams(prompt="demo=1.25")
+    asyncio.run(star._extract_inline_loras(explicit_params))
+    assert explicit_params.loras == ["demo.safetensors:1.25"]
+
+
+def test_lora_management_parser_accepts_colon_equals_and_space_weights() -> None:
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    star = object.__new__(ComfyUIAIStudio)
+    star.lora_aliases = {}
+    star.lora_categories = {}
+    star.lora_category_entries = {}
+    star.lora_command_aliases = {"demo.safetensors": ["demo"]}
+    star.lora_trigger_weights = {"demo.safetensors": 0.65}
+    available = ["demo.safetensors"]
+
+    assert star._resolve_lora_command_specs("demo", available)[0] == ["demo.safetensors:0.65"]
+    assert star._resolve_lora_command_specs("demo:1.1", available)[0] == ["demo.safetensors:1.1"]
+    assert star._resolve_lora_command_specs("demo=0.35", available)[0] == ["demo.safetensors:0.35"]
+    assert star._resolve_lora_command_specs("demo 0.9", available)[0] == ["demo.safetensors:0.9"]
 
 
 def test_llm_fuzzy_alias_handles_multiword_english_without_partial_word_match() -> None:

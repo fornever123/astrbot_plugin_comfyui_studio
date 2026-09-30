@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.1.4</p>
+        <p id="version" class="version">版本 v1.1.5</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -137,7 +137,8 @@
       <div class="style-lora-notice">自动使用方式：关闭时不自动加载；随机模式会从勾选的候选中抽取不重复的 LoRA；使用全部时加载所有勾选候选。常态打开的画风 LoRA 不占随机数量。用户明确写出画风简称或专属预设简称时，只使用命中的画风 LoRA，本次不会再随机叠加其它画风；指令或自然语言写“不用画风”可临时全部跳过。</div>
       <div class="form-grid style-lora-settings">
         <label>自动使用方式<select id="style_lora_mode" class="select"><option value="random">随机选择</option><option value="all">使用全部</option><option value="off">关闭</option></select></label>
-        <label>随机使用数量<input id="style_lora_random_count" class="input" type="number" min="1" max="16" step="1" value="1"><small class="field-hint">默认 1；候选不足时自动按候选数量使用。</small></label>
+        <label>随机使用数量<input id="style_lora_random_count" class="input" type="number" min="1" max="16" step="1" value="1"><small class="field-hint">按每个 LoRA 的随机权重抽取；候选不足时自动按候选数量使用。</small></label>
+        <label>随机命中 LoRA 的专属预设<select id="style_lora_random_preset_mode" class="select"><option value="random">随机选一组</option><option value="all">加入全部</option><option value="off">不加入</option></select><small class="field-hint">只影响自动随机命中的 LoRA；指令明确触发时仍按原来的专属预设规则。</small></label>
       </div>
       <div id="styleLoras" class="style-lora-grid"></div>
     </section>
@@ -579,6 +580,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.1.4"></script>
+  <script src="app.js?v=1.1.5"></script>
 </body>
 </html>

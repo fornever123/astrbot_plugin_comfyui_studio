@@ -732,6 +732,22 @@
     "min": 1,
     "max": 16
   },
+  "style_lora_random_preset_mode": {
+    "type": "string",
+    "description": "随机画风 LoRA 的专属预设策略",
+    "hint": "random 使用一组随机专属预设；all 加入全部；off 不加入提示词",
+    "default": "random",
+    "options": [
+      "random",
+      "all",
+      "off"
+    ],
+    "enum": [
+      "random",
+      "all",
+      "off"
+    ]
+  },
   "style_lora_list": {
     "type": "list",
     "description": "画风 LoRA 候选文件列表",
