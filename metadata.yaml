@@ -15,7 +15,7 @@ desc: |
   图片安全审核、队列提示和管理员启停 ComfyUI，并提供完整的 AstrBot WebUI 控制台。
   仓库另附独立桌面端：通过 OpenAI 兼容 API 对话，AI 一键分析并保存任意 ComfyUI 工作流的输入映射，
   支持文生图、图生图、工作流查看、ComfyUI 状态和本地 8188 页面切换。
-version: 1.1.5
+version: 1.1.6
 author: fornever123
 repo: https://github.com/fornever123/astrbot_plugin_comfyui_studio
 license: MIT

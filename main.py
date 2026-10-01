@@ -80,7 +80,7 @@ from .workflow import (
 )
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.1.5"
+PLUGIN_VERSION = "1.1.6"
 
 
 def _log_path(value: object) -> str:
@@ -1817,6 +1817,38 @@ class ComfyUIAIStudio(Star):
             root.parent / "run.bat",
         ]
         return next((path for path in candidates if path.is_file()), None)
+
+    def _comfy_control_url(self) -> str:
+        """远程启停控制器地址（AstrBot 与 ComfyUI 不同机时使用）。"""
+        raw = str(self._get("comfyui_control_url", "") or "").strip()
+        return raw.rstrip("/") if raw else ""
+
+    async def _comfy_control_call(
+        self,
+        action: str,
+        timeout: float = 200.0,
+    ) -> tuple[bool, str]:
+        """调用本机 ComfyUI 启停控制器。action 取值：start / stop。"""
+        base = self._comfy_control_url()
+        if not base:
+            return False, "未配置 ComfyUI 控制器地址"
+        token = str(self._get("comfyui_control_token", "") or "").strip()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["X-Token"] = token
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(
+                    f"{base}/{action}",
+                    headers=headers,
+                    content=b"{}",
+                )
+                payload = resp.json()
+        except Exception as exc:
+            return False, f"控制器调用失败：{exc}"
+        if resp.status_code >= 400:
+            return False, f"控制器返回 {resp.status_code}：{payload.get('error', '')}"
+        return bool(payload.get("ok")), str(payload.get("message") or "")
 
     @staticmethod
     def _listening_pids_on_port(port: int) -> list[int]:
@@ -10935,9 +10967,20 @@ class ComfyUIAIStudio(Star):
             return
         except ComfyError:
             pass
+        # 配置了远程控制器时走控制器，可以启动不在同一台机器上的 ComfyUI
+        if self._comfy_control_url():
+            yield event.plain_result("正在通过控制器启动 ComfyUI，首次启动需要加载模型，请稍候…")
+            ok, msg = await self._comfy_control_call("start")
+            yield event.plain_result(
+                f"已启动 ComfyUI：{msg}" if ok else f"启动 ComfyUI 失败：{msg}"
+            )
+            return
         port = self._comfyui_port()
         if not port:
-            yield event.plain_result("当前 ComfyUI 地址不是本机地址，插件不会远程启动服务。")
+            yield event.plain_result(
+                "当前 ComfyUI 地址不是本机地址，插件不会远程启动服务。"
+                "若 ComfyUI 在另一台机器上，请在 WebUI 填写「ComfyUI 远程启停控制器地址」。"
+            )
             return
         script = self._comfyui_start_script()
         if script is None:
@@ -10961,6 +11004,12 @@ class ComfyUIAIStudio(Star):
     async def command_comfy_stop(self, event: AstrMessageEvent):
         if not self._is_draw_limit_admin(event):
             yield event.plain_result("无权限：只有 WebUI 绘图限额中配置的管理员可以关闭 ComfyUI。")
+            return
+        if self._comfy_control_url():
+            ok, msg = await self._comfy_control_call("stop")
+            yield event.plain_result(
+                f"已关闭 ComfyUI：{msg}" if ok else f"关闭 ComfyUI 失败：{msg}"
+            )
             return
         port = self._comfyui_port()
         if not port:

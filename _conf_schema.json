@@ -1135,6 +1135,18 @@
     "hint": "留空自动寻找 run_nvidia_gpu.bat 或 run.bat；仅管理员可通过指令启动",
     "default": ""
   },
+  "comfyui_control_url": {
+    "type": "string",
+    "description": "ComfyUI 远程启停控制器地址",
+    "hint": "AstrBot 与 ComfyUI 不在同一台机器时填写，例如 http://172.18.0.1:8199；填写后 /comfy打开、/comfy关闭 走控制器，不再受「只控制本机」限制。留空则保持原有的本机脚本启动行为",
+    "default": ""
+  },
+  "comfyui_control_token": {
+    "type": "string",
+    "description": "控制器访问令牌",
+    "hint": "填本机 comfy_controller_token.txt 里的内容；控制器未设置令牌时留空",
+    "default": ""
+  },
   "image_font_regular": {
     "type": "string",
     "description": "图片字体文件（常规）",
