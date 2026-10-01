@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.3.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.3.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -735,6 +735,15 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.3.1
+
+- 🧾 **修复审核问题：`comfy.py` 的 logger 来源**。原文件用 `import logging` +
+  `logging.getLogger(__name__)`，不符合 AstrBot 插件规范（logger 必须且只能从
+  `astrbot.api` 导入）。现已改为 `from astrbot.api import logger`。
+- 🖥️ 桌面端适配：`desktop/desktop_app.py` 不在 AstrBot 运行时内，直接导入 `comfy` 会因
+  缺少 `astrbot` 包而失败，故在导入前注入一个等价的 `astrbot.api` shim，
+  使同一份 `comfy.py` 在插件内与桌面端都能正常导入。
 
 ### v1.3.0
 

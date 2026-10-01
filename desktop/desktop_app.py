@@ -17,8 +17,49 @@ from tkinter import filedialog, messagebox, ttk
 # 允许直接运行 desktop/desktop_app.py，而不要求用户先安装成 Python 包。
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 import sys
+import types
 
 sys.path.insert(0, str(PLUGIN_ROOT))
+
+# comfy.py 在 AstrBot 运行时里用 `from astrbot.api import logger`（AstrBot 插件规范）。
+# 桌面端是独立进程、没有 AstrBot 环境，这里先注入一个等价的 shim，
+# 让同一份 comfy.py 在插件内和桌面端都能被导入。
+# 注意：shim 内自带一个极简 logger（输出到 stderr），
+# 不引入标准库日志模块，避免与插件日志规范产生歧义。
+if "astrbot.api" not in sys.modules:
+
+    class _DesktopLogger:
+        """桌面端用的极简 logger，接口与 astrbot.api.logger 保持一致。"""
+
+        @staticmethod
+        def _emit(level: str, message: object, *args: object) -> None:
+            try:
+                text = message % args if args else str(message)
+            except Exception:
+                text = f"{message} {args}"
+            sys.stderr.write(f"[DESKTOP {level}] {text}\n")
+
+        def debug(self, message: object, *args: object) -> None:
+            self._emit("DEBUG", message, *args)
+
+        def info(self, message: object, *args: object) -> None:
+            self._emit("INFO", message, *args)
+
+        def warning(self, message: object, *args: object) -> None:
+            self._emit("WARNING", message, *args)
+
+        def error(self, message: object, *args: object) -> None:
+            self._emit("ERROR", message, *args)
+
+        def exception(self, message: object, *args: object) -> None:
+            self._emit("ERROR", message, *args)
+
+    _astrbot_pkg = types.ModuleType("astrbot")
+    _astrbot_api = types.ModuleType("astrbot.api")
+    _astrbot_api.logger = _DesktopLogger()
+    _astrbot_pkg.api = _astrbot_api
+    sys.modules.setdefault("astrbot", _astrbot_pkg)
+    sys.modules["astrbot.api"] = _astrbot_api
 
 from ai import AIError, AITranslator  # noqa: E402
 from anima_knowledge import build_context  # noqa: E402

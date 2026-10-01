@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import time
 from pathlib import Path
@@ -9,13 +8,12 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
+from astrbot.api import logger
 
 try:  # 作为包的一部分导入（AstrBot 运行时）
     from .workflow import prune_unreachable
 except ImportError:  # 直接以顶层模块导入（单测 / 脚本）
     from workflow import prune_unreachable
-
-logger = logging.getLogger(__name__)
 
 
 class ComfyError(Exception):
