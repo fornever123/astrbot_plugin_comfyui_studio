@@ -6,7 +6,7 @@
 > **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
 > 不用背英文 tag，不用记节点参数，不用来回切页面。
 
-[![版本](https://img.shields.io/badge/版本-1.1.6-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.3.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -736,7 +736,11 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 
 ## 📝 更新日志
 
-### v1.1.6
+### v1.3.0
+
+> 📌 **跳版说明**：本版内容即原 v1.1.6。AstrBot 市场不允许复用任何使用过的版本号
+> （即使已删除或撤回），而 1.1.x 序列已被占用，故版本号直接跳到 **v1.3.0** 以便发布。
+> GitHub 上的 tag `v1.1.6` 仍然存在，两者内容完全相同。
 
 - 🔌 **新增远程启停 ComfyUI**：AstrBot 与 ComfyUI 不在同一台机器时，可在 WebUI 填写「ComfyUI 远程启停控制器地址」与「控制器访问令牌」，填写后 `/comfy打开`、`/comfy关闭` 会经 HTTP 调用本机控制器，不再受「只控制本机地址」的白名单限制
 - 🧭 **未配置控制器时行为不变**：留空仍然走原来的本机启动脚本 / taskkill 逻辑，且地址非本机时会提示去填写控制器地址，向后兼容
