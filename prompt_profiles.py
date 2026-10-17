@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 ANIMA = "anima"
 QWEN21 = "qwen21"
@@ -99,7 +100,8 @@ QWEN21_PROFILE = PromptProfile(
         "镜头与构图",
         "风格与材质",
     ),
-    negative_effective=True,
+    # 内置 qwen21 工作流 KSampler cfg=1.0：负面分支被 CFG 完全忽略，写负面等于白写。
+    negative_effective=False,
     enhancer_format=(
         "输出格式：使用简洁自然的中文自然语言，一段话写完，不用标签堆砌、不用括号权重、不写参数。"
         "保留用户给出的英文专有词与引号内文字。"
@@ -107,10 +109,17 @@ QWEN21_PROFILE = PromptProfile(
     ),
     enhancer_extra=(
         "本模型额外要求：\n"
-        "1. 用户明确指定的主体、数量、动作、服装、表情、构图、场景、文字必须逐项保留，"
+        "1. 第一句先定框架：媒介 + 风格 + 主体 + 背景色板（例如“这是一张雨夜街头的人像摄影作品，冷蓝与暖橙对撞”），"
+        "再按主体、环境、光线、材质、构图、风格逐层展开。\n"
+        "2. 用户明确指定的主体、数量、动作、服装、表情、构图、场景、文字必须逐项保留，"
         "不能漏动作、不能换成另一个动作、不能换成另一个角色。\n"
-        "2. 只补少量有助于表达的视觉细节，不添加无关人物、服装或剧情。\n"
-        "3. 不写分辨率、宽高比、步数、CFG、模型名、LoRA 权重与预设名。"
+        "3. 颜色必须带修饰词（deep navy 而不是 blue），材质必须具体（brushed metal 而不是 metal），"
+        "光线要写来源与方向（“北向窗户进来的柔光”，而不是“好光线”）。\n"
+        "4. 图内文字逐字加英文双引号，只写用户给出的原文；透明背景要用官方三句式"
+        "“This is an RGBA image with transparency. … The image has alpha channel and the background is transparent.”。\n"
+        "5. 该模型内置工作流 cfg=1，负面提示词不参与引导：要排除的内容改写正面表述，不写“不要/避免”。\n"
+        "6. 只补少量有助于表达的视觉细节，不添加无关人物、服装或剧情。\n"
+        "7. 不写分辨率、宽高比、步数、CFG、模型名、LoRA 权重与预设名。"
     ),
     edit_extra=(
         "本模型额外要求：\n"
@@ -121,10 +130,11 @@ QWEN21_PROFILE = PromptProfile(
         "4. 不写分辨率、宽高比、步数、CFG、模型名、LoRA 权重与预设名。"
     ),
     llm_style=(
-        "Qwen Image 2.1 模式：输入 prompt 使用简洁、自然的中文画面描述，不要转换成 Danbooru 标签，"
-        "不要运行 Anima 模板，也不要重复注入角色预设内容。"
+        "Qwen Image 2.1 模式：输入 prompt 使用简洁、自然的中文画面描述，第一句先定媒介与主体，"
+        "不要转换成 Danbooru 标签，不要运行 Anima 模板，也不要重复注入角色预设内容；"
+        "该模型 cfg=1，负面提示词不生效，需要排除的内容写进正面描述。"
     ),
-    avoid=("Danbooru 标签", "括号权重", "参数", "质量词堆砌"),
+    avoid=("Danbooru 标签", "括号权重", "参数", "质量词堆砌", "负面提示词（CFG=1 无效）"),
 )
 
 KREA2_PROFILE = PromptProfile(
@@ -157,7 +167,11 @@ KREA2_PROFILE = PromptProfile(
         "4. 该模型 CFG 固定为 1，负面提示词不参与引导：用户想排除的东西（不要有人、不要文字、不要水印）"
         "必须改写成正面表述，例如“空无一人的街道”“画面干净无字”。\n"
         "5. Turbo 只需 8 步，不需要用“超精细、8K、极致细节”堆料；主体与构图写清楚比堆词更有效。\n"
-        "6. 用户明确指定的动作、数量、服装、场景必须保留；不补写用户没要求的剧情与人物。"
+        "6. 用户明确指定的动作、数量、服装、场景必须保留；不补写用户没要求的剧情与人物。\n"
+        "7. 词预算即变焦：谁先写、谁写得多，谁就占画面。主体开头且细节密集 = 收紧构图；"
+        "环境开头 = 拉远全景；想让人物的脚进画面就写“脚踩在起毛的地毯上”这类锚点短语，不要只写 full body。\n"
+        "8. 图内文字用英文双引号写死，长度限一个词到一块短招牌；整段话必然糊。\n"
+        "9. 保持用户指定的媒介（照片/插画/油画/3D 渲染），不要为了更容易画而换成别的媒介。"
     ),
     llm_style=(
         "Krea 2 Turbo 模式：prompt 使用具体的中文自然语言整句，写清主体动作、环境、光线与镜头，"
@@ -256,6 +270,108 @@ def build_llm_style(model: str = "", engine: str = "") -> str:
     return resolve_prompt_profile(model, engine).llm_style
 
 
+#: 引擎专业模板文件名（随插件发布在 knowledge/ 下），与 Anima 的模板同一套机制。
+KNOWLEDGE_FILES: dict[str, str] = {
+    QWEN21: "qwen21_提示词模版.txt",
+    KREA2: "krea2_提示词模版.txt",
+}
+
+#: 各引擎在不同模式下要注入的章节标题；章节按「到下一个 ## 标题为止」截取。
+_KNOWLEDGE_SECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
+    QWEN21: {
+        "txt2img": (
+            "## 1. ROLE",
+            "## 2. OUTPUT PROTOCOL",
+            "## 3. SLOT ORDER",
+            "## 4. TEXT RENDERING",
+            "## 6. ANTI-PATTERNS",
+        ),
+        "img2img": ("## 1. ROLE", "## 5. EDIT MODE", "## 6. ANTI-PATTERNS"),
+    },
+    KREA2: {
+        "txt2img": (
+            "## 1. ROLE",
+            "## 2. OUTPUT PROTOCOL",
+            "## 3. SLOT ORDER",
+            "## 4. WORD BUDGET",
+            "## 5. DECISION TREE",
+            "## 7. TEXT IN IMAGE",
+        ),
+        "img2img": (
+            "## 1. ROLE",
+            "## 2. OUTPUT PROTOCOL",
+            "## 3. SLOT ORDER",
+            "## 4. WORD BUDGET",
+        ),
+    },
+}
+
+
+def _heading_block(text: str, start: str) -> str:
+    """截取从 ``start`` 标题起、到下一个二级标题之前的内容。"""
+    index = text.find(start)
+    if index < 0:
+        return ""
+    end = text.find("\n## ", index + len(start))
+    block = text[index:] if end < 0 else text[index:end]
+    return block.strip()
+
+
+def find_knowledge_path(plugin_dir: Path | str | None, engine: str = "") -> Path | None:
+    """定位该引擎随插件发布的专业模板；没有对应档案时返回 ``None``。"""
+    key = normalise_engine(engine)
+    name = KNOWLEDGE_FILES.get(key)
+    if not name or plugin_dir is None:
+        return None
+    path = Path(plugin_dir) / "knowledge" / name
+    try:
+        return path if path.is_file() else None
+    except OSError:
+        return None
+
+
+def build_knowledge_context(
+    plugin_dir: Path | str | None,
+    model: str = "",
+    engine: str = "",
+    mode: str = "txt2img",
+    maximum: int = 2200,
+) -> str:
+    """返回该引擎专业模板的章节上下文，供提示词优化器与 Anima 知识注入对称使用。
+
+    标签族（Anima）返回空串，由 ``anima_knowledge.build_context`` 负责；
+    模板缺失或读取失败时同样返回空串，调用方回落到 ``enhancer_extra`` 的紧凑规则。
+
+    Args:
+        plugin_dir: 插件根目录，模板位于其 ``knowledge/`` 子目录。
+        model: 已选扩散模型文件名。
+        engine: ``DrawParams.engine``，优先级高于文件名。
+        mode: ``txt2img`` 或 ``img2img``。
+        maximum: 返回文本的字符上限。
+
+    Returns:
+        由若干章节拼成的参考文本；无可用模板时为空串。
+    """
+    profile = resolve_prompt_profile(model, engine)
+    if profile.family != NATURAL:
+        return ""
+    path = find_knowledge_path(plugin_dir, profile.key)
+    if path is None:
+        return ""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return ""
+    mode_key = "img2img" if str(mode or "").strip().casefold() == "img2img" else "txt2img"
+    headings = _KNOWLEDGE_SECTIONS.get(profile.key, {}).get(mode_key, ())
+    blocks = [_heading_block(source, heading) for heading in headings]
+    body = "\n\n".join(block for block in blocks if block)
+    if not body:
+        return ""
+    limit = max(600, min(6000, int(maximum or 2200)))
+    return body[:limit]
+
+
 def describe(model: str = "", engine: str = "") -> dict[str, object]:
     """给 WebUI / 命令回复用的可序列化摘要。"""
     profile = resolve_prompt_profile(model, engine)
@@ -267,4 +383,5 @@ def describe(model: str = "", engine: str = "") -> dict[str, object]:
         "slot_order": list(profile.slot_order),
         "negative_effective": profile.negative_effective,
         "avoid": list(profile.avoid),
+        "knowledge": KNOWLEDGE_FILES.get(profile.key, ""),
     }

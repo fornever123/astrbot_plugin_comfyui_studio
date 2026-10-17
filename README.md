@@ -2,7 +2,7 @@
 
 将已有 ComfyUI 接入 AstrBot：支持中文指令、自然语言绘图、LoRA 和提示词预设管理。自带基础工作流、推荐参数及可编辑的 AI 提示词模板；模型权重由用户安装到 ComfyUI。
 
-[![版本](https://img.shields.io/badge/版本-1.4.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.4.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -743,6 +743,24 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.4.1
+
+- 📚 **三引擎提示词模板对齐到同一规格**：Qwen 2.1 与 Krea 2 补齐了随插件发布的专业模板
+  （`knowledge/qwen21_提示词模版.txt`、`knowledge/krea2_提示词模版.txt`），
+  与 Anima 的 `knowledge/提示词模版.txt` 同一套注入机制：模板里的 ROLE / OUTPUT PROTOCOL /
+  SLOT ORDER / 反模式等章节会在 AI 优化时按模式（文生图 / 图生图）自动注入。
+  - **Krea 2**：加入「词预算 = 变焦」规则（谁先写、谁写得多，谁就占画面；主体优先收紧构图、
+    环境优先拉远全景；想让人物的脚进画面要写锚点短语而不是 `full body`）、
+    光线必须写光源与方向、图内文字加引号且限一个短招牌。
+  - **Qwen 2.1**：加入「首句定框架」（媒介 + 风格 + 主体 + 色板）、颜色与材质必须带修饰词、
+    透明图官方 RGBA 三句式、图内文字逐字引号；编辑链路改用「属性解耦」写法——
+    只改点名属性并改到一眼可辨，其余锁死原图，同时区分「泄漏」与「改不到位」两种失败。
+- 🐞 **修正负面提示词的错误判断**：Qwen 2.1 原先被标记为「负面提示词有效」，但插件内置的
+  `qwen21_t2i_api.json` / `qwen21_edit_api.json` 采样 `cfg=1.0`，负面分支被 CFG 完全忽略。
+  现在与 Krea 2 一致，会提示「排除项要写成正面描述」。
+- 🔧 **命令翻译链路也认引擎**：`/文生图 ai` 这类不经过提示词优化器的路径，以前只有 Qwen 2.1
+  拿到专属规则、Krea 2 会被当成 Anima；现在统一按引擎档案注入。
 
 ### v1.4.0
 

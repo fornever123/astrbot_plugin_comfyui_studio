@@ -47,6 +47,7 @@ from .anima_knowledge import (
     is_drawing_request,
 )
 from .prompt_profiles import (
+    build_knowledge_context,
     build_llm_style,
     describe as describe_prompt_profile,
     negative_is_effective,
@@ -102,7 +103,7 @@ from .qwen21_workflows import adapt_template as adapt_qwen21_template
 from .krea2_workflows import adapt_template as adapt_krea2_template
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.4.0"
+PLUGIN_VERSION = "1.4.1"
 
 
 def _log_path(value: object) -> str:
@@ -2323,14 +2324,23 @@ class ComfyUIAIStudio(Star):
             if anima_context:
                 system_prompt = f"【Anima 提示词知识】\n{anima_context}\n\n{system_prompt}"
         else:
-            # 自然语言系允许用户补充自己的写法要点（例如固定的镜头词表）。
+            # 自然语言系：注入随插件发布的专业模板（与 Anima 知识注入同一套机制），
+            # 用户自定义要点排在其后，作为增量补充。
+            knowledge = ""
+            if hasattr(self, "plugin_dir"):
+                knowledge = build_knowledge_context(
+                    self.plugin_dir, model, engine, mode, 2200
+                )
             override = str(
                 self._get(f"plugin_ai_{profile.key}_context", "") or ""
             ).strip()
+            blocks: list[str] = []
+            if knowledge:
+                blocks.append(f"【{profile.label} 提示词知识】\n{knowledge}")
             if override:
-                system_prompt = (
-                    f"【{profile.label} 补充要点】\n{override}\n\n{system_prompt}"
-                )
+                blocks.append(f"【{profile.label} 补充要点】\n{override}")
+            if blocks:
+                system_prompt = "\n\n".join(blocks) + "\n\n" + system_prompt
         if not str(text or "").strip():
             raise AIError("请填写需要优化的画面描述或编辑要求")
         user_prompt = f"需要优化的绘图要求：\n{text}"
@@ -2417,12 +2427,26 @@ class ComfyUIAIStudio(Star):
                 "",
             ) or ""
         )
-        qwen21_prompt_mode = self._is_qwen21_model(selected_prompt_model)
-        if qwen21_prompt_mode:
+        prompt_profile = resolve_prompt_profile(selected_prompt_model, engine_override)
+        if prompt_profile.family == "natural":
+            engine_knowledge = ""
+            if hasattr(self, "plugin_dir"):
+                engine_knowledge = build_knowledge_context(
+                    self.plugin_dir,
+                    selected_prompt_model,
+                    engine_override,
+                    "img2img" if is_img2img_llm else "txt2img",
+                    1800,
+                )
             system_prompt = (
-                f"{system_prompt}\n\n你当前为 Qwen Image 2.1 提示词模式。请使用简洁、自然的中文画面描述；"
-                "不得转换成 Anima/Danbooru 英文标签，不得输出分析过程，只输出供工作流使用的画面描述。"
+                f"{system_prompt}\n\n你当前为 {prompt_profile.label} 提示词模式。"
+                f"{prompt_profile.llm_style}"
+                "不得输出分析过程，只输出供工作流使用的画面描述。"
             )
+            if engine_knowledge:
+                system_prompt += (
+                    f"\n\n【{prompt_profile.label} 提示词知识】\n{engine_knowledge}"
+                )
         elif not is_img2img_llm:
             # context.llm_generate() 不会再次经过当前插件的 on_llm_request
             # 过滤器，故在文生图提示词请求中主动复用内置 Anima 精简知识。

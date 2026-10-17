@@ -44,6 +44,8 @@ SHIPPED_ASSETS = (
     "pages/console/app.js",
     "pages/console/style.css",
     "knowledge/提示词模版.txt",
+    "knowledge/qwen21_提示词模版.txt",
+    "knowledge/krea2_提示词模版.txt",
     "workflows/文生图.json",
     "workflows/高清放大.json",
     "workflows/Anima_ControlNet文生图.json",

@@ -33,7 +33,8 @@ def test_krea2_is_natural_language_and_ignores_negative_prompt():
     assert profile.family == "natural"
     assert profile.language == "zh"
     assert negative_is_effective("krea2_turbo-Q4_K_M.gguf") is False
-    assert negative_is_effective("qwen_image_2.1_bf16.safetensors") is True
+    # 内置 qwen21 工作流 cfg=1.0，负面分支被 CFG 完全忽略，不能当有效。
+    assert negative_is_effective("qwen_image_2.1_bf16.safetensors") is False
     assert negative_is_effective("anima-2.9b.safetensors") is True
 
 
@@ -97,3 +98,33 @@ def test_describe_reports_slot_order_and_negative_policy():
     assert summary["negative_effective"] is False
     assert summary["slot_order"]
     assert "负面提示词（CFG=1 无效）" in summary["avoid"]
+    assert summary["knowledge"] == "krea2_提示词模版.txt"
+
+
+def test_engine_knowledge_templates_ship_with_the_plugin():
+    from prompt_profiles import KNOWLEDGE_FILES, build_knowledge_context
+
+    for engine, filename in KNOWLEDGE_FILES.items():
+        assert (PLUGIN_DIR / "knowledge" / filename).is_file()
+
+    krea = build_knowledge_context(PLUGIN_DIR, "", "krea2", "txt2img")
+    # Krea 2 的反直觉规则必须进上下文，否则等于没装专业模板。
+    assert "WORD BUDGET" in krea and "变焦" in krea
+    assert "光源" in krea
+    assert "双引号" in krea
+
+    qwen_t2i = build_knowledge_context(PLUGIN_DIR, "", "qwen21", "txt2img")
+    assert "首句定框架" in qwen_t2i
+    assert "RGBA image with transparency" in qwen_t2i
+
+    qwen_edit = build_knowledge_context(PLUGIN_DIR, "", "qwen21", "img2img")
+    assert "EDIT MODE" in qwen_edit
+    assert "属性解耦" in qwen_edit
+    assert "泄漏" in qwen_edit and "改不到位" in qwen_edit
+    # 编辑模式不该把文生图的分层章节一起塞进来。
+    assert "SLOT ORDER" not in qwen_edit
+
+    # 标签族没有引擎模板，返回空串，由 Anima 自己的知识库负责。
+    assert build_knowledge_context(PLUGIN_DIR, "anima-2.9b.safetensors") == ""
+    # 模板缺失时不能抛异常。
+    assert build_knowledge_context(None, "", "krea2") == ""
