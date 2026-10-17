@@ -104,7 +104,7 @@ from .qwen21_workflows import adapt_template as adapt_qwen21_template
 from .krea2_workflows import adapt_template as adapt_krea2_template
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.4.2"
+PLUGIN_VERSION = "1.4.3"
 
 
 def _log_path(value: object) -> str:
@@ -10564,7 +10564,7 @@ class ComfyUIAIStudio(Star):
             logger.warning("[%s] 生成帮助图片失败，回退文字帮助：%s", PLUGIN_NAME, exc)
             yield event.plain_result(self._help_text())
 
-    @filter.command("文生图", alias=["txt2img"], desc="使用原始工作流进行文生图")
+    @filter.command("文生图", alias=["txt2img", "a", "anima"], desc="使用原始工作流进行文生图（昵称：/a、/anima）")
     async def command_txt2img(self, event: AstrMessageEvent, prompt: GreedyStr):
         try:
             params = fill_params(str(prompt), "txt2img")
@@ -10590,7 +10590,7 @@ class ComfyUIAIStudio(Star):
             yield event.plain_result(start_reply)
         self._schedule_draw(event, params, "txt2img")
 
-    @filter.command("水粉", alias=["krea2", "克雷亚"], desc="使用 Krea 2 Turbo 引擎生成图片（中文自然语言提示词）")
+    @filter.command("水粉", alias=["krea2", "克雷亚", "k"], desc="使用 Krea 2 Turbo 引擎生成图片（中文自然语言提示词，昵称：/k）")
     async def command_krea2(self, event: AstrMessageEvent, prompt: GreedyStr):
         """Krea 2 专用入口。
 
@@ -10625,7 +10625,7 @@ class ComfyUIAIStudio(Star):
             yield event.plain_result(start_reply)
         self._schedule_draw(event, params, "txt2img")
 
-    @filter.command("qwen", alias=["千问", "qwen21"], desc="使用 Qwen Image 2.1 引擎生成图片（中文自然语言提示词）")
+    @filter.command("qwen", alias=["千问", "qwen21", "q"], desc="使用 Qwen Image 2.1 引擎生成图片（中文自然语言提示词，昵称：/q）")
     async def command_qwen21(self, event: AstrMessageEvent, prompt: GreedyStr):
         """Qwen Image 2.1 文生图专用入口。
 

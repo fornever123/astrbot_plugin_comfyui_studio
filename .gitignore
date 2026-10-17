@@ -23,3 +23,6 @@ backup-*/
 dist/
 *.zip
 _purge_probe.txt
+
+# 离线 UI 原型（不随插件发布）
+_ui_redesign/

@@ -163,7 +163,7 @@ function initLoraMode() {
 }
 
 function initLoraSection() {
-  const sections = ["normal", "style", "krea2", "qwen21"];
+  const sections = ["normal", "style", "krea2", "qwen21", "unfiled"];
   const apply = section => {
     loraSection = sections.includes(section) ? section : "normal";
     document.querySelectorAll(".lora-management-band").forEach(panel => {
@@ -803,6 +803,7 @@ function renderLoras() {
   renderLorasRaw();
   renderStyleLoras();
   renderEngineLoras();
+  renderUnfiledLoras();
 }
 
 // 每个引擎（Krea 2 / Qwen 2.1）各有一份独立 LoRA 启用列表，互不影响，
@@ -886,6 +887,29 @@ function renderEngineLoras() {
   });
 }
 
+// 未被任何引擎关键词命中的 LoRA：过去会静默落进 Anima 的默认列表，这里单独列出来提醒。
+const UNFILED_LORA_MATCHERS = [/krea[_-]?2/i, /qwen/i, /anima/i];
+
+function renderUnfiledLoras() {
+  const container = document.getElementById("unfiledLoras");
+  if (!container) return;
+  const items = loraItems.length
+    ? loraItems
+    : (modelData.loras || []).map(file_name => ({
+        file_name,
+        alias: String(file_name).replace(/\.[^.]+$/, ""),
+      }));
+  const keyword = String(document.getElementById("unfiledLoraSearch")?.value || "").trim().toLowerCase();
+  const rows = items
+    .filter(item => !UNFILED_LORA_MATCHERS.some(re => re.test(String(item.file_name || ""))))
+    .filter(item => !keyword || [item.file_name, item.alias].some(value => String(value || "").toLowerCase().includes(keyword)))
+    .sort((a, b) => String(a.file_name).localeCompare(String(b.file_name)))
+    .map(item => `<label class="engine-lora-row"><span class="engine-lora-name"><strong>${escapeHtml(item.alias || item.file_name)}</strong><code>${escapeHtml(String(item.file_name || ""))}</code></span></label>`);
+  container.innerHTML = rows.length
+    ? `<div class="empty" style="text-align:left">下列 ${rows.length} 个 LoRA 未被任何引擎认领，当前仍会落进 Anima 的默认列表。</div>` + rows.join("")
+    : `<div class="empty">没有未分组的 LoRA。</div>`;
+}
+
 async function saveEngineLoras(engine) {
   const meta = ENGINE_LORA_PANELS[engine];
   if (!meta) return;
@@ -920,6 +944,8 @@ function initEngineLoras() {
     const compatible = document.getElementById(meta.compatible);
     if (compatible) compatible.onchange = () => renderEngineLoras();
   });
+  const unfiledSearch = document.getElementById("unfiledLoraSearch");
+  if (unfiledSearch) unfiledSearch.oninput = () => renderUnfiledLoras();
   document.addEventListener("change", event => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;

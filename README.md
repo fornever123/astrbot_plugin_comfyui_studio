@@ -2,7 +2,7 @@
 
 将已有 ComfyUI 接入 AstrBot：支持中文指令、自然语言绘图、LoRA 和提示词预设管理。自带基础工作流、推荐参数及可编辑的 AI 提示词模板；模型权重由用户安装到 ComfyUI。
 
-[![版本](https://img.shields.io/badge/版本-1.4.2-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.4.3-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -743,6 +743,12 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.4.3
+- 新增「未分组 LoRA」页签：文件名不含 `krea2`、`qwen`、`anima` 任一关键词的 LoRA
+  单独列出，不再默默混进 Anima 的默认列表（该页签仅做呈现，不影响原有加载行为）。
+- 新增模型昵称指令：`/a`、`/anima`（走默认文生图）、`/k`（Krea 2）、`/q`（Qwen Image 2.1），
+  与原有的 `/文生图`、`/水粉`、`/qwen` 完全等价。
 
 ### v1.4.2
 

@@ -489,10 +489,10 @@ def test_bundled_workflows_cover_every_mode():
 
 
 def test_plugin_version_is_1_4_2_everywhere():
-    assert 'PLUGIN_VERSION = "1.4.2"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    assert "version: 1.4.2" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-    assert "版本 v1.4.2" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
-    assert "版本-1.4.2-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
+    assert 'PLUGIN_VERSION = "1.4.3"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    assert "version: 1.4.3" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
+    assert "版本 v1.4.3" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
+    assert "版本-1.4.3-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
     assert "0.10.3" not in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
 
 

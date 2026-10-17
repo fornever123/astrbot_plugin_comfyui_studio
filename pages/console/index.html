@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Anima 全能绘画台</title>
-  <link rel="stylesheet" href="style.css?v=1.4.2-nsfwprompt">
+  <link rel="stylesheet" href="style.css?v=1.4.3-nsfwprompt">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.4.2</p>
+        <p id="version" class="version">版本 v1.4.3</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -71,6 +71,7 @@
       <button id="styleLoraTab" class="lora-section-tab" type="button" data-lora-section="style" role="tab" aria-selected="false">画风 LoRA</button>
       <button id="krea2LoraTab" class="lora-section-tab" type="button" data-lora-section="krea2" role="tab" aria-selected="false">Krea 2 LoRA</button>
       <button id="qwen21LoraTab" class="lora-section-tab" type="button" data-lora-section="qwen21" role="tab" aria-selected="false">Qwen 2.1 LoRA</button>
+      <button id="unfiledLoraTab" class="lora-section-tab" type="button" data-lora-section="unfiled" role="tab" aria-selected="false">未分组 LoRA</button>
     </div>
 
     <section class="band">
@@ -158,6 +159,16 @@
         <label class="check"><input id="qwen21LoraOnlyCompatible" type="checkbox">只显示文件名含 qwen 的 LoRA</label>
       </div>
       <div id="qwen21Loras" class="engine-lora-list"></div>
+    </section>
+
+    <section class="band engine-lora-band" data-engine-lora-panel="unfiled" hidden>
+      <div class="section-head">
+        <div><h2>未分组 LoRA</h2><p>文件名不含 <code>krea2</code>、<code>qwen</code>、<code>anima</code> 任一关键词的 LoRA，没有被任何引擎认领。它们当前仍会落进 Anima 的默认列表；本页只做呈现，需要独立归属请重命名文件或到对应引擎页勾选。</p></div>
+      </div>
+      <div class="engine-lora-toolbar">
+        <label class="lora-search">搜索 LoRA<input id="unfiledLoraSearch" class="input" type="search" placeholder="按昵称或文件名搜索"></label>
+      </div>
+      <div id="unfiledLoras" class="engine-lora-list"></div>
     </section>
 
     </div>
@@ -481,6 +492,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.4.2-nsfwprompt"></script>
+  <script src="app.js?v=1.4.3-nsfwprompt"></script>
 </body>
 </html>
