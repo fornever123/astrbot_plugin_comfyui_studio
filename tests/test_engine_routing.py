@@ -89,6 +89,51 @@ def test_console_has_two_extra_lora_sections():
     assert "krea2_lora_list" in js and "qwen21_lora_list" in js
 
 
+def test_nsfw_prompt_gate_requires_switch_and_respects_blacklist():
+    """成人向提示词必须同时满足：开关打开 + 当前群不在黑名单。黑名单优先。"""
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    class _Gate:
+        def __init__(self, cfg, group="", blacklist=()):
+            self.cfg = cfg
+            self.group = group
+            self.blacklist = set(blacklist)
+
+        def _get(self, key, default=None):
+            return self.cfg.get(key, default)
+
+        def _group_id(self, event):
+            return self.group
+
+        def _nsfw_group_ids(self):
+            return self.blacklist
+
+    active = ComfyUIAIStudio._nsfw_prompt_active
+
+    # 默认关闭：没配开关就是 False
+    assert active(_Gate({}), None) is False
+    # 开关打开、私聊/白名单群：可用
+    assert active(_Gate({"nsfw_prompt_enabled": True}), None) is True
+    assert active(_Gate({"nsfw_prompt_enabled": True}, "g2", {"g1"}), None) is True
+    # 开关打开但在黑名单群：必须关掉
+    assert active(_Gate({"nsfw_prompt_enabled": True}, "g1", {"g1"}), None) is False
+    # 字符串 "false" 不能被当成真值
+    assert active(_Gate({"nsfw_prompt_enabled": "false"}), None) is False
+    assert active(_Gate({"nsfw_prompt_enabled": "true"}), None) is True
+
+
+def test_schema_and_console_expose_nsfw_prompt_switch():
+    schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
+    assert schema["nsfw_prompt_enabled"]["type"] == "bool"
+    assert schema["nsfw_prompt_enabled"]["default"] is False
+    for rel in ("index.html", "pages/console/index.html"):
+        html = (PLUGIN_DIR / rel).read_text(encoding="utf-8")
+        assert 'id="nsfw_prompt_enabled"' in html
+    for rel in ("app.js", "pages/console/app.js"):
+        js = (PLUGIN_DIR / rel).read_text(encoding="utf-8")
+        assert "nsfw_prompt_enabled" in js
+
+
 def test_qwen21_engine_keeps_chinese_and_drops_anima_quality(tmp_path):
     """engine=qwen21 时不能被 Anima 的翻译链改写成标签，也不能追加其默认正面词。"""
     import asyncio

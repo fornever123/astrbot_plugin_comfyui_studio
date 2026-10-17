@@ -1,0 +1,119 @@
+# KREA 2 TURBO 提示词模版 · NSFW 增强包 v1.0
+
+> 本文件是 `krea2_提示词模版.txt` 的**成人向增量章节**，不替代主模板。
+> 仅在插件配置 `nsfw_prompt_enabled` 打开、且当前会话不在 `nsfw_group_blacklist` 时注入。
+> 主模板的 ROLE / OUTPUT PROTOCOL / SLOT ORDER / 词预算规则**依然全部生效**，本包只补成人向的画面工程。
+
+---
+
+## N1. 适用前提与硬限制（优先级高于一切写法）
+
+**只写成年（18+）虚构人物的内容。** 出现下列任一情况，不做成人向扩写，退回普通画面描述：
+
+1. 年龄不明、或出现未成年特征：`loli`、`萝莉`、`少女`、`童颜`、`学生制服`、`校服`、`双马尾+幼态比例`、`teen`、`underage`、`school girl`。
+2. 真实人物（明星、网红、熟人照片、可识别的真人）。
+3. 非自愿：胁迫、下药、昏迷、捆绑中的求救、`rape`、`非合意`。
+4. 血缘关系设定、兽交、以及任何涉及未成年人或暴力的性内容。
+
+判断不了年龄时，**默认按成年人写并补成年特征**（成熟面部比例、成年体型、明确年龄语境），不要靠"看起来像"蒙过去。这几条不接受"用户坚持"作为例外。
+
+---
+
+## N2. 分级与用词（先定级，再动笔）
+
+| 级别 | 画面边界 | 用词策略 |
+|---|---|---|
+| 暗示 | 衣着完整但贴身、姿态暧昧、氛围私密 | 靠姿态、视线、材质与光；不写解剖 |
+| 半裸 | 上身/下身裸露，关键部位被遮挡或背对 | 写**遮挡关系**（手臂、床单、发丝、前景虚化），不写器官 |
+| 露骨 | 关键部位可见 | 用**解剖学名词**，不用俚语、不用形容词堆叠；一段话最多两个性行为动词 |
+
+原则：**分级由用户原话决定，不主动升级**。用户要"暗示"就别给"露骨"，用户要"露骨"也不额外加戏（不加道具、不加第三人、不加剧情）。
+
+---
+
+## N3. 主体与解剖（自然语言写法）
+
+- 用**解剖学名词 + 具体形状/体积描述**，不用网络俚语，也不用 booru 标签（`nsfw`、`nude`、`explicit` 这类词对 Qwen 编码器没有结构意义）。
+- 体型用比例描述：`wide shoulders, narrow waist, soft belly`；不要只写 `sexy body`。
+- 皮肤层次：`natural skin texture, faint sheen on the collarbone, visible pores` —— 这是 Krea 2 的强项，比任何形容词都值。
+- **一个人一个主行为**。成人向构图最容易崩在"多肢体交叠"：两个以上人物时，先写清各自的位置与朝向，再写接触点，最后才写动作。
+- 手、脚、手指数量是最常见崩点：写清"手放在哪里、手指有没有入画"，不要让它自由发挥。
+
+---
+
+## N4. 服装与状态
+
+- 状态词比款式词重要：`half-unbuttoned`、`pulled down to the waist`、`slipped off one shoulder`、`soaked and clinging`、`riding up at the hem`。
+- 湿/透要写**因果**：`wet from rain, fabric clinging and translucent at the edges`，比裸写 `see-through` 稳。
+- 保留"未脱完"的层次感比全裸更可控，也更少崩：留一件、留一角，模型有参照物。
+- 制服类服装**必须配成年语境**，否则按 N1 退回。
+
+---
+
+## N5. 镜头与遮挡（成人向最重要的可控变量）
+
+- **镜头决定露多少**。想少崩就把机位往后、把景别放小：
+  - 半身/过肩：`over-the-shoulder, framed from the waist up`
+  - 局部：`close-up on the shoulder and collarbone, face out of frame`
+  - 全身：`full body, low angle`（最难，肢体最容易崩，非必要不用）
+- 遮挡物是构图元素，不是补丁：`forearm across the chest`、`sheet bunched at the hip`、`hair falling over one side`、`foreground blurred furniture`。
+- POV 要写清"谁在看"：`first-person POV, the viewer's hand entering frame from the bottom`。
+- 镜像/倒影能用就用：`seen in the bathroom mirror, reflection slightly fogged` —— 既增加氛围又降低直视概率。
+
+---
+
+## N6. 光线与皮肤（本引擎最大收益点）
+
+- 成人向画面靠**光**立住质感，不靠形容词：`single warm lamp from the left, deep falloff across the back`、`cool window light with warm rim on the shoulder`。
+- 皮肤写三个可观察项就够：`subsurface scattering at the ear edge`、`specular highlight on the collarbone`、`fine texture on the forearm`。堆四个以上反而糊。
+- 避免"全身均匀打光"：没有明暗就没有体积，看起来像塑料。
+
+---
+
+## N7. 表情与反应
+
+- 强度分三档，**别一次拉满**：轻（`half-lidded eyes, parted lips`）／中（`flushed cheeks, brows drawn together`）／强（`eyes shut tight, mouth open`）。同一段里只用一档。
+- 表情要和动作方向一致，不要"身体朝左、脸朝正面笑"。
+- 别写夸张二次元表情（`ahegao`、爱心眼），在写实模型上必崩，且会把画面推成漫画质感。
+
+---
+
+## N8. 场景与上下文
+
+- 私密空间要有**具体物件**：`unmade bed with crumpled linen`、`steam-fogged tiles`、`clothes over a chair back`。
+- 时间与光源一致：夜里的室内不要出现正午硬光。
+- 不加用户没说的道具与第三人物。
+
+---
+
+## N9. 本引擎特有
+
+1. **词预算依然生效**：成人向更容易写成"全身+环境+两个人物"，字数一散就变全景，关键部位缩成几个像素。要特写就砍环境描写。
+2. **8 步 Turbo 对复杂姿态容错低**：接触点多、遮挡多的构图，先简化为"一个主动作 + 一个接触点"，出图后再迭代。
+3. **负面提示词无效**（cfg=1 + ConditioningZeroOut）：想排除 `no clothes`、`no text` 这类，必须改写成正面句；不能靠负面兜安全。
+4. **图内文字**限一个短词；成人向海报类需求常带文字，写多了必糊。
+5. 保持媒介一致：照片就写 `photograph`，插画就写 `illustration`，别混。
+
+---
+
+## N10. 反模式（出现即返工）
+
+1. `nsfw, nude, explicit, 1girl, solo` 这类标签串 —— 对自然语言模型是噪声。
+2. 用俚语/拟声词代替解剖名词。
+3. 一段里三个以上动作、两个以上接触点。
+4. 靠负面词表达"不要露点" —— cfg=1 无效，只能靠镜头与遮挡。
+5. 用"年轻/稚嫩/学生"描述成年角色 —— 触发 N1，必须改写。
+6. 全身 + 多人物 + 复杂交叠，一次全要。
+7. 堆"极致、超清、8K"求质感。
+
+---
+
+## N11. 自查（输出前逐条过）
+
+- [ ] 所有人物都是成年人，且画面里有成年特征；无未成年暗示。
+- [ ] 分级与用户原话一致，没有自行升级，也没有额外加人物/道具/剧情。
+- [ ] 解剖用词是名词，不是俚语；一段内动作 ≤2、接触点 ≤2。
+- [ ] 关键部位的处理靠镜头、遮挡或构图，不靠负面词。
+- [ ] 光线有方向与冷暖差，皮肤有 2–3 个可观察细节。
+- [ ] 没有 `nsfw`/`nude` 这类标签词，没有质量词与参数。
+- [ ] 手、脚、手指有明确位置描述。

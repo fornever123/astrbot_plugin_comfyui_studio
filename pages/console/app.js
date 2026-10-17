@@ -345,6 +345,8 @@ function fillConfig() {
   if (document.getElementById("llm_wait_timeout")) document.getElementById("llm_wait_timeout").value = config.llm_wait_timeout ?? 45;
   if (document.getElementById("draw_start_reply")) document.getElementById("draw_start_reply").value = config.draw_start_reply || "{mode}任务已提交，生成期间可以继续聊天，完成后会发送结果。";
   document.getElementById("draw_attach_prompt").checked = config.draw_attach_prompt === true || config.draw_attach_prompt === "true" || config.draw_attach_prompt === 1;
+  const nsfwPromptToggle = document.getElementById("nsfw_prompt_enabled");
+  if (nsfwPromptToggle) nsfwPromptToggle.checked = config.nsfw_prompt_enabled === true || config.nsfw_prompt_enabled === "true" || config.nsfw_prompt_enabled === 1;
   document.getElementById("nsfw_group_blacklist").value = Array.isArray(config.nsfw_group_blacklist) ? config.nsfw_group_blacklist.join("\n") : (config.nsfw_group_blacklist || "");
   applyModerationConfig(config);
   document.getElementById("draw_reply_custom").value = config.draw_reply_custom || "{mode}完成，共 {count} 张。";
@@ -2060,7 +2062,7 @@ document.getElementById("saveModeration").onclick = async () => {
     show("图片安全审核设置已保存");
   } catch (e) { show(e.message); }
 };
-document.getElementById("saveReply").onclick = async () => { try { const payload = {draw_reply_mode: "custom", draw_delivery_mode: document.getElementById("draw_delivery_mode").value, llm_draw_start_reply_mode: document.getElementById("llm_draw_start_reply_mode")?.value || "ai", draw_queue_notice_enabled: document.getElementById("draw_queue_notice_enabled")?.checked !== false, draw_queue_notice_ai: document.getElementById("draw_queue_notice_ai")?.checked === true, llm_wait_timeout: Number(document.getElementById("llm_wait_timeout")?.value || 45), draw_attach_prompt: document.getElementById("draw_attach_prompt").checked, nsfw_group_blacklist: document.getElementById("nsfw_group_blacklist").value, draw_start_reply: document.getElementById("draw_start_reply")?.value || "", draw_reply_custom: document.getElementById("draw_reply_custom").value}; await post(`${API}/config`, payload); Object.assign(config, payload); show("回复、排队提示和群聊黑名单已保存"); } catch (e) { show(e.message); } };
+document.getElementById("saveReply").onclick = async () => { try { const payload = {draw_reply_mode: "custom", draw_delivery_mode: document.getElementById("draw_delivery_mode").value, llm_draw_start_reply_mode: document.getElementById("llm_draw_start_reply_mode")?.value || "ai", draw_queue_notice_enabled: document.getElementById("draw_queue_notice_enabled")?.checked !== false, draw_queue_notice_ai: document.getElementById("draw_queue_notice_ai")?.checked === true, llm_wait_timeout: Number(document.getElementById("llm_wait_timeout")?.value || 45), draw_attach_prompt: document.getElementById("draw_attach_prompt").checked, nsfw_group_blacklist: document.getElementById("nsfw_group_blacklist").value, nsfw_prompt_enabled: document.getElementById("nsfw_prompt_enabled")?.checked === true, draw_start_reply: document.getElementById("draw_start_reply")?.value || "", draw_reply_custom: document.getElementById("draw_reply_custom").value}; await post(`${API}/config`, payload); Object.assign(config, payload); show("回复、排队提示、群聊黑名单与提示词开关已保存"); } catch (e) { show(e.message); } };
 document.getElementById("addPreset").onclick = async () => {
   const name = document.getElementById("presetName").value;
   const content = document.getElementById("presetContent").value;

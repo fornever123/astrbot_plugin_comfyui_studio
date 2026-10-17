@@ -93,6 +93,12 @@
     "hint": "仅适用于 Qwen Image 2.1；默认关闭，不与文生图 LoRA 混用",
     "default": false
   },
+  "nsfw_prompt_enabled": {
+    "type": "bool",
+    "description": "引擎提示词启用 NSFW 增强版（18+）",
+    "hint": "只对明确要求成人向内容的请求生效，仍受 nsfw_group_blacklist 限制（黑名单群即使打开也不注入）。开启后为 Anima / Qwen 2.1 / Krea 2 追加成人向章节：成年特征强化、分级用词、镜头与遮挡、皮肤与光线；同时要求模型拒绝未成年、真实人物与非自愿设定",
+    "default": false
+  },
   "img2img_nsfw_lora_name": {
     "type": "string",
     "description": "Qwen Image 2.1 NSFW LoRA 文件名",

@@ -52,8 +52,20 @@ def find_template_path(plugin_dir: Path, extra_path: str = "") -> Path | None:
     return None
 
 
-def build_context(plugin_dir: Path, maximum: int = 2600, extra_path: str = "") -> str:
-    """返回内置 Anima 模板的精简上下文，读取失败时仍返回核心规则。"""
+def build_context(
+    plugin_dir: Path,
+    maximum: int = 2600,
+    extra_path: str = "",
+    nsfw: bool = False,
+) -> str:
+    """返回内置 Anima 模板的精简上下文，读取失败时仍返回核心规则。
+
+    Args:
+        plugin_dir: 插件根目录。
+        maximum: 常规章节的字符上限。
+        extra_path: WebUI 里覆盖的模板路径。
+        nsfw: 是否叠加模板自带的成人向章节（服装状态 / 体位 / 表情反应）。
+    """
     source = ""
     path = find_template_path(plugin_dir, extra_path)
     if path:
@@ -72,7 +84,38 @@ def build_context(plugin_dir: Path, maximum: int = 2600, extra_path: str = "") -
     ]
     reference = "\n\n".join(item.strip() for item in sections if item.strip())
     limit = max(800, min(6000, int(maximum or 2600)))
-    return f"{COMPACT_RULES}\n\n以下是内置 Anima 提示词工程师模板的精简参考，只遵守结构，不要逐字复述：\n{reference[:limit]}"
+    context = f"{COMPACT_RULES}\n\n以下是内置 Anima 提示词工程师模板的精简参考，只遵守结构，不要逐字复述：\n{reference[:limit]}"
+    if nsfw:
+        extra = build_nsfw_context(plugin_dir, 2600, extra_path, source=source)
+        if extra:
+            context += f"\n\n{extra}"
+    return context
+
+
+def build_nsfw_context(
+    plugin_dir: Path,
+    maximum: int = 2600,
+    extra_path: str = "",
+    source: str = "",
+) -> str:
+    """返回模板自带的成人向章节（服装状态 / 体位行为 / 表情反应），供叠加使用。
+
+    只在 ``nsfw_prompt_enabled`` 打开且会话不在黑名单群时由调用方追加；
+    模板读不到时返回空串，不影响主流程。
+    """
+    if not source:
+        path = find_template_path(plugin_dir, extra_path)
+        if path:
+            try:
+                source = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                source = ""
+    if not source:
+        return ""
+    extra = _section(source, "## 8. CLOTHING & STATE", "## 11. CAMERA & SHOT").strip()
+    if not extra:
+        return ""
+    return "以下是成人向（18+）章节，只在用户明确要求时使用：\n" + extra[: max(600, maximum)]
 
 
 def is_drawing_request(message: str) -> bool:

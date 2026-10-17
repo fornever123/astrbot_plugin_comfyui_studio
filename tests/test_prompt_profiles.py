@@ -128,3 +128,50 @@ def test_engine_knowledge_templates_ship_with_the_plugin():
     assert build_knowledge_context(PLUGIN_DIR, "anima-2.9b.safetensors") == ""
     # 模板缺失时不能抛异常。
     assert build_knowledge_context(None, "", "krea2") == ""
+
+
+def test_nsfw_pack_is_opt_in_and_keeps_the_base_template():
+    from prompt_profiles import build_knowledge_context
+
+    base = build_knowledge_context(PLUGIN_DIR, "", "krea2", "txt2img")
+    nsfw = build_knowledge_context(PLUGIN_DIR, "", "krea2", "txt2img", nsfw=True)
+
+    # 默认不注入成人向内容
+    assert "适用前提与硬限制" not in base
+    assert "N1." not in base
+    # 打开后：主模板章节仍在，且叠加成人向章节
+    assert "WORD BUDGET" in nsfw
+    assert "适用前提与硬限制" in nsfw
+    assert "18+" in nsfw
+    # 硬限制必须写明拒绝未成年与真实人物
+    assert "未成年" in nsfw and "真实人物" in nsfw
+    # Krea 2 的引擎差异：负面无效必须改写正面表述
+    assert "负面提示词无效" in nsfw or "ConditioningZeroOut" in nsfw
+
+
+def test_nsfw_pack_for_qwen_edit_keeps_edit_rules():
+    from prompt_profiles import build_knowledge_context
+
+    nsfw = build_knowledge_context(PLUGIN_DIR, "", "qwen21", "img2img", nsfw=True)
+    # 编辑模式的主模板章节不能丢
+    assert "EDIT MODE" in nsfw
+    assert "属性解耦" in nsfw
+    # 成人向编辑的额外约束必须出现
+    assert "编辑模式（图生图）额外约束" in nsfw
+    # 成人向章节覆盖分级与遮挡
+    assert "分级与用词" in nsfw
+    assert "镜头与遮挡" in nsfw
+
+
+def test_anima_nsfw_context_comes_from_the_shipped_template():
+    import anima_knowledge
+
+    plain = anima_knowledge.build_context(PLUGIN_DIR)
+    nsfw = anima_knowledge.build_context(PLUGIN_DIR, nsfw=True)
+    assert "成人向" not in plain
+    assert "成人向（18+）章节" in nsfw
+    # 模板自带的体位/表情章节被追加进来
+    assert "CLOTHING & STATE" in nsfw or "穿着" in nsfw
+    # 单独取成人向章节（用户自定义要点时走这条）
+    extra = anima_knowledge.build_nsfw_context(PLUGIN_DIR)
+    assert extra and len(extra) > 200

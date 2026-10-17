@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Anima 全能绘画台</title>
-  <link rel="stylesheet" href="style.css?v=1.4.1-proknowledge">
+  <link rel="stylesheet" href="style.css?v=1.4.2-nsfwprompt">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.4.1</p>
+        <p id="version" class="version">版本 v1.4.2</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -389,6 +389,7 @@
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>回复设置</h2><p>绘图开始和完成状态使用固定中文消息，不再额外调用 AI 判断。</p></div><button id="saveReply" class="primary">保存回复设置</button></div>
       <div class="form-grid">
         <label class="wide">群聊涩图黑名单<textarea id="nsfw_group_blacklist" class="textarea" placeholder="每行一个群号，也支持逗号、空格分隔；黑名单群仍可生成普通图片"></textarea></label>
+        <label class="check wide"><input id="nsfw_prompt_enabled" type="checkbox">引擎提示词启用 NSFW 增强版（18+，黑名单群不生效）</label>
         <label class="check wide"><input id="draw_attach_prompt" type="checkbox">发送图片时附带本次实际提示词</label>
         <label>绘图完成后的回复方式<select id="draw_reply_mode" class="select"><option value="custom">固定完成回复</option></select><small class="field-hint">图片发送完成后直接使用下方固定内容，不再额外调用 AI 判断。</small></label>
         <label>绘图结果发送方式<select id="draw_delivery_mode" class="select"><option value="normal">普通消息</option><option value="forward">群聊合并转发</option></select></label>
@@ -480,6 +481,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.4.1-proknowledge"></script>
+  <script src="app.js?v=1.4.2-nsfwprompt"></script>
 </body>
 </html>

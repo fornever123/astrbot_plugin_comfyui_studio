@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -276,6 +277,12 @@ KNOWLEDGE_FILES: dict[str, str] = {
     KREA2: "krea2_提示词模版.txt",
 }
 
+#: 成人向增量包。只在 ``nsfw_prompt_enabled`` 打开、且会话不在黑名单群时叠加。
+KNOWLEDGE_FILES_NSFW: dict[str, str] = {
+    QWEN21: "qwen21_提示词模版_nsfw.txt",
+    KREA2: "krea2_提示词模版_nsfw.txt",
+}
+
 #: 各引擎在不同模式下要注入的章节标题；章节按「到下一个 ## 标题为止」截取。
 _KNOWLEDGE_SECTIONS: dict[str, dict[str, tuple[str, ...]]] = {
     QWEN21: {
@@ -330,12 +337,29 @@ def find_knowledge_path(plugin_dir: Path | str | None, engine: str = "") -> Path
         return None
 
 
+def _nsfw_blocks(text: str) -> str:
+    """收集 ``## N<数字>.`` 形式的成人向章节（主模板章节用阿拉伯数字，不会冲突）。"""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if re.match(r"^## N\d+\.", line):
+            if current:
+                blocks.append("\n".join(current).strip())
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current).strip())
+    return "\n\n".join(block for block in blocks if block)
+
+
 def build_knowledge_context(
     plugin_dir: Path | str | None,
     model: str = "",
     engine: str = "",
     mode: str = "txt2img",
     maximum: int = 2200,
+    nsfw: bool = False,
 ) -> str:
     """返回该引擎专业模板的章节上下文，供提示词优化器与 Anima 知识注入对称使用。
 
@@ -347,7 +371,8 @@ def build_knowledge_context(
         model: 已选扩散模型文件名。
         engine: ``DrawParams.engine``，优先级高于文件名。
         mode: ``txt2img`` 或 ``img2img``。
-        maximum: 返回文本的字符上限。
+        maximum: 主模板返回文本的字符上限。
+        nsfw: 是否叠加成人向增量包（调用方须已通过黑名单与开关判定）。
 
     Returns:
         由若干章节拼成的参考文本；无可用模板时为空串。
@@ -369,7 +394,32 @@ def build_knowledge_context(
     if not body:
         return ""
     limit = max(600, min(6000, int(maximum or 2200)))
-    return body[:limit]
+    body = body[:limit]
+    if nsfw:
+        extra = _load_nsfw_context(plugin_dir, profile.key)
+        if extra:
+            body = f"{body}\n\n{extra}"
+    return body
+
+
+def _load_nsfw_context(
+    plugin_dir: Path | str | None, key: str, maximum: int = 3800
+) -> str:
+    """读取并截取成人向增量包；文件缺失时返回空串（不抛异常）。
+
+    上限按整份增量包取（约 3.7k 字），确保引擎差异与自查章节不会被截断。
+    """
+    name = KNOWLEDGE_FILES_NSFW.get(key)
+    if not name or plugin_dir is None:
+        return ""
+    path = Path(plugin_dir) / "knowledge" / name
+    try:
+        if not path.is_file():
+            return ""
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return ""
+    return _nsfw_blocks(text)[: max(600, min(6000, int(maximum or 3800)))]
 
 
 def describe(model: str = "", engine: str = "") -> dict[str, object]:

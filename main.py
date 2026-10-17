@@ -43,6 +43,7 @@ from .prompt_enhancer import (
 )
 from .anima_knowledge import (
     build_context as build_anima_context,
+    build_nsfw_context as build_anima_nsfw_context,
     find_template_path,
     is_drawing_request,
 )
@@ -103,7 +104,7 @@ from .qwen21_workflows import adapt_template as adapt_qwen21_template
 from .krea2_workflows import adapt_template as adapt_krea2_template
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.4.1"
+PLUGIN_VERSION = "1.4.2"
 
 
 def _log_path(value: object) -> str:
@@ -341,7 +342,7 @@ WRITABLE_CONFIG = {
     "sampler_name", "scheduler", "denoise", "hires_scale",
     "hires_steps", "hires_denoise", "hires_upscale_model", "max_concurrent",
     "draw_start_reply", "draw_reply_mode", "draw_reply_custom", "draw_delivery_mode",
-    "draw_attach_prompt", "nsfw_group_blacklist",
+    "draw_attach_prompt", "nsfw_group_blacklist", "nsfw_prompt_enabled",
     "llm_draw_start_reply_mode", "draw_queue_notice_enabled", "draw_queue_notice_ai",
     "draw_queue_limit_enabled", "draw_queue_limit_count",
     "plain_translate_enabled", "plain_translate_url",
@@ -1247,6 +1248,25 @@ class ComfyUIAIStudio(Star):
         if not group_id or group_id not in self._nsfw_group_ids():
             return ""
         return ", ".join(NSFW_GROUP_NEGATIVE)
+
+    def _nsfw_prompt_active(self, event: AstrMessageEvent | None = None) -> bool:
+        """成人向提示词增强是否可用于本次请求。
+
+        两个条件同时满足才生效：配置开关 ``nsfw_prompt_enabled`` 打开，且当前会话
+        不在 ``nsfw_group_blacklist`` 里。黑名单优先，开关不能绕过它。
+        """
+        raw = self._get("nsfw_prompt_enabled", False)
+        if isinstance(raw, str):
+            # 配置文件里可能被写成字符串（"false" 是真值陷阱），显式解析。
+            enabled = raw.strip().casefold() in {"1", "true", "yes", "on"}
+        else:
+            enabled = bool(raw)
+        if not enabled:
+            return False
+        group_id = self._group_id(event)
+        if group_id and group_id in self._nsfw_group_ids():
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # 图片安全审核：输入 / 输出双向检测
@@ -2317,10 +2337,22 @@ class ComfyUIAIStudio(Star):
             system_prompt = f"【现有自定义规则】\n{custom}\n\n{system_prompt}"
         profile = resolve_prompt_profile(model, engine)
         is_tags = mode == "txt2img" and profile.family == "tags"
+        # 成人向增强包：开关 + 群黑名单双重判定，黑名单优先。
+        nsfw_prompt = self._nsfw_prompt_active(event)
         if is_tags:
             anima_context = str(self._get("plugin_ai_anima_context", "") or "").strip()
             if not anima_context and hasattr(self, "plugin_dir"):
-                anima_context = build_anima_context(self.plugin_dir, 2600, self._anima_template_override())
+                anima_context = build_anima_context(
+                    self.plugin_dir, 2600, self._anima_template_override(),
+                    nsfw=nsfw_prompt,
+                )
+            elif nsfw_prompt and hasattr(self, "plugin_dir"):
+                # 用户自定义了 Anima 要点时，仍然单独补上模板自带的成人向章节。
+                extra = build_anima_nsfw_context(
+                    self.plugin_dir, 2600, self._anima_template_override()
+                )
+                if extra:
+                    anima_context = f"{anima_context}\n\n{extra}".strip()
             if anima_context:
                 system_prompt = f"【Anima 提示词知识】\n{anima_context}\n\n{system_prompt}"
         else:
@@ -2329,7 +2361,7 @@ class ComfyUIAIStudio(Star):
             knowledge = ""
             if hasattr(self, "plugin_dir"):
                 knowledge = build_knowledge_context(
-                    self.plugin_dir, model, engine, mode, 2200
+                    self.plugin_dir, model, engine, mode, 2200, nsfw=nsfw_prompt
                 )
             override = str(
                 self._get(f"plugin_ai_{profile.key}_context", "") or ""
@@ -2437,6 +2469,7 @@ class ComfyUIAIStudio(Star):
                     engine_override,
                     "img2img" if is_img2img_llm else "txt2img",
                     1800,
+                    nsfw=self._nsfw_prompt_active(event),
                 )
             system_prompt = (
                 f"{system_prompt}\n\n你当前为 {prompt_profile.label} 提示词模式。"
@@ -2451,10 +2484,18 @@ class ComfyUIAIStudio(Star):
             # context.llm_generate() 不会再次经过当前插件的 on_llm_request
             # 过滤器，故在文生图提示词请求中主动复用内置 Anima 精简知识。
             anima_context = str(self._get("plugin_ai_anima_context", "") or "").strip()
+            nsfw_prompt = self._nsfw_prompt_active(event)
             if not anima_context:
                 anima_context = build_anima_context(
+                    self.plugin_dir, 2600, self._anima_template_override(),
+                    nsfw=nsfw_prompt,
+                )
+            elif nsfw_prompt:
+                extra = build_anima_nsfw_context(
                     self.plugin_dir, 2600, self._anima_template_override()
                 )
+                if extra:
+                    anima_context = f"{anima_context}\n\n{extra}".strip()
             try:
                 system_prompt = (
                     f"{system_prompt}\n\n【Anima 提示词工程师知识】\n"

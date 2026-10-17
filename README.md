@@ -2,7 +2,7 @@
 
 将已有 ComfyUI 接入 AstrBot：支持中文指令、自然语言绘图、LoRA 和提示词预设管理。自带基础工作流、推荐参数及可编辑的 AI 提示词模板；模型权重由用户安装到 ComfyUI。
 
-[![版本](https://img.shields.io/badge/版本-1.4.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.4.2-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
@@ -743,6 +743,18 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 ---
 
 ## 📝 更新日志
+
+### v1.4.2
+
+- 🔞 **新增 NSFW 提示词增强包（可选，默认关闭）**：控制台「回复设置」里多了一个
+  **引擎提示词启用 NSFW 增强版（18+）** 开关，对应配置 `nsfw_prompt_enabled`。
+  - 打开后，Anima / Qwen 2.1 / Krea 2 的提示词优化会**叠加**成人向章节：
+    分级用词（暗示 / 半裸 / 露骨）、解剖与体型写法、服装状态、镜头与遮挡、皮肤与光线、表情强度分档。
+  - 新增 `knowledge/krea2_提示词模版_nsfw.txt`、`knowledge/qwen21_提示词模版_nsfw.txt`；
+    Anima 复用其模板自带的「服装与状态 / 体位与行为 / 表情与反应」三章。主模板规则始终生效。
+  - **开关不能绕过群黑名单**：`nsfw_group_blacklist` 里的群即使打开开关也不会注入成人向内容。
+  - 硬限制写进模板：仅成年虚构人物；拒绝未成年特征、真实人物、非自愿设定。判断不了年龄时按成年写并强化成年特征。
+- 🧩 **配置可写白名单补齐**：`nsfw_prompt_enabled` 已加入 `WRITABLE_CONFIG`，否则控制台保存不会生效。
 
 ### v1.4.1
 
