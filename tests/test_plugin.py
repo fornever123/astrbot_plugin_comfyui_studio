@@ -45,7 +45,8 @@ def test_web_api_handlers_use_dashboard_request_context() -> None:
 def test_console_loads_astrbot_bridge_and_shows_version() -> None:
     page = (PLUGIN_DIR / "pages" / "console" / "index.html").read_text(encoding="utf-8")
     assert '/api/plugin/page/bridge-sdk.js' in page
-    assert "版本 v1.1.5" in page
+    assert 'id="version"' in page
+    assert 'app.js?v=' in page
 
 
 @pytest.mark.parametrize(
@@ -70,8 +71,7 @@ def test_feature_query_uses_one_sentence_summary(message: str) -> None:
     request = Request()
     asyncio.run(ComfyUIAIStudio.on_llm_request(object.__new__(ComfyUIAIStudio), Event(), request))
     assert "只回复这一句" in request.system_prompt
-    assert "支持文生图、图生图、高清放大、洗图、扩图、多角度处理" in request.system_prompt
-    assert "Qwen/Flux2" not in request.system_prompt
+    assert "支持文生图、图生图、高清放大" in request.system_prompt
 
 
 def test_llm_draw_sends_start_reply_through_event_result() -> None:
@@ -149,10 +149,19 @@ def test_llm_tool_arguments_are_unwrapped_and_prompt_can_fall_back_to_event() ->
     assert result == "已提交"
     assert captured["prompt"] == "一只猫"
     assert captured["mode"] == "txt2img"
-    assert captured["kwargs"]["steps"] == 12
+    assert captured["kwargs"]["steps"] is None
 
     asyncio.run(star.llm_generate(Event(), arguments={}))
     assert captured["prompt"] == "帮我画一只猫"
+
+    Event.message_str = "帮我画一只猫，步数 12"
+    asyncio.run(
+        star.llm_generate(
+            Event(),
+            arguments='{"arguments": {"prompt": "一只猫", "steps": 12}}',
+        )
+    )
+    assert captured["kwargs"]["steps"] == 12
 
 
 def test_structured_llm_prompt_never_runs_txt2img_ai_a_second_time() -> None:
@@ -192,7 +201,6 @@ def test_all_llm_tools_accept_hidden_arguments_compatibility_parameter() -> None
         "llm_presets",
         "llm_generate",
         "llm_edit",
-        "llm_edit_flux2",
         "llm_upscale",
     ):
         signature = inspect.signature(getattr(ComfyUIAIStudio, method_name))
@@ -363,8 +371,6 @@ def test_help_image_and_download_order_are_available() -> None:
     assert "lora_download_order[filename]" in source
     assert "pillow>=10" in requirements.lower()
     assert "AstrBot-Anima-Studio/1.0.0" in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
-    assert "/洗图" in source and "/扩图" in source and "/多角度" in source
-    assert "其余忽略" in source
 
 
 def test_config_and_delete_paths_are_stateful_and_windows_safe() -> None:
@@ -1042,6 +1048,29 @@ def test_input_image_is_cached_before_temp_file_cleanup() -> None:
             assert Path(cached).read_bytes() == b"fake-image-data"
 
     asyncio.run(run())
+
+
+def test_input_image_cache_is_retained_for_reuse_and_pruned_by_ttl() -> None:
+    import time
+
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
+
+    with tempfile.TemporaryDirectory(prefix="astrbot_input_cache_ttl_test_") as root:
+        cache_dir = Path(root) / "input_cache"
+        cache_dir.mkdir()
+        fresh = cache_dir / "input_fresh.jpg"
+        expired = cache_dir / "input_expired.jpg"
+        fresh.write_bytes(b"still in use")
+        expired.write_bytes(b"old cache")
+        os.utime(expired, (1, 1))
+
+        star = object.__new__(ComfyUIAIStudio)
+        star.input_cache_dir = cache_dir
+        removed = star._prune_input_image_cache(now=time.time(), force=True)
+
+        assert removed == 1
+        assert fresh.is_file()
+        assert not expired.exists()
 
 
 def test_duplicate_structured_and_raw_image_segments_are_deduplicated() -> None:
@@ -2012,9 +2041,9 @@ def test_img2img_astrbot_llm_source_also_generates_an_edit_instruction() -> None
 
     assert translated == params.prompt == "把身上衣服换成裙子，其他内容保持原图不变"
     assert params.img2img_edit_instruction_ready is True
-    assert received and "用户的图生图编辑要求" in received[0][0]
-    assert "Qwen Image Edit" in received[0][1]
-    assert received[0][2] == 256
+    assert received and "需要优化的绘图要求" in received[0][0]
+    assert "只改用户指定的属性" in received[0][1]
+    assert received[0][2] == 512
 
 
 def test_img2img_editor_keeps_concrete_pose_details() -> None:
@@ -2569,368 +2598,6 @@ def test_txt2img_and_img2img_use_sampling_output() -> None:
         assert adapted["1413"]["inputs"]["input1"] == ["astrbot_txt2img_decode", 0]
 
 
-def test_qwen_img2img_uses_the_standalone_api_workflow() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
-
-    source_path = Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json")
-    source = load_workflow(source_path)
-    adapted, report = adapt_qwen_img2img(
-        source,
-        positive="a character standing by the sea",
-        negative="low quality",
-        image_name="input.png",
-        unet_name="Qwen-Rapid-NSFW-v23_Q3_K.gguf",
-        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
-        vae_name="qwen_image_vae.safetensors",
-        lora_name="qwen/Qwen-Image-Edit-F2P.safetensors",
-        lora_strength=0.7,
-        pre_cfg=True,
-        seed=123,
-        filename_prefix="astrbot/test-qwen",
-    )
-
-    assert adapted["11"]["inputs"]["image"] == "input.png"
-    assert adapted["1"]["inputs"]["prompt"] == "a character standing by the sea"
-    assert adapted["39"]["inputs"]["prompt"] == "low quality"
-    assert adapted["174"]["inputs"]["lora_1"]["lora"] == "qwen/Qwen-Image-Edit-F2P.safetensors"
-    assert adapted["174"]["inputs"]["lora_1"]["strength"] == 0.7
-    assert adapted["152"]["inputs"]["seed"] == 123
-    assert adapted["14"]["inputs"]["filename_prefix"] == "astrbot/test-qwen"
-    assert adapted["119"]["inputs"]["pixels"] == ["158", 0]
-    assert adapted["152"]["inputs"]["latent_image"] == ["119", 0]
-    assert adapted["152"]["inputs"]["positive"] == ["1", 0]
-    assert adapted["152"]["inputs"]["negative"] == ["39", 0]
-    assert adapted["13"]["inputs"]["samples"] == ["152", 0]
-    assert adapted["160"]["inputs"]["unet_name"] == "Qwen-Rapid-NSFW-v23_Q3_K.gguf"
-    assert adapted["161"]["inputs"]["clip_name"] == "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf"
-    assert adapted["10"]["inputs"]["vae_name"] == "qwen_image_vae.safetensors"
-    assert "image2" not in adapted["1"]["inputs"]
-    assert all(node.get("class_type") for node in adapted.values())
-    assert isinstance(report, list)
-
-
-def test_qwen_rollback_ignores_acceleration_and_keeps_content_lora() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
-
-    source = load_workflow(Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json"))
-    adapted, report = adapt_qwen_img2img(
-        source,
-        positive="保持人物并更换服装",
-        negative="低质量",
-        image_name="input.png",
-        unet_name="Qwen-Image-Edit-2511-Q4_K_M.gguf",
-        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
-        vae_name="qwen_image_vae.safetensors",
-        loras=["qwen/Qwen-Image-Edit-F2P.safetensors:0.7"],
-        steps=4,
-        cfg=1.0,
-    )
-
-    assert adapted["174"]["inputs"]["lora_1"]["on"] is True
-    assert adapted["30"]["inputs"]["model"] == ["174", 0]
-    assert "astrbot_qwen_accel_lora" not in adapted
-    assert any("无加速 LoRA" in item for item in report)
-
-
-def test_qwen_rollback_uses_regular_sampling_parameters() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
-
-    source = load_workflow(Path(r"E:\QwenImageEdit2511局部重绘替换万物 (1).json"))
-    adapted, report = adapt_qwen_img2img(
-        source,
-        positive="保持原图",
-        negative="",
-        image_name="input.png",
-        unet_name="Qwen-Rapid-NSFW-v23_Q3_K.gguf",
-        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
-        vae_name="qwen_image_vae.safetensors",
-        steps=8,
-        cfg=1.25,
-    )
-
-    assert "astrbot_qwen_accel_lora" not in adapted
-    assert adapted["30"]["inputs"]["model"] == ["174", 0]
-    assert adapted["152"]["inputs"]["steps"] == 8
-    assert adapted["152"]["inputs"]["cfg"] == 1.25
-    assert any("无加速 LoRA" in item for item in report)
-
-
-def test_flux2_img2img_uses_the_single_reference_source_workflow() -> None:
-    from astrbot_plugin_comfyui_ai_studio.main import (
-        FLUX2_IMG2IMG_WORKFLOW_FILE,
-        MODE_NAMES,
-        WRITABLE_CONFIG,
-    )
-    from astrbot_plugin_comfyui_ai_studio.workflow import (
-        WorkflowError,
-        adapt_flux2_klein_img2img,
-        load_workflow,
-    )
-
-    assert MODE_NAMES["img2img_flux2"] == "图生图 Flux2"
-    assert "img2img_flux2_unet_name" in WRITABLE_CONFIG
-    assert "img2img_flux2_lora_name" in WRITABLE_CONFIG
-    assert "img2img_flux2_prompt_template" in WRITABLE_CONFIG
-    assert (PLUGIN_DIR / "workflows" / FLUX2_IMG2IMG_WORKFLOW_FILE).is_file()
-
-    source = load_workflow(PLUGIN_DIR / "workflows" / FLUX2_IMG2IMG_WORKFLOW_FILE)
-    assert not any(
-        node.get("class_type") == "Fast Groups Bypasser (rgthree)"
-        for node in source.values()
-    )
-    adapted, report = adapt_flux2_klein_img2img(
-        source,
-        positive="中文编辑要求",
-        negative="低质量",
-        image_names=["image.png"],
-        unet_name="flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
-        clip_name="qwen_3_8b_fp8mixed.safetensors",
-        vae_name="flux2-vae.safetensors",
-        lora_name="flux-2-klein\\flux-2-klein-NSFW.safetensors",
-        lora_strength=0.7,
-        size=1024,
-        steps=8,
-        cfg=1.2,
-        seed=123,
-        sampler_name="euler",
-        scheduler="simple",
-        denoise=0.6,
-        batch=2,
-        filename_prefix="astrbot/test-flux2",
-    )
-
-    assert adapted["19"]["inputs"]["text"] == "中文编辑要求"
-    assert adapted["19"]["inputs"]["clip"] == ["14", 0]
-    assert adapted["13"]["inputs"]["unet_name"] == "flux-2-klein\\flux-2-klein-9b-fp8.safetensors"
-    assert adapted["14"]["inputs"]["clip_name"] == "qwen_3_8b_fp8mixed.safetensors"
-    assert adapted["10"]["inputs"]["vae_name"] == "flux2-vae.safetensors"
-    assert adapted["38"]["inputs"]["lora_name"] == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
-    assert adapted["38"]["inputs"]["strength_model"] == 0.7
-    assert adapted["95"]["inputs"]["model"] == ["38", 0]
-    assert not any(
-        node.get("_meta", {}).get("title") == "Flux2 加速 LoRA"
-        for node in adapted.values()
-    )
-    assert not any(
-        node.get("class_type") in {"FluxKVCache", "Fast Groups Bypasser (rgthree)"}
-        for node in adapted.values()
-    )
-    assert adapted["95"]["inputs"]["positive"] == ["74", 0]
-    assert adapted["95"]["inputs"]["negative"] == ["73", 0]
-    assert adapted["95"]["inputs"]["latent_image"] == ["83", 0]
-    assert adapted["95"]["inputs"]["steps"] == 8
-    assert adapted["95"]["inputs"]["cfg"] == 1.2
-    assert adapted["95"]["inputs"]["seed"] == 123
-    assert adapted["95"]["inputs"]["denoise"] == 0.6
-    assert adapted["83"]["inputs"]["batch_size"] == 2
-    assert adapted["62"]["inputs"]["filename_prefix"] == "astrbot/test-flux2"
-    assert adapted["63"]["inputs"]["image"] == "image.png"
-    assert adapted["90"]["inputs"]["缩放长度"] == 1024
-    assert adapted["75"]["inputs"]["pixels"] == ["90", 0]
-    assert adapted["74"]["inputs"]["latent"] == ["75", 0]
-    assert adapted["73"]["inputs"]["latent"] == ["75", 0]
-    assert any("最长边等比例缩放" in item for item in report)
-
-    adapted_two, _ = adapt_flux2_klein_img2img(
-        source,
-        positive="中文编辑要求",
-        negative="",
-        image_names=["one.png", "two.png"],
-        unet_name="model.safetensors",
-        clip_name="clip.safetensors",
-        vae_name="vae.safetensors",
-    )
-    assert adapted_two["64"]["inputs"]["image"] == "two.png"
-    assert adapted_two["95"]["inputs"]["positive"] == ["85", 0]
-    assert adapted_two["95"]["inputs"]["negative"] == ["86", 0]
-
-    adapted_three, _ = adapt_flux2_klein_img2img(
-        source,
-        positive="中文编辑要求",
-        negative="",
-        image_names=["one.png", "two.png", "three.png"],
-        unet_name="model.safetensors",
-        clip_name="clip.safetensors",
-        vae_name="vae.safetensors",
-    )
-    assert adapted_three["61"]["inputs"]["image"] == "three.png"
-    assert adapted_three["95"]["inputs"]["positive"] == ["80", 0]
-    assert adapted_three["95"]["inputs"]["negative"] == ["79", 0]
-
-    with pytest.raises(WorkflowError, match="最多支持 3"):
-        adapt_flux2_klein_img2img(
-            source,
-            positive="中文编辑要求",
-            negative="",
-            image_names=["one.png", "two.png", "three.png", "four.png"],
-            unet_name="model.safetensors",
-            clip_name="clip.safetensors",
-            vae_name="vae.safetensors",
-        )
-
-
-def test_flux2_uses_source_model_chain_without_acceleration_nodes() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_klein_img2img, load_workflow
-
-    source = load_workflow(PLUGIN_DIR / "workflows" / "图生图_flux2_klein.json")
-    adapted, report = adapt_flux2_klein_img2img(
-        source,
-        positive="保持原图",
-        negative="",
-        image_names=["image.png"],
-        unet_name="flux-2-klein\\flux-2-klein-9b-fp8.safetensors",
-        clip_name="qwen_3_8b_fp8mixed.safetensors",
-        vae_name="flux2-vae.safetensors",
-    )
-
-    # 源工作流自带的 LoRA（节点 38）属于模型链，独立 LoRA 留空时必须保留；
-    # 但绝不能注入「Flux2 加速 LoRA」这类额外节点。
-    assert adapted["95"]["inputs"]["model"] == ["38", 0]
-    assert adapted["38"]["inputs"]["lora_name"] == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
-    assert adapted["95"]["inputs"]["denoise"] == 1.0
-    assert not any(
-        node.get("_meta", {}).get("title") == "Flux2 加速 LoRA"
-        for node in adapted.values()
-    )
-    assert any("不添加加速 LoRA 或 KV Cache" in item for item in report)
-
-
-def test_flux2_does_not_inject_kv_cache() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_klein_img2img, load_workflow
-
-    source = load_workflow(PLUGIN_DIR / "workflows" / "图生图_flux2_klein.json")
-    adapted, report = adapt_flux2_klein_img2img(
-        source,
-        positive="保持人物和构图",
-        negative="",
-        image_names=["image.png"],
-        unet_name="flux-2-klein-9b-kv-fp8.safetensors",
-        clip_name="qwen_3_8b_fp8mixed.safetensors",
-        vae_name="flux2-vae.safetensors",
-        steps=4,
-        cfg=1.0,
-    )
-
-    # 采样器仍然走源工作流的模型链（含它自带的 LoRA），但不得出现 KV Cache 节点。
-    assert adapted["95"]["inputs"]["model"] == ["38", 0]
-    assert not any(node.get("class_type") == "FluxKVCache" for node in adapted.values())
-    assert adapted["95"]["inputs"]["positive"] == ["74", 0]
-    assert any("不添加加速 LoRA 或 KV Cache" in item for item in report)
-
-
-def test_flux2_configuration_does_not_use_qwen_values() -> None:
-    source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
-
-    assert "img2img_flux2" in source
-    assert "img2img_flux2_output_format" in schema
-    assert schema["img2img_engine"]["enum"] == ["qwen", "flux2"]
-    assert 'self._get("img2img_lora_name", "")' in source
-    assert 'self._get("img2img_flux2_lora_name", FLUX2_IMG2IMG_LORA_DEFAULT)' in source
-    assert 'f"{img2img_config_prefix}_default_positive"' in source
-
-
-def test_flux2_tool_workflows_keep_default_loras_and_write_tool_inputs() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_flux2_tool, load_workflow
-
-    workflow_dir = PLUGIN_DIR / "workflows"
-    tool_files = {
-        "wash": next(workflow_dir.glob("*.json")),
-        "outpaint": next(path for path in workflow_dir.glob("*.json") if "扩图" in path.name),
-        "multi_angle": next(path for path in workflow_dir.glob("*.json") if "多角度" in path.name),
-    }
-    wash_path = next(path for path in workflow_dir.glob("*.json") if "洗图" in path.name)
-    tool_files["wash"] = wash_path
-
-    for mode, path in tool_files.items():
-        source = load_workflow(path)
-        adapted, report = adapt_flux2_tool(
-            source,
-            tool=mode,
-            positive="用户中文要求",
-            negative="低质量",
-            image_name="input.png",
-            size=768,
-            steps=9,
-            cfg=1.5,
-            seed=123,
-            denoise=0.5,
-            sampler_name="euler",
-            scheduler="simple",
-            filename_prefix="astrbot/test",
-            left=16,
-            top=24,
-            right=32,
-            bottom=40,
-            feathering=8,
-            horizontal_angle=12,
-            vertical_angle=-5,
-            zoom=2.2,
-            batch=1,
-            caption_tokens=256,
-        )
-
-        load_nodes = [
-            node for node in adapted.values()
-            if node.get("class_type") == "LoadImage"
-        ]
-        save_nodes = [
-            node for node in adapted.values()
-            if node.get("class_type") == "SaveImage"
-        ]
-        assert load_nodes and load_nodes[0]["inputs"]["image"] == "input.png"
-        assert save_nodes and save_nodes[0]["inputs"]["filename_prefix"] == "astrbot/test"
-        assert any(node.get("class_type") == "KSampler" for node in adapted.values())
-        assert all(node.get("class_type") for node in adapted.values())
-        assert any("不使用全局 LoRA" in item for item in report)
-
-        if mode in {"outpaint", "multi_angle"}:
-            latent_nodes = [
-                node for node in adapted.values()
-                if node.get("class_type") == "EmptyFlux2LatentImage"
-            ]
-            assert latent_nodes and latent_nodes[0]["inputs"]["batch_size"] == 1
-
-        if mode == "wash":
-            assert any(
-                node.get("class_type") == "Florence2Run"
-                and node["inputs"].get("max_new_tokens") == 256
-                for node in adapted.values()
-            )
-        elif mode == "outpaint":
-            pad = next(node for node in adapted.values() if node.get("class_type") == "ImagePadForOutpaint")
-            assert pad["inputs"]["left"] == 16
-            assert pad["inputs"]["top"] == 24
-            assert pad["inputs"]["right"] == 32
-            assert pad["inputs"]["bottom"] == 40
-            assert pad["inputs"]["feathering"] == 8
-        else:
-            camera = next(node for node in adapted.values() if node.get("class_type") == "QwenMultiangleCameraNode")
-            assert camera["inputs"]["horizontal_angle"] == 12
-            assert camera["inputs"]["vertical_angle"] == -5
-            assert camera["inputs"]["zoom"] == 2.2
-
-
-def test_flux2_tool_workflow_source_conversion_preserves_disabled_lora() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import load_workflow
-
-    for path in (
-        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-图生图洗图流.json"),
-        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-图像扩展流.json"),
-        Path(r"E:\0000001\工作流们（7个）\▶flux-2-klein-多角度转换流.json"),
-    ):
-        if not path.is_file():
-            pytest.skip(f"源工作流不存在：{path}")
-        workflow = load_workflow(path)
-        assert all(
-            not (
-                node.get("class_type") == "LoraLoaderModelOnly"
-                and node.get("inputs", {}).get("lora_name") == "flux-2-klein\\flux-2-klein-NSFW.safetensors"
-            )
-            for node in workflow.values()
-        )
-
-
 def test_img2img_edit_ai_rejects_literal_horse_translation() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
 
@@ -2945,27 +2612,6 @@ def test_img2img_edit_ai_rejects_literal_horse_translation() -> None:
         "把她的衣服换成白色连衣裙",
     )
     assert repaired == "把她的衣服换成白色连衣裙，其他内容保持原图不变"
-
-
-def test_qwen_img2img_connects_second_reference_image() -> None:
-    from astrbot_plugin_comfyui_ai_studio.workflow import adapt_qwen_img2img, load_workflow
-
-    source = load_workflow(Path(r"E:\112121121.json"))
-    adapted, report = adapt_qwen_img2img(
-        source,
-        positive="把衣服换成参考图中的服装",
-        negative="low quality",
-        image_name="source.png",
-        second_image_name="clothes.png",
-        unet_name="Qwen-Rapid-NSFW-v23_Q3_K.gguf",
-        clip_name="Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
-        vae_name="qwen_image_vae.safetensors",
-    )
-
-    assert adapted["astrbot_img2img_second_input"]["inputs"]["image"] == "clothes.png"
-    assert adapted["1"]["inputs"]["image2"] == ["astrbot_img2img_second_input", 0]
-    assert adapted["39"]["inputs"]["image2"] == ["astrbot_img2img_second_input", 0]
-    assert any("第二张" in item for item in report)
 
 
 def test_ai_and_comfy_compatibility_fallbacks() -> None:
@@ -2987,43 +2633,6 @@ def test_ai_and_comfy_compatibility_fallbacks() -> None:
     assert ComfyClient.models_from_object_info(object_info, "unet_gguf") == ["qwen.gguf"]
 
 
-def test_environment_keeps_flux2_text_encoders_separate_from_qwen_gguf() -> None:
-    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
-
-    plugin = object.__new__(ComfyUIAIStudio)
-    plugin._lora_names_cache = None
-    plugin._order_loras = lambda names: list(names)
-
-    class _Client:
-        async def object_info(self):
-            return {}
-
-        async def models(self, category):
-            values = {
-                "diffusion_models": [],
-                "checkpoints": [],
-                "loras": [],
-                "upscale_models": [],
-                "clip_gguf": ["Qwen2.5-VL.Q4_K_M.gguf"],
-                "vae": [],
-                "unet_gguf": [],
-                "controlnet": [],
-                "ipadapter": [],
-                "clip_vision": [],
-                "text_encoders": ["qwen_3_8b_fp8mixed.safetensors"],
-            }
-            return values[category]
-
-    environment = asyncio.run(plugin._environment(_Client()))
-
-    assert environment["flux2_text_encoders"] == ["qwen_3_8b_fp8mixed.safetensors"]
-    assert environment["clip_gguf"] == ["Qwen2.5-VL.Q4_K_M.gguf"]
-    assert set(environment["text_encoders"]) == {
-        "qwen_3_8b_fp8mixed.safetensors",
-        "Qwen2.5-VL.Q4_K_M.gguf",
-    }
-
-
 def test_lora_resolver_accepts_saved_backslash_path_against_api_slash_path() -> None:
     from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
 
@@ -3032,27 +2641,12 @@ def test_lora_resolver_accepts_saved_backslash_path_against_api_slash_path() -> 
     plugin.lora_command_aliases = {}
     plugin.lora_presets = {}
 
-    available = ["flux-2-klein/flux-2-klein-NSFW.safetensors"]
+    available = ["example/model-NSFW.safetensors"]
 
     assert (
         plugin._resolve_lora(
-            r"flux-2-klein\flux-2-klein-NSFW.safetensors",
+            r"example\model-NSFW.safetensors",
             available,
-        )
-        == available[0]
-    )
-
-
-def test_flux2_model_resolver_preserves_comfyui_returned_separator() -> None:
-    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio
-
-    available = [r"flux-2-klein\flux-2-klein-9b-fp8.safetensors"]
-
-    assert (
-        ComfyUIAIStudio._resolve_flux2_model(
-            "flux-2-klein/flux-2-klein-9b-fp8.safetensors",
-            available,
-            "核心模型",
         )
         == available[0]
     )
@@ -3063,7 +2657,7 @@ def test_lora_order_preserves_comfyui_returned_separator() -> None:
 
     plugin = object.__new__(ComfyUIAIStudio)
     plugin.lora_download_order = {}
-    available = [r"flux-2-klein\flux-2-klein-NSFW.safetensors"]
+    available = [r"example\model-NSFW.safetensors"]
 
     assert plugin._order_loras(available) == available
 

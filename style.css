@@ -3274,3 +3274,29 @@ button, .upload-button { letter-spacing: .022em; }
 html, body { font-family: "Times New Roman","宋体",SimSun,"Songti SC",serif !important; }
 
 /* ===== T4-E 换肤层 · END ===== */
+
+/* Portable recipe cards share the current theme's colors. */
+.builtin-bundle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 18px; }
+.builtin-bundle-card { padding: 20px; border: 1px solid var(--line); border-radius: 14px; min-width: 0; }
+.builtin-bundle-card h3 { margin: 0 0 10px; }
+.builtin-bundle-card ul { padding-left: 20px; }
+.builtin-bundle-card li { margin: 10px 0; overflow-wrap: anywhere; }
+.builtin-bundle-card small { display: block; margin-top: 5px; overflow-wrap: anywhere; }
+.builtin-bundle-mode { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+.builtin-bundle-mode button { margin-top: 10px; }
+
+/* ---- 引擎独立 LoRA（Krea 2 / Qwen 2.1） ---- */
+.engine-lora-toolbar { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin-bottom: 12px; }
+.engine-lora-toolbar .lora-search { flex: 1 1 260px; }
+.engine-lora-list { display: grid; gap: 8px; }
+.engine-lora-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--field-bg); cursor: pointer; }
+.engine-lora-row:hover { background: var(--field-bg-hover); }
+.engine-lora-row.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.engine-lora-name { display: grid; gap: 2px; min-width: 0; }
+.engine-lora-name strong { font-size: 13px; color: var(--text); }
+.engine-lora-name code { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.engine-lora-name small { font-size: 11px; }
+.engine-lora-weight { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.engine-lora-weight input { width: 74px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--field-bg); color: var(--text); font: inherit; font-size: 12px; }
+.engine-lora-weight input:disabled { opacity: .45; }
+@media (max-width: 640px) { .engine-lora-row { grid-template-columns: auto minmax(0, 1fr); } .engine-lora-weight { grid-column: 2; justify-content: end; } }

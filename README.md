@@ -1,24 +1,67 @@
 # Anima 全能绘画台
 
-> **随便画、随便部署、功能全 —— 本地 ComfyUI 交给这一个台子就够了。**
-> **随便画**：接上本地 ComfyUI，说一句中文就能出图，七种模式开箱即用；
-> **随便部署**：丢进插件目录、重载一次就上线，不用配任何机器路径、不用改工作流；
-> **功能全**：文生图 / 图生图 / 高清放大 / 洗图 / 扩图 / 多角度，外加批量导入 LoRA 与免 API 下 C 站模型。
-> 不用背英文 tag，不用记节点参数，不用来回切页面。
+将已有 ComfyUI 接入 AstrBot：支持中文指令、自然语言绘图、LoRA 和提示词预设管理。自带基础工作流、推荐参数及可编辑的 AI 提示词模板；模型权重由用户安装到 ComfyUI。
 
-[![版本](https://img.shields.io/badge/版本-1.3.1-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
+[![版本](https://img.shields.io/badge/版本-1.4.0-2f80ed.svg)](https://github.com/fornever123/astrbot_plugin_comfyui_studio)
 [![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.27.0-f2994a.svg)](https://github.com/AstrBotDevs/AstrBot)
 [![许可证](https://img.shields.io/badge/许可证-MIT-27ae60.svg)](LICENSE)
 [![模式](https://img.shields.io/badge/绘图模式-7%20种-9b51e0.svg)](#-七种绘图模式)
 
 ---
 
+## 内置模型与工作流方案
+
+打开插件控制台的「工作流 → 内置模型与工作流方案」，点击「检查环境」。界面分别显示缺失模型、缺失节点和不支持的采样选项，并提供模型来源链接。检查通过后，选择「应用到文生图」或对应图生图模式，即可带入工作流、模型组件与参数；随后仍可在各功能页面手动调整并保存。
+
+| 方案 | 自带工作流 | 起始参数 |
+| --- | --- | --- |
+| [Anima Base](https://huggingface.co/circlestone-labs/Anima) | 原生节点文生图、多个 LoRA | 30 步，CFG 5，er_sde / simple |
+| [Anima 2.9B](https://huggingface.co/Gazingstars123/Anima-2.9B) | 原生节点文生图、多个 LoRA | 35 步，CFG 3.5，Euler / sgm_uniform |
+| [Qwen Image 2.1](https://huggingface.co/Comfy-Org/Qwen-Image-2.1) | 普通文生图与 1–3 图编辑 | 25 步，CFG 1，Euler / simple |
+| Qwen Image 2.1 Turbo LoRA | 8 步文生图与 1–3 图编辑 | CFG 1，官方手动 sigma 序列 |
+
+- 全新安装默认文生图采用 Anima Base；默认图生图采用 Qwen Image 2.1。已有用户的工作流、预设、LoRA 和 AI 设置不自动改写。
+- 基础 Anima 方案只用原生节点，不依赖 rgthree、EasySize 或显存清理扩展。原来的高级工作流与高清放大工作流仍在包内，使用时需要安装其对应模型及节点。
+- Anima 使用 `qwen_3_06b_base.safetensors` 和 `qwen_image_vae.safetensors`。Qwen 2.1 使用 Qwen3-VL 编码器与 **2.1 专用 VAE**。
+- 选择方案只修改对应模式的工作流与模型参数；已保存的同模型采样档案优先。不会开启私人 LoRA、删除预设或覆盖 API Key。Anima Base 与 2.9B 的 LoRA 必须按架构使用。
+- 图生图基础方案按第一张参考图的宽高比输出；根据分辨率预算缩放，不保证输出像素数和输入完全相同。
+- 检查通过表示 ComfyUI 的节点与模型列表中存在相应项目，不代表已验证权重内容、显存容量或出图质量。量化模型与 `TextEncodeQwenImage21` 需要足够新的 [ComfyUI](https://github.com/Comfy-Org/ComfyUI)。2.9B 的旧版加载器可按作者说明安装扩展。
+
+### 给新用户的安装步骤
+
+1. 在 AstrBot 插件市场通过仓库地址安装，或上传完整发布 ZIP。
+2. 打开插件控制台，填写 **AstrBot 能访问的 ComfyUI 地址**。同机普通部署可用 `http://127.0.0.1:8188`；Docker 中这个地址指容器自身，应使用可达的宿主机地址或内网连接。
+3. 到「工作流」检查环境，按卡片链接安装缺失的模型文件，更新 ComfyUI 后重新检查，再应用需要的方案。
+4. 普通指令不需要 AI API Key；自然语言绘图和提示词优化可使用 AstrBot 已配置的 AI，或填写插件自己的 OpenAI 兼容 API。
+5. 发送 `/helpd` 查看用法，再尝试 `/文生图 一只坐在窗台上的白猫`，或附图发送 `/图生图 把外套改成蓝色`。
+
+远程 API 绘图无需把 ComfyUI 模型目录挂载到 AstrBot；本地打开文件夹、上传或下载到模型目录等功能需要额外的目录访问或控制桥，不是基础绘图的前置条件。不要将未鉴权的 ComfyUI API 直接暴露到公网。
+
+### 发布包包含什么
+
+发布包包含插件代码、AstrBot 控制台、配置默认值、内置工作流和提示词知识模板；不包含模型权重、运行数据、私人预设、生成图片、日志或密钥。模型与 LoRA 的许可证独立于本插件，下载和使用需遵守作者条件。
+
+开发者可运行 `python scripts/build_release.py --output <目标ZIP路径>` 生成完整安装包。脚本从当前文件取材，不遗漏尚未提交的配套模块及工作流；已存在的目标包不会被静默覆盖。GitHub 仓库安装仍需把这些源码和 JSON 一并提交后发布。
+
+## AI 提示词优化
+
+在 WebUI 的「AI 与回复 → AI 提示词优化」中启用优化，编辑文生图、Qwen 图生图各自的模板，并用「测试优化」预览最终结果。测试不会提交绘图任务。
+
+模板设计参考 [ComfyUI-PromptEnhancer](https://github.com/MaxKruse/ComfyUI-PromptEnhancer)，采用本插件独立编写的中文适配规则，复用现有 OpenAI 兼容 API 或 AstrBot AI，不需要额外部署 llama-server 或提示词增强模型。
+
+- `/文生图 ai 窗台上的白猫`：先匹配角色预设与 LoRA，再优化画面描述。Anima 输出英文标签，Qwen/Flux 输出中文自然语言。
+- `/图生图 ai 把外套换成蓝色夹克`（附图）：将要求整理为编辑指令，保护未指定的原图内容；多图引用使用 `<Picture 1>` 等编号。
+- LLM 绘图沿用各页面配置的 AI 来源；选择插件 AI 时优化一次，选择 AstrBot 时由其生成提示词，不重复调用文生图 AI。
+- `noai` 跳过 AI 优化；已有预设、LoRA 权重和工作流参数按原规则合并。输出只接受最终提示词，格式错误最多重试一次；服务失败沿用原有回退流程。
+
+当前优化 AI 接收文字需求，不接收参考图片的视觉内容；图像仍由 ComfyUI 工作流读取。它不应猜测原图细节。
+
 ## 目录
 
 - [这是什么](#-这是什么)
 - [为什么值得用](#-为什么值得用)
 - [七种绘图模式](#-七种绘图模式)
-- [图生图：完全独立的双引擎](#-图生图完全独立的双引擎)
+- [图生图：完全独立的一套引擎](#-图生图完全独立的双引擎)
 - [LoRA 管理：批量导入 + 免 API 下载](#-lora-管理批量导入--免-api-下载)
 - [内置 Anima 提示词工程师](#-内置-anima-提示词工程师)
 - [安装](#-安装)
@@ -63,8 +106,8 @@
 | 能力 | 说明 |
 | --- | --- |
 | 🗣️ **说中文就行** | 指令、预设、LoRA 昵称、画风简称全部支持中文，翻译可以交给 AI 也可以关掉 |
-| 🎨 **七种绘图模式** | 文生图、图生图、图生图 Flux2、高清放大、洗图、扩图、多角度，一个插件全包 |
-| 🧩 **图生图完全独立** | Qwen 与 Flux2 两套引擎，各自独立的工作流 / 模型 / VAE / LoRA / 参数，互不污染 |
+| 🎨 **三种绘图模式** | 文生图、图生图、高清放大，一个插件全包 |
+| 🧩 **图生图完全独立** | 图生图拥有独立的工作流 / 模型 / VAE / LoRA / 参数，不与文生图互相污染 |
 | 📦 **批量导入 LoRA** | 一次选中一堆 safetensors，自动逐个入库、可选统一归类，还带失败明细 |
 | 🌐 **免 API 下载 C 站模型** | 直链或模型页链接就能下，**公共 LoRA 一个密钥都不用** |
 | 🧠 **内置提示词工程师** | 随插件携带 Anima3 提示词模板，低 token 规则自动补全质量词，不必再额外安装提示词插件 |
@@ -75,51 +118,42 @@
 
 ---
 
-## 🎨 七种绘图模式
+## 🎨 三种绘图模式
 
 | 模式 | 指令 | 说明 |
 | --- | --- | --- |
 | 文生图 | `/文生图` | 从零生成，支持多核心模型、多个 LoRA、提示词预设、画师串 |
-| 图生图 | `/图生图` | 参考图编辑，默认引擎可在 WebUI 选择 Qwen 或 Flux2 |
-| 图生图 Flux2 | `/图生图Flux2` | 强制使用 Flux2 Klein 模块 |
+| 图生图 | `/图生图` | Qwen Image 2.1 参考图编辑 |
 | 高清放大 | `/高清放大` | 放大已有图片，支持附图 / 回复 / 会话最近一张 |
-| 洗图 | `/洗图` | Flux2 工作流重绘，只取第一张参考图，保留工作流默认提示词 |
-| 扩图 | `/扩图` | 向上下左右扩展画布，可独立设置四边像素与羽化 |
-| 多角度 | `/多角度` | 水平角 / 垂直角 / 缩放三轴控制视角 |
 
 ```text
 /文生图 一名站在海边的少女
 /文生图 夏空 海边
 /图生图 改成夜景
-/图生图Flux2 改成夜景
 /高清放大
-/洗图 保持人物清晰
-/扩图 向左右扩展画面
-/多角度 从右侧观察
 ```
 
 > 💡 **提示**：图生图需要在同一条消息中附图，或回复一张图片 / 含图合并转发后发送指令。
-> 洗图、扩图、多角度同一条消息附多张图时**只使用第一张**，其余忽略，且不走普通文生图的 AI 优化、翻译、预设或全局 LoRA。
 
 ---
 
-## 🧩 图生图：完全独立的双引擎
+## 🧩 图生图：完全独立的一套引擎
 
 这是 Anima 全能绘画台最"较真"的地方 —— **图生图不是文生图的一个开关，而是一个独立子系统。**
 
-### 双引擎，各自成套
+### 独立成套
 
-| | Qwen 引擎 | Flux2 Klein 引擎 |
-| --- | --- | --- |
-| 工作流 | `图生图_qwen_edit.json` | `图生图_flux2_klein.json` |
-| 核心模型 | 独立 UNet（GGUF） | 独立 diffusion model |
-| 文本编码器 | 独立 Qwen VL（GGUF） | 独立 text encoder |
-| VAE | 独立 VAE | 独立 VAE |
-| LoRA | 独立 LoRA | 独立 LoRA（留空则沿用工作流自带 LoRA） |
-| 采样参数 | 独立步数 / CFG / 种子 / 采样器 / 调度器 / 重绘幅度 | 同一套独立参数 |
-| AI 提示词模板 | 独立中文编辑规则 | 独立中文编辑规则 |
+| 项目 | Qwen Image 2.1 引擎 |
+| --- | --- |
+| 工作流 | `qwen21_edit_api.json` |
+| 核心模型 | `qwen_image_2.1_int8_convrot.safetensors` |
+| 文本编码器 | `qwen3vl_8b_w4a8.safetensors` |
+| VAE | `qwen_image_2.1_vae_bf16.safetensors` |
+| LoRA | 独立 LoRA；可选 Qwen 2.1 NSFW / Turbo LoRA |
+| 采样参数 | 独立步数 / CFG / 种子 / 采样器 / 调度器 / 重绘幅度 |
+| AI 提示词模板 | 独立中文编辑规则 |
 
-两套配置**互不覆盖**，切换引擎不会污染对方的设置。
+图生图配置**独立于文生图**，不会互相覆盖。
 
 ### ⭐ 特别标注：图生图只受「独立 LoRA」影响
 
@@ -129,15 +163,9 @@
 
 这条规则在插件里是三处同时生效的：
 
-1. **后端强隔离** —— 图生图分支的长期 LoRA 只从 `img2img_lora_name`（或 `img2img_flux2_lora_name`）读取，代码里显式声明并写日志；文生图的 `lora_list` 和画风 LoRA 链路在图生图中被完全跳过。
-2. **WebUI 显著标注** —— “图生图”和“图生图 Flux2”两个页面顶部都有蓝色【特别标注】横幅，独立 LoRA 字段本身也带 `★` 高亮边框，一眼就能和文生图 LoRA 区分开。
+1. **后端强隔离** —— 图生图分支的长期 LoRA 只从 `img2img_lora_name` 读取，代码里显式声明并写日志；文生图的 `lora_list` 和画风 LoRA 链路在图生图中被完全跳过。
+2. **WebUI 显著标注** —— “图生图”页面顶部有蓝色【特别标注】横幅，独立 LoRA 字段本身也带 `★` 高亮边框，一眼就能和文生图 LoRA 区分开。
 3. **聊天里也说明** —— 每次图生图任务提交后的开始提示会自动带上这句特别标注，群里的人也能看明白规则。
-
-> **Flux2 的一个例外**：Flux2 的工作流里本来就带一个作者调好权重的 LoRA 节点（例如
-> `flux-2-klein-NSFW.safetensors`，强度 0.9），它是这份工作流**模型链的一部分**，不是插件的
-> LoRA 列表。`img2img_flux2_lora_name` 留空时插件会**原样沿用**它，而不是把它删掉——
-> 否则你画出来的东西会和直接在 ComfyUI 里跑同一份工作流完全不同。想彻底不用它，就在
-> 独立 LoRA 里选一个替代的 LoRA，或把源工作流里的那个节点删掉。
 
 ### 中文编辑，只改你要改的
 
@@ -154,9 +182,9 @@ AI 输出：change the outfit to a dress
 
 - **保持原图宽高比**，Qwen 参考图默认最长边 1152 —— 小图不放大、超大图按比例缩小，专为 8GB 显存优化
 - **工作流自动转换** —— 支持从 ComfyUI 编辑器 JSON 自动转成 API 工作流
-- **无加速污染** —— 两套引擎都按你提供的原始无加速工作流运行，不注入加速 LoRA / KV Cache
-- **Flux2 支持 1~3 张参考图**，Qwen 支持 1~2 张
-- **普通翻译默认关闭** —— 中文编辑句直接交给 Qwen Image Edit 处理
+- **无加速污染** —— 图生图按你提供的原始无加速工作流运行，不注入加速 LoRA / KV Cache
+- **Qwen 支持 1~2 张参考图**
+- **普通翻译默认关闭** —— 中文编辑句直接交给 Qwen Image 2.1 处理
 
 ---
 
@@ -442,11 +470,7 @@ python desktop\desktop_app.py
 ```text
 /文生图 <提示词>
 /图生图 <编辑要求>          # 需附图或回复图片
-/图生图Flux2 <编辑要求>      # 强制使用 Flux2 引擎
 /高清放大 [--放大=2]
-/洗图 <要求>
-/扩图 <要求>
-/多角度 <要求>
 ```
 
 ### 参数
@@ -497,11 +521,7 @@ python desktop\desktop_app.py
 /工作流 列表
 /工作流 文生图 <文件名>
 /工作流 图生图 <文件名>
-/工作流 图生图Flux2 <文件名>
 /工作流 高清放大 <文件名>
-/工作流 洗图 <文件名>
-/工作流 扩图 <文件名>
-/工作流 多角度 <文件名>
 
 /画图配置                   # 查看模型、LoRA、工作流目录
 /comfy状态                  # 查询 ComfyUI 状态
@@ -514,13 +534,12 @@ python desktop\desktop_app.py
 
 ## 🖥️ WebUI 控制台
 
-磨砂玻璃风格，支持明暗主题切换。侧栏分四组、共 12 个功能页，
+磨砂玻璃风格，支持明暗主题切换。侧栏分三组，
 每个页面顶部都有一行定位说明：
 
 | 分组 | 页面 |
 | --- | --- |
-| 绘制 | 文生图、图生图（Qwen）、图生图 Flux2 |
-| 图像工具 | 洗图、扩图、多角度 |
+| 绘制 | 文生图、图生图（Qwen Image 2.1） |
 | LoRA 与预设 | LoRA 组、提示词预设、画师串预设 |
 | 系统 | 工作流组、文件夹位置、AI 与回复 |
 
@@ -632,43 +651,32 @@ ComfyUI 地址：http://127.0.0.1:8188
 
 ```text
 workflows/文生图.json
-workflows/图生图_qwen_edit.json
-workflows/图生图_flux2_klein.json
+workflows/qwen21_edit_api.json
+workflows/qwen21_edit_turbo_api.json
 workflows/高清放大.json
-workflows/洗图.json
-workflows/扩图.json
-workflows/多角度.json
 ```
 
 原始工作流用到的自定义节点必须已装在 ComfyUI 里。插件只能**提交**工作流，不能替你安装节点。
 
-### Qwen 图生图默认配置
+### Qwen Image 2.1 图生图默认配置
 
 可在 WebUI「图生图」页面修改：
 
 ```text
-img2img_unet_name     = Qwen-Rapid-NSFW-v23_Q3_K.gguf
-img2img_clip_name     = Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf
-img2img_vae_name      = qwen_image_vae.safetensors
+workflow_img2img      = qwen21_edit_api.json
+img2img_unet_name     = qwen_image_2.1_int8_convrot.safetensors
+img2img_clip_name     = qwen3vl_8b_w4a8.safetensors
+img2img_vae_name      = qwen_image_2.1_vae_bf16.safetensors
 img2img_lora_name     = （独立 LoRA，可留空关闭）
 img2img_lora_strength = 0.8
-img2img_engine        = qwen
+img2img_steps         = 25
+img2img_cfg           = 1.0
+NSFW LoRA             = Qwen Image 2.1 兼容 LoRA，单独开关，默认关闭
 ```
 
-### Flux2 图生图默认配置
+在 WebUI 选择 Qwen Image 2.1 模型后，会自动选择对应编辑工作流、Qwen3-VL 编码器、VAE 与普通采样参数。需要更快出图时，可单独开启 Qwen Image 2.1 Turbo（官方 8 步）选项；NSFW LoRA 与 Turbo 加速 LoRA 是两个独立开关。
 
-位于 WebUI「图生图 Flux2」页面，**使用独立字段，不会读取上面的 Qwen 配置**：
-
-```text
-img2img_flux2_unet_name = flux-2-klein\flux-2-klein-9b-fp8.safetensors
-img2img_flux2_clip_name = qwen_3_8b_fp8mixed.safetensors
-img2img_flux2_vae_name  = flux2-vae.safetensors
-img2img_flux2_lora_name = （独立 LoRA；留空则沿用源工作流自带的 LoRA）
-```
-
-Flux2 源工作流路径可在 WebUI 配置。插件启动时会把它转换成 `workflows/图生图_flux2_klein.json`，**不改写源文件**。默认工作流支持 1~3 张参考图（第一张主参考，第二三张接入后续参考条件链），超过 3 张只取前三张。
-
-> Qwen 图生图需要 **ComfyUI-GGUF**，以及较新 ComfyUI 内置的 Qwen Image Edit、Flux Kontext、CFGNorm 和 AuraFlow 节点。
+> Qwen Image 2.1 图生图需要较新 ComfyUI 内置的 `TextEncodeQwenImage21` 等节点；量化模型还需要 **ComfyUI-GGUF**。
 
 ---
 
@@ -736,6 +744,30 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 
 ## 📝 更新日志
 
+### v1.4.0
+
+- 🧠 **三套引擎各有提示词档案**：新增 `prompt_profiles.py`。Anima 走英文 Danbooru 标签，
+  Qwen Image 2.1 与 Krea 2 走中文自然语言；AI 提示词优化、LLM 工具规则注入、命令翻译
+  三处共用同一份档案，不再各写一套。
+  - Krea 2 会明确提示 **CFG 固定为 1、负面提示词不参与引导**，想排除的内容必须写成正面描述
+    （例如「空无一人的街道」），避免用户写了负面词却看不到效果。
+  - 修复旧逻辑只把 `qwen` / `flux` 认成自然语言的问题：Krea 2 的 GGUF 文件名里没有这两个词，
+    以前会被错当成 Anima 输出 Danbooru 标签。
+- 🚀 **Krea 2 与 Qwen 2.1 接入 LLM**：`comfyui_ai_studio_generate` 新增 `engine` 参数
+  （`anima` / `krea2` / `qwen21`）。用户说「水粉 / 克雷亚 / Krea 2」或「Qwen / 千问」时，
+  LLM 会直接把请求路由到对应引擎，不必走斜杠命令。
+- ⌨️ **新增 `/qwen` 指令**（别名 `/千问`、`/qwen21`）：用内置 `qwen21_t2i_api.json` 出图，
+  复用图生图那套 Qwen 模型链，Anima 的文生图配置不受影响。
+- 🧩 **引擎独立 LoRA 列表**：新增 `krea2_lora_list` 与 `qwen21_lora_list` 两个配置。
+  Krea 2 / Qwen 2.1 不再读 Anima 的 `lora_list`，也不参与画风 LoRA 随机；
+  这三份列表彼此完全隔离。
+- 🎛️ **控制台新增两个 LoRA 分区**：「LoRA 组」页签从两个扩到四个——普通 LoRA、画风 LoRA、
+  **Krea 2 LoRA**、**Qwen 2.1 LoRA**。后两个都支持搜索、按适配文件名过滤、逐项权重、
+  勾选即保存。
+- 🛠️ **新增 `workflow_krea2` / `workflow_qwen21` 配置**：可以指定自定义引擎工作流；
+  留空则使用插件内置副本。加载时会校验图里的关键节点（`UnetLoaderGGUF` /
+  `TextEncodeQwenImage21`），不匹配直接报错而不是出一张噪点图。
+
 ### v1.3.1
 
 - 🧾 **修复审核问题：`comfy.py` 的 logger 来源**。原文件用 `import logging` +
@@ -802,8 +834,8 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
 
 ### v1.1.2
 
-- 🩹 **修复图生图 Flux2「特征效果永远出不来」**：Flux2 工作流的节点 38 是作者调好权重的
-  `LoraLoaderModelOnly`（如 `flux-2-klein-NSFW.safetensors`，强度 0.9），它属于工作流的
+- 🩹 **修复图生图「特征效果永远出不来」**：源工作流的节点 38 是作者调好权重的
+  `LoraLoaderModelOnly`（强度由作者调好），它属于工作流的
   **模型链**。此前「独立 LoRA」留空时会把这个节点整个删掉，采样器实际跑的是没有内容 LoRA
   的裸基模，画出来的东西和你在 ComfyUI 里跑同一份工作流完全不同
 - 🎛️ **新的 LoRA 语义**：独立 LoRA 留空 = **沿用源工作流自带的 LoRA**（含它调好的权重）；
@@ -815,7 +847,6 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
   不可达节点引用了**未安装的自定义节点类型**（`missing_node_type`）。剪枝的真实价值在于
   后者——内置工作流里留着依赖 ComfyUI-GGUF 与 rgthree 的孤儿节点，没装这些扩展的用户
   会让整次绘图直接失败
-- ✅ 新增 6 条 Flux2 模型链 LoRA 回归测试（总计 297 条）
 
 ### v1.1.0
 
@@ -823,10 +854,9 @@ WebUI 的批量导入面板会列出**每个失败文件的原因**，常见情�
   示例 GGUF 模型名，以及依赖 ComfyUI-GGUF / rgthree 的孤儿节点；没装这些自定义扩展时，
   ComfyUI 会以 `missing_node_type` 拒绝整包，任务根本跑不起来
 - 🧭 **控制台重新排布**：侧栏改为「绘制 / 图像工具 / LoRA 与预设 / 系统」四组，
-  每个功能页新增一行定位说明；「默认图生图引擎」从 Flux2 页移回图生图页
+  每个功能页新增一行定位说明；「默认图生图引擎」移回图生图页
 - 🗑️ **清理失效与重复项**：删除 5 个早已不生效的 Qwen 加速 LoRA 控件、
   12 个既无界面也无作用的历史配置键、3 份不再使用的工作流副本与若干死代码路径
-- 🖼️ Flux2 文案与真实能力对齐（按附图数量自动接入 1–3 张参考图）
 - ✅ 新增 27 条工作流图结构回归测试（总计 291 条）
 
 ### v1.0.2

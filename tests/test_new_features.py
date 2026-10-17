@@ -284,16 +284,16 @@ def test_img2img_notice_appended_to_start_reply():
 
 
 def test_img2img_lora_isolation_uses_only_independent_lora():
-    """图生图的长期 LoRA 只能来自 img2img_lora_name，不能读取 lora_list。"""
+    """图生图只读取独立 LoRA 与显式启用的 Qwen 2.1 NSFW LoRA，不读取 lora_list。"""
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     marker = "configured_img2img_loras: list[str] = []"
     assert marker in source
-    anchor = source.index(marker)
-    block = source[anchor : anchor + 2200]
-    assert 'self._get("img2img_lora_name"' in block
+    assert 'self._get("img2img_lora_name"' in source
+    assert 'self._get("img2img_nsfw_lora_enabled", False)' in source
+    assert 'self._get("img2img_nsfw_lora_name"' in source
     # 图生图分支必须使用独立 LoRA 列表，而不是 lora_list
-    assert "if mode == \"img2img\"" in block
-    assert "IMG2IMG_LORA_ISOLATION_NOTICE" in block
+    assert "if mode == \"img2img\"" in source
+    assert "IMG2IMG_LORA_ISOLATION_NOTICE" in source
 
 
 def test_frontend_exposes_batch_and_notice():
@@ -303,15 +303,46 @@ def test_frontend_exposes_batch_and_notice():
     assert 'id="loraBatchProgress"' in html
     assert 'id="styleLoraFile" type="file" multiple' in html
     assert "lora-isolation-notice" in html
-    assert html.count("【特别标注】") >= 2
+    assert 'id="img2img_nsfw_lora_enabled"' in html
+    assert 'id="img2img_nsfw_lora_name"' in html
+    assert 'id="img2img_nsfw_lora_strength"' in html
+    assert "Qwen Image 2.1 NSFW LoRA" in html
+    # 旧「图生图 Flux2」页面自带一条同样的提示，该页已删除，故只剩 1 条。
+    assert html.count("【特别标注】") >= 1
 
     js = (PLUGIN_DIR / "app.js").read_text(encoding="utf-8")
     assert "async function importLoraBatch" in js
     assert "category_batch" in js
+    assert "payload.img2img_nsfw_lora_enabled" in js
 
     css = (PLUGIN_DIR / "style.css").read_text(encoding="utf-8")
     assert ".lora-isolation-notice" in css
     assert ".lora-batch-failures" in css
+
+
+def test_img2img_defaults_use_qwen_image_21():
+    schema = json.loads((PLUGIN_DIR / "_conf_schema.json").read_text(encoding="utf-8"))
+    assert schema["workflow_img2img"]["default"] == "qwen21_edit_api.json"
+    assert schema["img2img_unet_name"]["default"] == "qwen_image_2.1_int8_convrot.safetensors"
+    assert schema["img2img_clip_name"]["default"] == "qwen3vl_8b_w4a8.safetensors"
+    assert schema["img2img_vae_name"]["default"] == "qwen_image_2.1_vae_bf16.safetensors"
+    assert schema["img2img_steps"]["default"] == 25
+    assert schema["img2img_nsfw_lora_enabled"]["default"] is False
+    graph = json.loads((PLUGIN_DIR / "workflows" / "qwen21_edit_api.json").read_text(encoding="utf-8"))
+    assert graph["4"]["class_type"] == "TextEncodeQwenImage21"
+    assert graph["1"]["inputs"]["unet_name"] == schema["img2img_unet_name"]["default"]
+
+
+def test_qwen21_lora_guard_rejects_edit_2511_lora():
+    from astrbot_plugin_comfyui_ai_studio.main import ComfyUIAIStudio, UsageError
+
+    plugin = object.__new__(ComfyUIAIStudio)
+    plugin._lora_profile_cache = {}
+    plugin._lora_local_path = lambda _name: None
+    with pytest.raises(UsageError, match="Qwen Image Edit 2511"):
+        plugin._assert_qwen21_loras_compatible([
+            r"qwen-image-edit\MCNL-v1-Qwen-Image-Edit-2511.safetensors:0.8"
+        ])
 
 
 def test_schema_has_download_mode():
@@ -343,15 +374,10 @@ def test_schema_ships_no_machine_specific_path_defaults():
 
 def test_source_workflow_defaults_are_empty_for_portability():
     schema = _schema()
-    for key in (
-        "source_workflow",
-        "wash_source_workflow",
-        "outpaint_source_workflow",
-        "multi_angle_source_workflow",
-        "img2img_source_workflow",
-        "img2img_flux2_source_workflow",
-    ):
+    for key in ("source_workflow",):
         assert schema[key]["default"] == "", key
+    # 旧 Qwen 图生图的「自定义源工作流」已随该功能移除；图生图固定用内置 qwen21 工作流。
+    assert "img2img_source_workflow" not in schema
 
 
 def test_anima_knowledge_has_no_hardcoded_local_paths():
@@ -372,21 +398,30 @@ def test_no_drive_path_is_used_as_a_config_default():
     assert offenders == []
 
 
-def test_drive_paths_live_only_in_the_legacy_fingerprint_block():
-    """本机盘符路径只允许集中在旧值指纹块里，方便审计与后续清理。"""
+def test_no_legacy_author_path_fingerprint_block_remains():
+    """旧值指纹块里的条目**全部**属于已删功能（Flux2 / 洗图 / 扩图 / 多角度 /
+    旧 Qwen 图生图），所以整块删除；此后 main.py 里不允许再出现本机 E: 盘符路径。"""
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    start = source.index("LEGACY_AUTHOR_PATH_FINGERPRINTS = {")
-    end = source.index("FLUX2_IMG2IMG_SOURCE_DEFAULT = ", start)
-    remainder = source[:start] + source[end:]
-    assert f"E:{BS}" not in remainder
+    assert "LEGACY_AUTHOR_PATH_FINGERPRINTS" not in source
+    assert f"E:{BS}" not in source
 
 
-def test_legacy_fingerprints_are_still_used_for_migration():
-    """指纹块必须真的参与老配置清理，否则就是死代码。"""
+def test_removed_feature_config_keys_are_purged_at_startup():
+    """删掉的功能留在历史配置里的键，必须在启动时被清掉，否则旧值会继续影响运行。"""
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    assert 'LEGACY_AUTHOR_PATH_FINGERPRINTS["flux2_img2img"]' in source
-    assert 'LEGACY_AUTHOR_PATH_FINGERPRINTS["qwen_img2img"]' in source
-    assert "LEGACY_AUTHOR_PATH_FINGERPRINTS[mode]" in source
+    start = source.index("for key in (")
+    end = source.index("):", start)
+    block = source[start:end]
+    for key in (
+        "img2img_engine",
+        "img2img_source_workflow",
+        "qwen_img2img_source_workflow",
+        "workflow_img2img_flux2",
+        "workflow_wash",
+        "workflow_outpaint",
+        "workflow_multi_angle",
+    ):
+        assert f'"{key}"' in block, key
 
 
 def test_image_font_candidates_prefers_configured_paths():
@@ -446,18 +481,18 @@ def test_bundled_template_is_used_when_nothing_is_configured():
 
 
 def test_bundled_workflows_cover_every_mode():
-    """源工作流留空时，七种模式都必须有插件内置副本可回退。"""
+    """源工作流留空时，三种模式都必须有插件内置副本可回退。"""
     from astrbot_plugin_comfyui_ai_studio.main import MODE_FILES
 
     for mode, filename in MODE_FILES.items():
         assert (PLUGIN_DIR / "workflows" / filename).is_file(), mode
 
 
-def test_plugin_version_is_1_1_5_everywhere():
-    assert 'PLUGIN_VERSION = "1.1.5"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
-    assert "version: 1.1.5" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
-    assert "版本 v1.1.5" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
-    assert "版本-1.1.5-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
+def test_plugin_version_is_1_4_0_everywhere():
+    assert 'PLUGIN_VERSION = "1.4.0"' in (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
+    assert "version: 1.4.0" in (PLUGIN_DIR / "metadata.yaml").read_text(encoding="utf-8")
+    assert "版本 v1.4.0" in (PLUGIN_DIR / "index.html").read_text(encoding="utf-8")
+    assert "版本-1.4.0-" in (PLUGIN_DIR / "README.md").read_text(encoding="utf-8")
     assert "0.10.3" not in (PLUGIN_DIR / "translation.py").read_text(encoding="utf-8")
 
 

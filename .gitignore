@@ -17,3 +17,9 @@ backup_*/
 # 控制台本地预览产物
 .pv.html
 pages/console/.pv.html
+
+# 发布构建产物与本地快照
+backup-*/
+dist/
+*.zip
+_purge_probe.txt

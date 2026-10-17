@@ -28,6 +28,9 @@ class UsageError(Exception):
 @dataclass
 class DrawParams:
     mode: str = "txt2img"
+    # 本次任务强制使用的引擎。空 = 按 WebUI 配置的工作流走；"krea2" = 走
+    # Krea 2 原生 GGUF 图（/水粉 指令），不改变全局 workflow_* 配置。
+    engine: str = ""
     prompt: str = ""
     negative: str | None = None
     model: str = ""

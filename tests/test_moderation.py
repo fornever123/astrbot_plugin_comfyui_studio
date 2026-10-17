@@ -464,7 +464,6 @@ def test_command_entries_check_input_before_start_reply() -> None:
     source = (PLUGIN_DIR / "main.py").read_text(encoding="utf-8")
     for start_marker, end_marker in (
         ('    async def _command_img2img_mode(', '    @filter.command("图生图"'),
-        ("    async def _command_flux2_tool(", '    @filter.command("洗图"'),
         ('    @filter.command("高清放大"', "    @filter.command(\"模型\""),
     ):
         start = source.index(start_marker)

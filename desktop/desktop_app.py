@@ -5,6 +5,7 @@ import json
 import os
 import queue
 import random
+import re
 import threading
 import traceback
 import webbrowser
@@ -64,6 +65,14 @@ if "astrbot.api" not in sys.modules:
 from ai import AIError, AITranslator  # noqa: E402
 from anima_knowledge import build_context  # noqa: E402
 from comfy import ComfyClient, ComfyError  # noqa: E402
+from model_profiles import (  # noqa: E402
+    apply_profile_defaults,
+    explicit_numeric_overrides,
+    load_profiles,
+    profile_key,
+    recommended_profile,
+    save_profile,
+)
 from workflow import (  # noqa: E402
     WorkflowError,
     adapt_generic,
@@ -72,6 +81,7 @@ from workflow import (  # noqa: E402
     load_workflow,
     validate_workflow_mapping,
 )
+from qwen21_workflows import adapt_template as adapt_qwen21_template  # noqa: E402
 
 
 APP_NAME = "Anima ComfyUI 桌面端"
@@ -83,7 +93,8 @@ CHAT_SYSTEM_PROMPT = """你是 Anima ComfyUI 桌面端的中文绘图助手。
 你可以正常聊天，也可以把用户的自然语言请求转换成绘图任务。
 只输出一个 JSON 对象，不要 Markdown，不要解释 JSON 以外的内容。
 普通聊天格式：{"action":"chat","reply":"中文回复"}
-绘图格式：{"action":"draw","mode":"txt2img 或 img2img","prompt":"实际发送给工作流的提示词","negative_prompt":"负面提示词","parameters":{"width":1024,"height":1024,"steps":20,"cfg":5,"seed":-1,"sampler_name":"euler","scheduler":"normal","denoise":1}}
+绘图格式：{"action":"draw","mode":"txt2img 或 img2img","prompt":"实际发送给工作流的提示词","negative_prompt":"负面提示词","parameters":{}}
+参数默认继承当前选定模型、模式和该模型的配置档案。parameters 默认必须为空对象；只有用户明确说出某个参数及其数值时，才在 parameters 中填写该项覆盖值。不得照抄示例数值、猜测步数/CFG/尺寸/采样器，不得自行更换核心模型、文本编码器或 VAE。用户未明确指定时，省略该字段，由当前模型档案决定。
 用户明确要求修改已有图片时使用 img2img；没有参考图时使用 txt2img。
 绘图 prompt 必须保留用户明确提出的主体、动作、姿势、服装、表情、镜头和场景，不要把“换个姿势”偷换成没有动作的空句。
 所有回复内容使用中文；prompt 可以根据工作流需要使用英文标签，但不要输出思考过程。"""
@@ -121,6 +132,7 @@ class ConfigStore:
             "txt2img_workflow": "",
             "img2img_workflow": "",
             "workflow_mappings": {},
+            "model_profiles": {},
             "chat_history": [],
         }
         self.load()
@@ -200,6 +212,8 @@ class DesktopApp(tk.Tk):
         self._busy = 0
         self._workflow_paths: dict[str, Path] = {}
         self._workflow_display: dict[str, str] = {}
+        self._model_combos: dict[str, ttk.Combobox] = {}
+        self._comfy_model_choices: dict[str, list[str]] = {}
         self._last_workflow_json = ""
         self._build_style()
         self._build_vars()
@@ -240,6 +254,20 @@ class DesktopApp(tk.Tk):
         self.img_vae = tk.StringVar()
         self.txt_loras = tk.StringVar()
         self.img_loras = tk.StringVar()
+        turbo_modes = data.get("qwen21_turbo_enabled", {})
+        if not isinstance(turbo_modes, dict):
+            turbo_modes = {}
+        self.qwen21_turbo_vars = {
+            mode: tk.BooleanVar(value=bool(turbo_modes.get(mode, False)))
+            for mode in ("txt2img", "img2img")
+        }
+        turbo_strengths = data.get("qwen21_turbo_strength", {})
+        if not isinstance(turbo_strengths, dict):
+            turbo_strengths = {}
+        self.qwen21_turbo_strength_vars = {
+            mode: tk.StringVar(value=str(turbo_strengths.get(mode, "1.0")))
+            for mode in ("txt2img", "img2img")
+        }
         self.draw_params: dict[str, dict[str, tk.StringVar]] = {}
         for mode in ("txt2img", "img2img"):
             self.draw_params[mode] = {
@@ -347,8 +375,25 @@ class DesktopApp(tk.Tk):
         row += 1
         for label, variable in (("核心模型", model_var), ("文本编码器", clip_var), ("VAE", vae_var), ("LoRA（逗号分隔）", lora_var)):
             ttk.Label(top, text=label).grid(row=row, column=0, sticky="w", padx=4, pady=4)
-            ttk.Entry(top, textvariable=variable).grid(row=row, column=1, columnspan=5, sticky="ew", padx=4, pady=4)
+            if label == "核心模型":
+                combo = ttk.Combobox(top, textvariable=variable, state="normal")
+                combo.grid(row=row, column=1, columnspan=4, sticky="ew", padx=4, pady=4)
+                self._model_combos[mode] = combo
+                combo.bind("<<ComboboxSelected>>", lambda _event, m=mode: self.apply_model_profile(m))
+                ttk.Button(top, text="刷新模型", command=lambda m=mode: self.refresh_comfy_models(m)).grid(row=row, column=5, padx=4)
+            else:
+                ttk.Entry(top, textvariable=variable).grid(row=row, column=1, columnspan=5, sticky="ew", padx=4, pady=4)
             row += 1
+
+        ttk.Checkbutton(
+            top,
+            text="Qwen Image 2.1 Turbo 加速（官方 8 步 sigma）",
+            variable=self.qwen21_turbo_vars[mode],
+            command=lambda m=mode: self._toggle_qwen21_turbo(m),
+        ).grid(row=row, column=1, columnspan=5, sticky="w", padx=4, pady=4)
+        ttk.Label(top, text="Turbo LoRA 强度").grid(row=row + 1, column=1, sticky="w", padx=4, pady=4)
+        ttk.Entry(top, textvariable=self.qwen21_turbo_strength_vars[mode], width=10).grid(row=row + 1, column=2, sticky="w", padx=4, pady=4)
+        row += 1
 
         params = ttk.LabelFrame(parent, text="采样参数", style="Card.TLabelframe")
         params.pack(fill="x", pady=(12, 0))
@@ -367,6 +412,8 @@ class DesktopApp(tk.Tk):
         controls = ttk.Frame(parent)
         controls.pack(fill="x", pady=(12, 0))
         ttk.Button(controls, text="开始绘图", style="Accent.TButton", command=lambda: self.start_draw(mode)).pack(side="left")
+        ttk.Button(controls, text="套用模型推荐", command=lambda m=mode: self.apply_model_profile(m, use_recommendation=True)).pack(side="left", padx=8)
+        ttk.Button(controls, text="保存此模型档案", command=lambda m=mode: self.save_model_profile(m)).pack(side="left")
         ttk.Button(controls, text="查看当前工作流", command=self.show_last_workflow).pack(side="left", padx=8)
         ttk.Label(
             parent,
@@ -598,6 +645,14 @@ class DesktopApp(tk.Tk):
                 self.ai_model.set(value[0])
         elif label == "AI 连接测试":
             messagebox.showinfo("AI 连接测试", str(value))
+        elif label.startswith("ComfyUI 模型列表") and isinstance(value, dict):
+            mode = "img2img" if label.endswith("图生图") else "txt2img"
+            self._comfy_model_choices = value
+            combo = self._model_combos.get(mode)
+            if combo:
+                combo["values"] = value.get("diffusion_models", []) + value.get("checkpoints", [])
+                self.apply_model_profile(mode)
+            self.status_text.set("模型列表已刷新；选择模型会自动应用其档案")
 
     def _ai_config(self) -> dict[str, Any]:
         return {
@@ -606,6 +661,107 @@ class DesktopApp(tk.Tk):
             "ai_model": self.ai_model.get().strip(),
             "ai_enabled": True,
         }
+
+    def refresh_comfy_models(self, mode: str) -> None:
+        def fetch() -> dict[str, list[str]]:
+            client = ComfyClient(self.comfy_url.get().strip() or DEFAULT_COMFY_URL)
+            async def collect() -> dict[str, list[str]]:
+                return {
+                    category: await client.models(category)
+                    for category in ("diffusion_models", "checkpoints", "text_encoders", "vae", "loras")
+                }
+            return asyncio.run(collect())
+
+        self._start_task(f"ComfyUI 模型列表 {mode}", fetch)
+
+    def apply_model_profile(self, mode: str, use_recommendation: bool = False) -> None:
+        model = self.txt_model.get() if mode == "txt2img" else self.img_model.get()
+        saved_profiles = self.store.data.setdefault("model_profiles", {})
+        full_turbo = "qwen_image_2.1" in model.casefold() and "turbo" in model.casefold()
+        accelerated = bool(self.qwen21_turbo_vars[mode].get()) and not full_turbo
+        key = profile_key(model, mode, accelerated)
+        saved = saved_profiles.get(key, {}) if isinstance(saved_profiles, dict) else {}
+        if use_recommendation:
+            saved = {}
+        profile = apply_profile_defaults(model, mode, saved, accelerated)
+        recommended = profile.get("recommended", {})
+        if not recommended:
+            self.status_text.set("未识别模型架构；保留当前参数，不套用其他模型默认值")
+            return
+        variables = self.draw_params[mode]
+        for key_name in ("steps", "cfg", "sampler_name", "scheduler", "denoise", "width", "height"):
+            value = recommended.get(key_name)
+            target = "sampler" if key_name == "sampler_name" else key_name
+            if value is not None and target in variables:
+                variables[target].set(str(value))
+        if profile.get("family") == "Qwen Image 2.1" and recommended.get("turbo_lora_strength") is not None:
+            self.qwen21_turbo_strength_vars[mode].set(str(recommended["turbo_lora_strength"]))
+        choices = self._comfy_model_choices
+        for field, var_name, source in (
+            ("clip_name", "txt_clip" if mode == "txt2img" else "img_clip", "text_encoders"),
+            ("vae_name", "txt_vae" if mode == "txt2img" else "img_vae", "vae"),
+        ):
+            value = str(recommended.get(field, "") or "")
+            if value and value in choices.get(source, []):
+                getattr(self, var_name).set(value)
+        workflow_name = str(recommended.get("workflow", "") or "")
+        if workflow_name and (DEFAULT_WORKFLOW_DIR / workflow_name).is_file():
+            variable = self.txt_workflow if mode == "txt2img" else self.img_workflow
+            variable.set(str(DEFAULT_WORKFLOW_DIR / workflow_name))
+            self.refresh_workflows()
+        self.status_text.set(
+            f"已应用 {profile.get('family')} 官方推荐档案；本机生成验证：{'已验证' if profile.get('verified') else '尚未验证'}"
+        )
+
+    def _toggle_qwen21_turbo(self, mode: str) -> None:
+        modes = self.store.data.setdefault("qwen21_turbo_enabled", {})
+        if not isinstance(modes, dict):
+            modes = {}
+            self.store.data["qwen21_turbo_enabled"] = modes
+        modes[mode] = bool(self.qwen21_turbo_vars[mode].get())
+        strengths = self.store.data.setdefault("qwen21_turbo_strength", {})
+        if not isinstance(strengths, dict):
+            strengths = {}
+            self.store.data["qwen21_turbo_strength"] = strengths
+        strengths[mode] = self.qwen21_turbo_strength_vars[mode].get()
+        self.store.save()
+        self.apply_model_profile(mode)
+
+    def save_model_profile(self, mode: str) -> None:
+        model = (self.txt_model if mode == "txt2img" else self.img_model).get().strip()
+        if not model:
+            messagebox.showwarning("模型档案", "请先选择核心模型")
+            return
+        values = self.draw_params[mode]
+        full_turbo = "qwen_image_2.1" in model.casefold() and "turbo" in model.casefold()
+        accelerated = bool(self.qwen21_turbo_vars[mode].get()) and not full_turbo
+        workflow = self.txt_workflow.get() if mode == "txt2img" else self.img_workflow.get()
+        profile = {
+            "steps": _int_value(values["steps"].get(), 20),
+            "cfg": _float_value(values["cfg"].get(), 5.0),
+            "sampler_name": values["sampler"].get().strip(),
+            "scheduler": values["scheduler"].get().strip(),
+            "denoise": _float_value(values["denoise"].get(), 1.0),
+            "width": _int_value(values["width"].get(), 1024),
+            "height": _int_value(values["height"].get(), 1024),
+            "clip_name": self.txt_clip.get() if mode == "txt2img" else self.img_clip.get(),
+            "vae_name": self.txt_vae.get() if mode == "txt2img" else self.img_vae.get(),
+            "workflow": Path(workflow).name if workflow else "",
+        }
+        if full_turbo:
+            profile["steps"] = 8
+            profile["scheduler"] = "manual_sigmas"
+        elif accelerated:
+            profile["turbo_lora_strength"] = _float_value(self.qwen21_turbo_strength_vars[mode].get(), 1.0)
+            profile["steps"] = 8
+            profile["scheduler"] = "manual_sigmas"
+        profiles = self.store.data.setdefault("model_profiles", {})
+        if not isinstance(profiles, dict):
+            profiles = {}
+            self.store.data["model_profiles"] = profiles
+        profiles[profile_key(model, mode, accelerated)] = profile
+        self.store.save()
+        self.status_text.set(f"已保存 {model} 的{('文生图' if mode == 'txt2img' else '图生图')}档案")
 
     def _request_ai(
         self,
@@ -644,12 +800,34 @@ class DesktopApp(tk.Tk):
         )
         system_prompt = (
             CHAT_SYSTEM_PROMPT
-            + "\n\n当 action=draw 时，prompt 字段要遵循下面的 Anima 提示词工程规则；"
-              "只把规则用于 prompt 字段，不要把规则原文放进 reply 或 JSON 外内容。\n"
-            + ANIMA_CONTEXT
+        )
+        current_settings = {
+            mode: {
+                "core_model": draw_state.get("models", {}).get(mode, ""),
+                "text_encoder": draw_state.get("clips", {}).get(mode, ""),
+                "vae": draw_state.get("vaes", {}).get(mode, ""),
+                "parameters": draw_state.get("parameters", {}).get(mode, {}),
+            }
+            for mode in ("txt2img", "img2img")
+        }
+        selected_models = [
+            str(draw_state.get("models", {}).get(mode, "") or "")
+            for mode in ("txt2img", "img2img")
+        ]
+        qwen_mode = any(recommended_profile(name).get("family") == "Qwen Image 2.1" for name in selected_models)
+        prompt_rules = (
+            "当前选中的模型若为 Qwen Image 2.1，prompt 必须使用简洁、自然的中文画面描述；不要套用 Anima/Danbooru 规则。"
+            if qwen_mode else
+            "当前选中的模型若为 Anima，prompt 使用一行小写英文 Danbooru 标签，并遵循下面的 Anima 提示词工程规则。\n" + ANIMA_CONTEXT
+        )
+        system_prompt += "\n\n" + prompt_rules
+        profile_context = (
+            "当前绘图状态（仅供遵循，不要改写或自行切换模型）："
+            + json.dumps(current_settings, ensure_ascii=False)
+            + "。数值参数默认继承所选模型的当前配置；未被用户明确指定的数值一律不要传入覆盖参数。"
         )
         raw = self._request_ai(
-            f"最近对话：\n{context}\n\n本次用户消息：\n{content}",
+            f"{profile_context}\n\n最近对话：\n{context}\n\n本次用户消息：\n{content}",
             system_prompt,
             config=draw_state["ai_config"],
         )
@@ -659,7 +837,8 @@ class DesktopApp(tk.Tk):
         if str(result.get("action", "chat")).lower() != "draw":
             return {"action": "chat", "reply": str(result.get("reply", "我暂时没有理解这句话。"))}
         mode = "img2img" if str(result.get("mode", "txt2img")).lower() == "img2img" else "txt2img"
-        parameters = result.get("parameters") if isinstance(result.get("parameters"), dict) else {}
+        generated_parameters = result.get("parameters") if isinstance(result.get("parameters"), dict) else {}
+        parameters = explicit_numeric_overrides(content)
         return {
             "action": "draw",
             "reply": str(result.get("reply", "我来开始绘图。")),
@@ -708,6 +887,15 @@ class DesktopApp(tk.Tk):
         parameters: dict[str, dict[str, str]] = {}
         for mode, values in self.draw_params.items():
             parameters[mode] = {key: variable.get() for key, variable in values.items()}
+            model = self.txt_model.get() if mode == "txt2img" else self.img_model.get()
+            full_turbo = "qwen_image_2.1" in model.casefold() and "turbo" in model.casefold()
+            accelerated = bool(self.qwen21_turbo_vars[mode].get()) and not full_turbo
+            saved = self.store.data.get("model_profiles", {}).get(profile_key(model, mode, accelerated), {})
+            recommended = apply_profile_defaults(model, mode, saved, accelerated).get("recommended", {})
+            for key in ("steps", "cfg", "sampler_name", "scheduler", "denoise"):
+                if recommended.get(key) is not None:
+                    target_key = "sampler" if key == "sampler_name" else key
+                    parameters[mode][target_key] = str(recommended[key])
         return {
             "comfy_url": self.comfy_url.get().strip() or DEFAULT_COMFY_URL,
             "output_dir": self.output_dir.get().strip() or str(DEFAULT_OUTPUT_DIR),
@@ -717,6 +905,9 @@ class DesktopApp(tk.Tk):
             "vaes": {"txt2img": self.txt_vae.get(), "img2img": self.img_vae.get()},
             "loras": {"txt2img": self.txt_loras.get(), "img2img": self.img_loras.get()},
             "parameters": parameters,
+            "qwen21_turbo_enabled": {mode: bool(value.get()) for mode, value in self.qwen21_turbo_vars.items()},
+            "qwen21_turbo_strength": {mode: value.get() for mode, value in self.qwen21_turbo_strength_vars.items()},
+            "comfy_models": dict(self._comfy_model_choices),
             "image_paths": self._current_images(),
             "ai_config": self._ai_config(),
         }
@@ -765,7 +956,71 @@ class DesktopApp(tk.Tk):
                 raise WorkflowError("图生图至少需要选择一张参考图片")
             asyncio.run(upload_all())
         seed = _int_value(str(parameters.get("seed", defaults.get("seed", "-1"))), -1)
-        graph, report = adapt_generic(
+        if any(node.get("class_type") == "TextEncodeQwenImage21" for node in source.values() if isinstance(node, dict)):
+            model_name = str(parameters.get("model", state["models"][mode]) or "")
+            turbo_mode = any(
+                isinstance(node, dict) and node.get("class_type") == "ManualSigmas"
+                for node in source.values()
+            )
+            full_turbo_model = "qwen_image_2.1" in model_name.casefold() and "turbo" in model_name.casefold()
+            recommended = recommended_profile(model_name, mode, accelerated=turbo_mode and not full_turbo_model).get("recommended", {})
+            clip_name = str(parameters.get("clip", state["clips"][mode]) or recommended.get("clip_name", "qwen3vl_8b_w4a8.safetensors"))
+            vae_name = str(parameters.get("vae", state["vaes"][mode]) or recommended.get("vae_name", "qwen_image_2.1_vae_bf16.safetensors"))
+            resolution = int(recommended.get("resolution", 1024))
+            listed_loras = [
+                str(name).replace("\\", "/")
+                for name in state.get("comfy_models", {}).get("loras", [])
+            ]
+
+            def resolve_lora(name: str) -> str:
+                normalized = name.strip().replace("\\", "/").casefold()
+                match = next((item for item in listed_loras if item.casefold() == normalized), "")
+                if not match:
+                    basename = Path(normalized).name
+                    match = next((item for item in listed_loras if Path(item).name.casefold() == basename), "")
+                if listed_loras and not match:
+                    raise WorkflowError(f"ComfyUI LoRA 列表中未找到：{name}")
+                return match or name.strip().replace("\\", "/")
+
+            lora_values: list[tuple[str, float]] = []
+            for raw in _split_values(str(parameters.get("loras", state["loras"][mode]) or "")):
+                name, weight = raw, 0.8
+                if ":" in raw:
+                    candidate, raw_weight = raw.rsplit(":", 1)
+                    try:
+                        weight = float(raw_weight)
+                        name = candidate
+                    except ValueError:
+                        pass
+                lora_values.append((resolve_lora(name), weight))
+            turbo_lora = ""
+            if turbo_mode and not full_turbo_model and "9" in source:
+                turbo_lora = resolve_lora(str(recommended.get("turbo_lora") or "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"))
+            graph = adapt_qwen21_template(
+                source,
+                prompt=positive,
+                negative=negative,
+                model=model_name,
+                clip=clip_name,
+                vae=vae_name,
+                seed=seed if seed >= 0 else random.randint(0, 2**32 - 1),
+                resolution=resolution,
+                width=_int_value(str(parameters.get("width", defaults.get("width", "1024"))), 1024),
+                height=_int_value(str(parameters.get("height", defaults.get("height", "1024"))), 1024),
+                steps=_int_value(str(parameters.get("steps", defaults.get("steps", recommended.get("steps", 25)))), 25),
+                cfg=_float_value(str(parameters.get("cfg", defaults.get("cfg", recommended.get("cfg", 1)))), 1.0),
+                sampler_name=str(parameters.get("sampler", defaults.get("sampler", recommended.get("sampler_name", "euler"))) or "euler"),
+                scheduler=str(parameters.get("scheduler", defaults.get("scheduler", recommended.get("scheduler", "simple"))) or "simple"),
+                denoise=_float_value(str(parameters.get("denoise", defaults.get("denoise", recommended.get("denoise", 1.0)))), 1.0),
+                image_names=uploaded if mode == "img2img" else [],
+                loras=lora_values,
+                turbo_lora=turbo_lora,
+                turbo_strength=_float_value(str(state.get("qwen21_turbo_strength", {}).get(mode, "1.0")), 1.0),
+                filename_prefix=f"desktop/qwen21_{mode}",
+            )
+            report = ["Qwen Image 2.1 原生中文提示词工作流。", "CFG=1 时负面提示词不会参与引导。"]
+        else:
+            graph, report = adapt_generic(
             source,
             mode=mode,
             positive=positive,
@@ -786,7 +1041,7 @@ class DesktopApp(tk.Tk):
             batch=_int_value(str(parameters.get("batch", defaults.get("batch", "1"))), 1),
             filename_prefix=f"astrbot/desktop_{mode}",
             mapping=mapping,
-        )
+            )
         self._last_workflow_json = json.dumps(graph, ensure_ascii=False, indent=2)
 
         async def run() -> list[Path]:

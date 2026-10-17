@@ -16,6 +16,8 @@ let editingArtistPreset = "";
 let fallbackBridge = null;
 let aiConnectionTested = false;
 let builtInAnimaContextPreview = "";
+let promptEnhancerDefaults = {};
+let builtinBundles = [];
 
 // AstrBot 4.27+ 会注入官方桥接脚本；旧版页面、缓存页面或直接打开页面时，
 // 可能暂时没有 window.AstrBotPluginPage。这里用同一套 postMessage 协议兜底，
@@ -161,12 +163,18 @@ function initLoraMode() {
 }
 
 function initLoraSection() {
+  const sections = ["normal", "style", "krea2", "qwen21"];
   const apply = section => {
-    loraSection = section === "style" ? "style" : "normal";
-    const normalPanel = document.querySelector(".lora-management-band");
-    const stylePanel = document.querySelector(".style-lora-band");
-    if (normalPanel) normalPanel.hidden = loraSection !== "normal";
-    if (stylePanel) stylePanel.hidden = loraSection !== "style";
+    loraSection = sections.includes(section) ? section : "normal";
+    document.querySelectorAll(".lora-management-band").forEach(panel => {
+      panel.hidden = loraSection !== "normal";
+    });
+    document.querySelectorAll(".style-lora-band").forEach(panel => {
+      panel.hidden = loraSection !== "style";
+    });
+    document.querySelectorAll("[data-engine-lora-panel]").forEach(panel => {
+      panel.hidden = panel.dataset.engineLoraPanel !== loraSection;
+    });
     document.querySelectorAll("[data-lora-section]").forEach(tab => {
       const active = tab.dataset.loraSection === loraSection;
       tab.classList.toggle("active", active);
@@ -210,6 +218,7 @@ async function load() {
   initTheme();
   initLoraMode();
   initLoraSection();
+  initEngineLoras();
   initViews();
   try {
     const status = await get(`${API}/status`);
@@ -256,7 +265,21 @@ async function load() {
       el.textContent = label ? `${value} · ${label}` : (value || "未检测到");
     }
     fillConfig();
-    await Promise.all([loadModels(), loadWorkflows(), loadPresets(), loadArtistPresets(), loadPathSettings()]);
+    if (!comfy.ok) {
+      modelData = {};
+      for (const id of ["model", "clip_name", "vae_name", "img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name"]) {
+        setSelectOptions(id, [], config[id === "model" ? "model_name" : id] || "", id !== "model");
+      }
+    }
+    await Promise.all([...(comfy.ok ? [loadModels()] : []), loadWorkflows(), loadPresets(), loadArtistPresets(), loadPathSettings()]);
+    const txtModel = document.getElementById("model")?.value || "";
+    if (modelData.model_profiles?.[txtModel]?.family === "Qwen Image 2.1") {
+      applyModelProfile("txt2img", txtModel, {quiet: true, preserveWorkflow: true});
+    }
+    const editModel = document.getElementById("img2img_unet_name")?.value || "";
+    if (modelData.img2img_model_profiles?.[editModel]?.family === "Qwen Image 2.1") {
+      applyModelProfile("img2img", editModel, {quiet: true});
+    }
   } catch (error) {
     document.getElementById("status").textContent = "控制台接口异常";
     document.getElementById("status").className = "status bad";
@@ -286,6 +309,12 @@ function fillConfig() {
     animaStatus.className = `muted ${info.builtin ? "success-text" : "error-text"}`;
   }
   document.getElementById("plugin_ai_command_system_prompt").value = config.plugin_ai_command_system_prompt || "";
+  promptEnhancerDefaults = config.prompt_enhancer_defaults || {};
+  document.getElementById("prompt_enhancer_enabled").checked = config.prompt_enhancer_enabled !== false;
+  for (const mode of ["txt2img", "img2img"]) {
+    const key = `prompt_enhancer_${mode}_template`;
+    document.getElementById(key).value = config[key] || promptEnhancerDefaults[mode] || "";
+  }
   document.getElementById("img2img_llm_prompt_source").value = config.img2img_llm_prompt_source || "plugin";
   document.getElementById("img2img_plugin_ai_debug").checked = config.img2img_plugin_ai_debug === true || config.img2img_plugin_ai_debug === "true" || config.img2img_plugin_ai_debug === 1;
   const img2imgDefaults = config.img2img_prompt_defaults || {};
@@ -305,8 +334,6 @@ function fillConfig() {
   if (img2imgTranslateUrl) img2imgTranslateUrl.value = config.img2img_plain_translate_url || "https://translate.googleapis.com/translate_a/single";
   document.getElementById("default_positive").value = config.default_positive || config.quality_prefix || "";
   document.getElementById("default_negative").value = config.default_negative || "";
-  const img2imgEngine = document.getElementById("img2img_engine");
-  if (img2imgEngine) img2imgEngine.value = config.img2img_engine || "qwen";
   document.getElementById("draw_reply_mode").value = "custom";
   document.getElementById("draw_delivery_mode").value = config.draw_delivery_mode || "normal";
   const llmStartMode = document.getElementById("llm_draw_start_reply_mode");
@@ -343,45 +370,21 @@ function fillConfig() {
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
+  setSelectOptions("img2img_nsfw_lora_name", modelData.qwen21_nsfw_loras || [], config.img2img_nsfw_lora_name || modelData.qwen21_nsfw_lora_default || "", true);
+  document.getElementById("img2img_nsfw_lora_enabled").checked = config.img2img_nsfw_lora_enabled === true || config.img2img_nsfw_lora_enabled === "true" || config.img2img_nsfw_lora_enabled === 1;
+  document.getElementById("img2img_nsfw_lora_strength").value = config.img2img_nsfw_lora_strength ?? 0.8;
   for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method", "img2img_largest_size", "img2img_crop", "img2img_sampling_shift", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
     const element = document.getElementById(id);
     if (element) element.value = config[id] ?? "";
   }
   const matchInputSize = document.getElementById("img2img_match_input_size");
   if (matchInputSize) matchInputSize.checked = config.img2img_match_input_size !== false;
-  const flux2TextFields = [
-    "img2img_flux2_source_workflow", "img2img_flux2_lora_strength", "img2img_flux2_size",
-    "img2img_flux2_steps", "img2img_flux2_cfg", "img2img_flux2_seed",
-    "img2img_flux2_sampler_name", "img2img_flux2_scheduler", "img2img_flux2_denoise",
-    "img2img_flux2_batch", "img2img_flux2_default_positive", "img2img_flux2_default_negative",
-    "img2img_flux2_prompt_template", "img2img_flux2_ai_system_prompt",
-    "img2img_flux2_plugin_ai_knowledge", "img2img_flux2_plain_translate_url",
-    "img2img_flux2_output_format", "img2img_flux2_filename_prefix",
-  ];
-  for (const id of flux2TextFields) {
-    const element = document.getElementById(id);
-    if (element) element.value = config[id] ?? "";
-  }
-  const flux2Source = document.getElementById("img2img_flux2_llm_prompt_source");
-  if (flux2Source) flux2Source.value = config.img2img_flux2_llm_prompt_source || "plugin";
-  for (const id of ["img2img_flux2_plugin_ai_debug", "img2img_flux2_plain_translate_enabled"]) {
+  for (const id of ["qwen21_turbo_enabled", "qwen21_img2img_turbo_enabled"]) {
     const element = document.getElementById(id);
     if (element) element.checked = config[id] === true || config[id] === "true" || config[id] === 1;
   }
-  for (const mode of ["wash", "outpaint", "multi_angle"]) {
-    for (const key of ["source_workflow", "model_name", "clip_name", "vae_name", "default_positive", "default_negative", "sampler_name", "scheduler", "filename_prefix"]) {
-      const element = document.getElementById(`${mode}_${key}`);
-      if (element) element.value = config[`${mode}_${key}`] ?? "";
-    }
-    for (const key of ["steps", "cfg", "seed", "denoise", "size", "batch", "caption_tokens", "left", "top", "right", "bottom", "feathering", "horizontal_angle", "vertical_angle", "zoom"]) {
-      const element = document.getElementById(`${mode}_${key}`);
-      if (element) element.value = config[`${mode}_${key}`] ?? "";
-    }
-    for (const key of ["default_prompts", "camera_view"]) {
-      const element = document.getElementById(`${mode}_${key}`);
-      if (element) element.checked = config[`${mode}_${key}`] === true || config[`${mode}_${key}`] === "true" || config[`${mode}_${key}`] === 1;
-    }
-  }
+  const turboWeight = document.getElementById("qwen21_turbo_lora_strength");
+  if (turboWeight) turboWeight.value = config.qwen21_turbo_lora_strength ?? 1;
   updateReplyCustomVisibility();
 }
 
@@ -397,7 +400,8 @@ function setSelectOptions(id, values, selected = "", allowEmpty = false) {
 function updateModelHint() {
   const hint = document.getElementById("modelHint");
   const model = document.getElementById("model")?.value || "";
-  const profile = modelData.model_profiles?.[model];
+  const turbo = document.getElementById("qwen21_turbo_enabled")?.checked === true;
+  const profile = profileForModel("txt2img", model, turbo);
   if (!hint) return;
   if (!profile) {
     hint.textContent = "";
@@ -407,7 +411,19 @@ function updateModelHint() {
   const patch = profile.family === "Anima-2.9B"
     ? (modelData.anima_29b_patch_installed ? "专用节点已安装，重启 ComfyUI 后生效。" : "缺少专用节点，请安装 ComfyUI-Anima-2.9B 并重启 ComfyUI。")
     : "无需 2.9B 专用节点。";
-  hint.textContent = `${profile.family}：${profile.description}。默认建议：${recommended.sampler_name || ""} / ${recommended.scheduler || ""} / ${recommended.steps || ""} 步 / CFG ${recommended.cfg || ""}。${patch}`;
+  const validation = profile.verified ? "本机已实际出图验证" : (profile.official_recommendation ? "已识别，显示官方推荐（本机尚未验证）" : "已识别家族，尚无本机验证参数");
+  hint.textContent = `${profile.family}（${validation}）：${profile.description}。档案：${recommended.sampler_name || ""} / ${recommended.scheduler || ""} / ${recommended.steps || ""} 步 / CFG ${recommended.cfg ?? ""}。${patch}`;
+}
+
+function profileForModel(mode, model, accelerated = false) {
+  const normal = mode === "img2img"
+    ? modelData.img2img_model_profiles?.[model]
+    : modelData.model_profiles?.[model];
+  if (!normal || normal.family !== "Qwen Image 2.1" || !accelerated || normal.integrated_acceleration) return normal;
+  const turbo = mode === "img2img"
+    ? modelData.img2img_model_profiles_turbo?.[model]
+    : modelData.model_profiles_turbo?.[model];
+  return turbo || normal;
 }
 
 function setAiModelOptions(models, selected = "") {
@@ -784,6 +800,138 @@ function renderLorasRaw() {
 function renderLoras() {
   renderLorasRaw();
   renderStyleLoras();
+  renderEngineLoras();
+}
+
+// 每个引擎（Krea 2 / Qwen 2.1）各有一份独立 LoRA 启用列表，互不影响，
+// 也不读 Anima 的 lora_list 与画风随机候选。
+const ENGINE_LORA_PANELS = {
+  krea2: {
+    label: "Krea 2",
+    configKey: "krea2_lora_list",
+    list: "krea2Loras",
+    search: "krea2LoraSearch",
+    compatible: "krea2LoraOnlyCompatible",
+    match: file => /krea[_-]?2/i.test(file),
+  },
+  qwen21: {
+    label: "Qwen Image 2.1",
+    configKey: "qwen21_lora_list",
+    list: "qwen21Loras",
+    search: "qwen21LoraSearch",
+    compatible: "qwen21LoraOnlyCompatible",
+    match: file => /qwen/i.test(file),
+  },
+};
+
+function engineLoraEntries(configKey) {
+  const entries = [];
+  for (const item of (config[configKey] || [])) {
+    const text = String(item || "").trim();
+    if (!text) continue;
+    const index = text.lastIndexOf(":");
+    const tail = index > 0 ? text.slice(index + 1) : "";
+    const weight = /^-?\d+(?:\.\d+)?$/.test(tail) ? tail : "0.8";
+    const name = /^-?\d+(?:\.\d+)?$/.test(tail) ? text.slice(0, index) : text;
+    if (name) entries.push([name, weight]);
+  }
+  return entries;
+}
+
+function renderEngineLoras() {
+  const items = loraItems.length
+    ? loraItems
+    : (modelData.loras || []).map(file_name => ({
+        file_name,
+        alias: String(file_name).replace(/\.[^.]+$/, ""),
+        category: "未分类",
+        command_aliases: [],
+      }));
+  Object.entries(ENGINE_LORA_PANELS).forEach(([engine, meta]) => {
+    const container = document.getElementById(meta.list);
+    if (!container) return;
+    const active = new Map(engineLoraEntries(meta.configKey));
+    const keyword = String(document.getElementById(meta.search)?.value || "").trim().toLowerCase();
+    const onlyCompatible = Boolean(document.getElementById(meta.compatible)?.checked);
+    const rows = items
+      .filter(item => !onlyCompatible || meta.match(String(item.file_name || "")))
+      .filter(item => {
+        if (!keyword) return true;
+        return [item.file_name, item.alias].some(value => String(value || "").toLowerCase().includes(keyword));
+      })
+      .sort((a, b) => {
+        const compatible = Number(meta.match(String(b.file_name || ""))) - Number(meta.match(String(a.file_name || "")));
+        return compatible || String(a.file_name).localeCompare(String(b.file_name));
+      })
+      .map(item => {
+        const file = String(item.file_name || "");
+        const enabled = active.has(file);
+        const aliases = [...new Set([
+          ...(Array.isArray(item.command_aliases) ? item.command_aliases : []),
+          ...(item.command_alias ? [item.command_alias] : []),
+          ...(item.style_alias ? [item.style_alias] : []),
+        ].map(value => String(value || "").trim()).filter(Boolean))];
+        return `<label class="engine-lora-row${enabled ? " is-on" : ""}">`
+          + `<input type="checkbox" data-engine-lora="${engine}" data-engine-lora-file="${escapeHtml(file)}" ${enabled ? "checked" : ""}>`
+          + `<span class="engine-lora-name"><strong>${escapeHtml(item.alias || file)}</strong><code>${escapeHtml(file)}</code>`
+          + `${aliases.length ? `<small class="muted">简称：${escapeHtml(aliases.join("、"))}</small>` : ""}</span>`
+          + `<span class="engine-lora-weight">权重<input type="number" min="-2" max="2" step="0.05" value="${escapeHtml(active.get(file) || "0.8")}" data-engine-lora-weight="${escapeHtml(file)}" ${enabled ? "" : "disabled"}></span>`
+          + `</label>`;
+      });
+    container.innerHTML = rows.length
+      ? rows.join("")
+      : `<div class="empty">没有可选的 LoRA。${onlyCompatible ? "取消上面的“只显示适配文件”可查看全部。" : "请先在「普通 LoRA」里导入文件。"}</div>`;
+  });
+}
+
+async function saveEngineLoras(engine) {
+  const meta = ENGINE_LORA_PANELS[engine];
+  if (!meta) return;
+  const values = [];
+  document.querySelectorAll(`[data-engine-lora="${engine}"]`).forEach(checkbox => {
+    if (!checkbox.checked) return;
+    const file = checkbox.dataset.engineLoraFile || "";
+    const weightInput = checkbox.closest(".engine-lora-row")?.querySelector("[data-engine-lora-weight]");
+    let weight = Number(weightInput?.value);
+    if (!Number.isFinite(weight)) weight = 0.8;
+    if (file) values.push(`${file}:${weight}`);
+  });
+  try {
+    const payload = {};
+    payload[meta.configKey] = values;
+    const result = await post(`${API}/config`, payload);
+    config[meta.configKey] = Array.isArray(result[meta.configKey]) ? result[meta.configKey] : values;
+    show(`${meta.label} 独立 LoRA 已保存：${values.length} 个`);
+    renderEngineLoras();
+  } catch (error) {
+    show(`保存失败：${error.message || error}`);
+  }
+}
+
+function initEngineLoras() {
+  document.querySelectorAll("[data-save-engine-lora]").forEach(button => {
+    button.onclick = () => saveEngineLoras(button.dataset.saveEngineLora);
+  });
+  Object.entries(ENGINE_LORA_PANELS).forEach(([engine, meta]) => {
+    const search = document.getElementById(meta.search);
+    if (search) search.oninput = () => renderEngineLoras();
+    const compatible = document.getElementById(meta.compatible);
+    if (compatible) compatible.onchange = () => renderEngineLoras();
+  });
+  document.addEventListener("change", event => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (target.matches("[data-engine-lora]")) {
+      const row = target.closest(".engine-lora-row");
+      if (row) row.classList.toggle("is-on", target.checked);
+      const weight = row?.querySelector("[data-engine-lora-weight]");
+      if (weight) weight.disabled = !target.checked;
+      saveEngineLoras(target.dataset.engineLora);
+    } else if (target.matches("[data-engine-lora-weight]")) {
+      const engine = target.closest(".engine-lora-row")?.querySelector("[data-engine-lora]")?.dataset.engineLora;
+      if (engine) saveEngineLoras(engine);
+    }
+  });
 }
 
 function styleLoraConfig() {
@@ -892,17 +1040,138 @@ async function loadModels() {
   modelData = await get(`${API}/models`);
   const values = modelData.compatible_models || [...(modelData.diffusion_models || []), ...(modelData.checkpoints || [])];
   document.getElementById("model").innerHTML = values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join("") || '<option value="">未检测到模型</option>';
-  document.getElementById("model").value = modelData.current_model || "";
+  document.getElementById("model").value = config.model_name || modelData.current_model || "";
+  setSelectOptions("clip_name", modelData.text_encoders || [], config.clip_name || "", true);
+  setSelectOptions("vae_name", modelData.vae || [], config.vae_name || "", true);
   updateModelHint();
   setSelectOptions("img2img_unet_name", modelData.img2img_models || [], config.img2img_unet_name || modelData.current_img2img || "");
   setSelectOptions("img2img_clip_name", modelData.img2img_clip_models || [], config.img2img_clip_name || modelData.current_img2img_clip || "");
   setSelectOptions("img2img_vae_name", modelData.img2img_vae_models || [], config.img2img_vae_name || modelData.current_img2img_vae || "");
   setSelectOptions("img2img_lora_name", modelData.loras || [], config.img2img_lora_name || "", true);
-  setSelectOptions("img2img_flux2_unet_name", modelData.img2img_flux2_models || [], config.img2img_flux2_unet_name || modelData.current_img2img_flux2 || "");
-  setSelectOptions("img2img_flux2_clip_name", modelData.img2img_flux2_clip_models || [], config.img2img_flux2_clip_name || modelData.current_img2img_flux2_clip || "");
-  setSelectOptions("img2img_flux2_vae_name", modelData.img2img_flux2_vae_models || [], config.img2img_flux2_vae_name || modelData.current_img2img_flux2_vae || "");
-  setSelectOptions("img2img_flux2_lora_name", modelData.img2img_flux2_loras || modelData.loras || [], config.img2img_flux2_lora_name || modelData.current_img2img_flux2_lora || "", true);
+  setSelectOptions("img2img_nsfw_lora_name", modelData.qwen21_nsfw_loras || [], config.img2img_nsfw_lora_name || modelData.qwen21_nsfw_lora_default || "", true);
   await loadLoraInfo();
+}
+
+function applyModelProfile(mode, selectedModel, options = {}) {
+  const name = String(selectedModel || "").trim();
+  const normalProfile = mode === "img2img"
+    ? modelData.img2img_model_profiles?.[name]
+    : modelData.model_profiles?.[name];
+  if (!normalProfile) { updateModelHint(); return; }
+  const turboToggle = document.getElementById(mode === "txt2img" ? "qwen21_turbo_enabled" : "qwen21_img2img_turbo_enabled");
+  const isQwen = normalProfile.family === "Qwen Image 2.1";
+  const integrated = isQwen && Boolean(normalProfile.integrated_acceleration);
+  if (turboToggle) {
+    if (!isQwen) {
+      turboToggle.checked = false;
+      turboToggle.disabled = true;
+    } else if (integrated) {
+      turboToggle.checked = true;
+      turboToggle.disabled = true;
+    } else {
+      turboToggle.disabled = false;
+      if (typeof options.turbo === "boolean") turboToggle.checked = options.turbo;
+    }
+  }
+  const accelerated = isQwen && (integrated || turboToggle?.checked === true);
+  const profile = profileForModel(mode, name, accelerated) || normalProfile;
+  const values = profile.recommended || {};
+  const fields = mode === "txt2img"
+    ? {steps: "steps", cfg: "cfg", sampler_name: "sampler_name", scheduler: "scheduler", width: "width", height: "height"}
+    : {steps: "img2img_steps", cfg: "img2img_cfg", sampler_name: "img2img_sampler_name", scheduler: "img2img_scheduler"};
+  for (const [key, id] of Object.entries(fields)) {
+    if (values[key] !== undefined && document.getElementById(id)) document.getElementById(id).value = values[key];
+  }
+  const turboWeight = document.getElementById("qwen21_turbo_lora_strength");
+  if (isQwen && values.turbo_lora_strength !== undefined && turboWeight) turboWeight.value = values.turbo_lora_strength;
+  const workflowId = mode === "txt2img" ? "wf_txt2img" : "wf_img2img";
+  const workflow = document.getElementById(workflowId);
+  if (workflow && values.workflow && ![...workflow.options].some(option => option.value === values.workflow) && /[\\/]/.test(values.workflow)) {
+    workflow.add(new Option(values.workflow, values.workflow));
+    if (mode === "txt2img") document.getElementById("txt2img_workflow_select")?.add(new Option(values.workflow, values.workflow));
+  }
+  const hasProfileWorkflow = workflow && values.workflow && [...workflow.options].some(option => option.value === values.workflow);
+  if (!options.preserveWorkflow && hasProfileWorkflow) {
+    if (mode === "txt2img") setTxt2ImgWorkflow(values.workflow);
+    else workflow.value = values.workflow;
+  }
+  if (profile.family === "Qwen Image 2.1" || mode === "txt2img") {
+    for (const field of ["clip_name", "vae_name"]) {
+      const id = mode === "img2img" ? `img2img_${field}` : field;
+      const select = document.getElementById(id);
+      if (select && values[field]) {
+        const normalized = String(values[field]).replaceAll("\\", "/").toLowerCase();
+        const exact = [...select.options].filter(option => option.value.replaceAll("\\", "/").toLowerCase() === normalized);
+        const candidates = exact.length ? exact : [...select.options].filter(option => option.value.replaceAll("\\", "/").split("/").pop().toLowerCase() === normalized.split("/").pop());
+        select.value = candidates.length === 1 ? candidates[0].value : "";
+      }
+    }
+  }
+  if (isQwen && !options.preserveWorkflow && !hasProfileWorkflow) chooseQwen21Workflow(mode, accelerated, integrated);
+  updateModelHint();
+  if (!options.quiet) show(`${profile.family}${accelerated ? " Turbo" : " 普通"}档案已载入：${profile.verified ? "本机已验证" : "已识别/官方推荐，尚未本机验证"}`);
+}
+
+function chooseQwen21Workflow(mode, turbo, integrated = false) {
+  const model = mode === "txt2img" ? document.getElementById("model")?.value : document.getElementById("img2img_unet_name")?.value;
+  if (!String(model || "").toLowerCase().includes("qwen_image_2")) return;
+  const suffix = mode === "txt2img" ? "t2i" : "edit";
+  const filename = turbo
+    ? `qwen21_${suffix}_${String(model).toLowerCase().includes("turbo") || integrated ? "turbo_model" : "turbo"}_api.json`
+    : `qwen21_${suffix}_api.json`;
+  const select = document.getElementById(mode === "txt2img" ? "wf_txt2img" : "wf_img2img");
+  if (select && [...select.options].some(option => option.value === filename)) {
+    if (mode === "txt2img") setTxt2ImgWorkflow(filename);
+    else select.value = filename;
+  }
+}
+
+function setTxt2ImgWorkflow(value) {
+  for (const id of ["wf_txt2img", "txt2img_workflow_select"]) {
+    const select = document.getElementById(id);
+    if (select && [...select.options].some(option => option.value === value)) select.value = value;
+  }
+}
+
+function syncTxt2ImgWorkflow(sourceId) {
+  const value = document.getElementById(sourceId)?.value || "";
+  setTxt2ImgWorkflow(value);
+}
+
+async function saveModelProfile(mode) {
+  const model = mode === "txt2img" ? document.getElementById("model")?.value : document.getElementById("img2img_unet_name")?.value;
+  if (!model) return;
+  const profile = {};
+  const fields = mode === "txt2img"
+    ? {steps: "steps", cfg: "cfg", width: "width", height: "height", denoise: "denoise", sampler_name: "sampler_name", scheduler: "scheduler"}
+    : {steps: "img2img_steps", cfg: "img2img_cfg", denoise: "img2img_denoise", sampler_name: "img2img_sampler_name", scheduler: "img2img_scheduler"};
+  for (const [key, id] of Object.entries(fields)) {
+    const element = document.getElementById(id);
+    const raw = String(element?.value ?? "").trim();
+    if (!element || !raw) continue;
+    profile[key] = ["sampler_name", "scheduler"].includes(key) ? raw : Number(raw);
+  }
+  if (mode === "img2img") {
+    profile.clip_name = document.getElementById("img2img_clip_name")?.value || "";
+    profile.vae_name = document.getElementById("img2img_vae_name")?.value || "";
+  } else {
+    const recommendation = profileForModel("txt2img", model, document.getElementById("qwen21_turbo_enabled")?.checked)?.recommended || {};
+    profile.clip_name = document.getElementById("clip_name")?.value || recommendation.clip_name || "";
+    profile.vae_name = document.getElementById("vae_name")?.value || recommendation.vae_name || "";
+  }
+  const selectedProfile = profileForModel(mode, model, document.getElementById(mode === "txt2img" ? "qwen21_turbo_enabled" : "qwen21_img2img_turbo_enabled")?.checked)?.recommended || {};
+  if (selectedProfile.scheduler === "manual_sigmas") {
+    profile.steps = 8;
+    profile.scheduler = "manual_sigmas";
+    const stepsField = document.getElementById(mode === "txt2img" ? "steps" : "img2img_steps");
+    if (stepsField) stepsField.value = 8;
+    profile.turbo_lora_strength = Number(document.getElementById("qwen21_turbo_lora_strength")?.value || 1);
+  }
+  const workflow = document.getElementById(mode === "txt2img" ? "wf_txt2img" : "wf_img2img");
+  if (workflow) profile.workflow = workflow.value;
+  const toggleId = mode === "txt2img" ? "qwen21_turbo_enabled" : "qwen21_img2img_turbo_enabled";
+  const accelerated = document.getElementById(toggleId)?.checked === true;
+  await post(`${API}/model_profiles`, {model, mode, accelerated, profile});
 }
 
 function currentLoraSelection() {
@@ -934,14 +1203,74 @@ async function saveSimpleLoraSelection() {
 
 async function loadWorkflows() {
   const value = await get(`${API}/workflows`);
-  const files = value.files || [];
-  for (const id of ["wf_txt2img", "wf_img2img", "wf_img2img_flux2", "wf_hires", "wf_wash", "wf_outpaint", "wf_multi_angle"]) {
+  const selected = value.selected_paths || value.selected || {};
+  const files = [...new Set([...(value.bundled_files || []), ...(value.files || []), ...Object.values(selected)])];
+  for (const id of ["wf_txt2img", "wf_img2img", "wf_hires"]) {
     const mode = id.substring(3);
     const select = document.getElementById(id);
-    select.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file)}</option>`).join("") || '<option value="">无工作流</option>';
-    select.value = (value.selected || {})[mode] || "";
+    select.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file.replace(/^bundled:/, "内置："))}</option>`).join("") || '<option value="">无工作流</option>';
+    select.value = selected[mode] || "";
   }
+  const inlineTxt2Img = document.getElementById("txt2img_workflow_select");
+  if (inlineTxt2Img) {
+    inlineTxt2Img.innerHTML = files.map(file => `<option value="${escapeHtml(file)}">${escapeHtml(file.replace(/^bundled:/, "内置："))}</option>`).join("") || '<option value="">无工作流</option>';
+    inlineTxt2Img.value = selected.txt2img || "";
+  }
+  setTxt2ImgWorkflow(selected.txt2img || "");
+  const bundled = await get(`${API}/bundles`);
+  builtinBundles = bundled.schemes || [];
+  renderBuiltinBundles();
 }
+
+function renderBuiltinBundles() {
+  const modeNames = {txt2img: "文生图", img2img: "Qwen 图生图"};
+  const roleNames = {model: "核心模型", clip: "文本编码器", vae: "VAE", turbo_lora: "加速 LoRA"};
+  const container = document.getElementById("builtinBundles");
+  container.innerHTML = builtinBundles.map(entry => {
+    const parameters = entry.parameters || {};
+    const components = Object.entries(entry.components || {}).map(([role, item]) =>
+      `<li>${escapeHtml(roleNames[role] || role)}：<code>${escapeHtml(item.names.join(" / "))}</code><small>放入 models/${escapeHtml(item.folder)} · <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">模型来源与下载</a></small></li>`).join("");
+    const modes = Object.entries(entry.workflows || {}).map(([mode, filename]) => {
+      const check = entry.checks?.[mode];
+      const issues = [
+        ...(check?.missing_nodes || []).map(name => `缺少节点：${name}`),
+        ...(check?.missing_models || []).map(item => `${item.ambiguous ? "文件名重复，请手动确认路径" : "缺少模型"}：${item.names[0]}`),
+        ...(check?.unsupported_options || []), check?.workflow_error,
+      ].filter(Boolean);
+      const state = !entry.bundled ? "工作流文件缺失" : !check ? "尚未检查" : check.ready ? "节点与模型列表检查通过，尚未试画" : issues.join("；");
+      return `<div class="builtin-bundle-mode"><span>${escapeHtml(modeNames[mode])} · ${escapeHtml(filename)}</span><small>${escapeHtml(state)}</small><button type="button" class="secondary" data-bundle="${escapeHtml(entry.id)}" data-mode="${escapeHtml(mode)}" ${check?.ready && entry.bundled ? "" : "disabled"}>应用到${escapeHtml(modeNames[mode])}</button></div>`;
+    }).join("");
+    return `<article class="builtin-bundle-card"><h3>${escapeHtml(entry.title)}</h3><p>${parameters.steps} 步 · CFG ${parameters.cfg} · ${escapeHtml(parameters.sampler_name)} / ${escapeHtml(parameters.scheduler)}</p><p class="muted">${escapeHtml(entry.notes)}</p><ul>${components}</ul>${modes}</article>`;
+  }).join("");
+}
+
+document.getElementById("checkBundles").onclick = async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  const status = document.getElementById("bundleStatus");
+  status.textContent = "正在读取 ComfyUI 节点和模型列表…";
+  try {
+    const result = await post(`${API}/bundles`, {action: "check"});
+    builtinBundles = result.schemes || [];
+    renderBuiltinBundles();
+    status.textContent = result.connected ? "检查完成。通过后可选择应用；缺失节点请更新 ComfyUI，模型文件请按卡片所列目录放置。" : (result.error || "无法连接 ComfyUI，请检查服务地址。");
+  } catch (error) { status.textContent = error.message; }
+  finally { button.disabled = false; }
+};
+
+document.getElementById("builtinBundles").onclick = async event => {
+  const button = event.target.closest("button[data-bundle]");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  try {
+    const result = await post(`${API}/bundles`, {action: "apply", id: button.dataset.bundle, mode: button.dataset.mode});
+    config = await get(`${API}/config`);
+    fillConfig();
+    await Promise.all([loadModels(), loadWorkflows()]);
+    show(`${result.scheme}已应用。已有采样档案优先，其它模式、预设、LoRA 和 AI 配置保留。`);
+  } catch (error) { show(error.message); }
+  finally { button.disabled = false; }
+};
 
 async function loadPresets() {
   const value = await get(`${API}/presets`);
@@ -1378,45 +1707,70 @@ async function handleLoraClick(event) {
     }
   } catch (e) { show(e.message); }
 };
-document.getElementById("model").onchange = updateModelHint;
-document.getElementById("saveWorkflows").onclick = async () => { try { await post(`${API}/config`, {workflow_txt2img: document.getElementById("wf_txt2img").value, workflow_img2img: document.getElementById("wf_img2img").value, workflow_hires: document.getElementById("wf_hires").value}); show("工作流选择已保存"); } catch (e) { show(e.message); } };
+document.getElementById("model").onchange = () => applyModelProfile("txt2img", document.getElementById("model").value);
+document.getElementById("wf_txt2img").onchange = () => syncTxt2ImgWorkflow("wf_txt2img");
+document.getElementById("txt2img_workflow_select").onchange = () => syncTxt2ImgWorkflow("txt2img_workflow_select");
+document.getElementById("img2img_unet_name").onchange = () => applyModelProfile("img2img", document.getElementById("img2img_unet_name").value);
+document.getElementById("qwen21_turbo_enabled").onchange = event => applyModelProfile("txt2img", document.getElementById("model").value, {turbo: event.target.checked});
+document.getElementById("qwen21_img2img_turbo_enabled").onchange = event => applyModelProfile("img2img", document.getElementById("img2img_unet_name").value, {turbo: event.target.checked});
+document.getElementById("saveWorkflows").onclick = async () => { try { await post(`${API}/config`, {workflow_txt2img: document.getElementById("wf_txt2img").value, workflow_img2img: document.getElementById("wf_img2img").value, workflow_hires: document.getElementById("wf_hires").value}); await saveModelProfile("txt2img"); show("工作流选择已保存；文生图工作流已记入当前模型档案"); } catch (e) { show(e.message); } };
 document.getElementById("saveImg2ImgWorkflow").onclick = async () => {
   const payload = {
     workflow_img2img: document.getElementById("wf_img2img").value,
-    img2img_engine: document.getElementById("img2img_engine").value,
   };
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("图生图工作流与默认引擎已保存"); } catch (e) { show(e.message); }
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("图生图工作流已保存"); } catch (e) { show(e.message); }
 };
-document.getElementById("saveImg2ImgFlux2Workflow").onclick = async () => {
-  const payload = {
-    workflow_img2img_flux2: document.getElementById("wf_img2img_flux2").value,
-    img2img_flux2_source_workflow: document.getElementById("img2img_flux2_source_workflow").value,
-  };
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图工作流已保存"); }
-  catch (e) { show(e.message); }
-};
-function flux2ToolPayload(mode) {
-  const payload = {};
-  for (const key of ["source_workflow", "model_name", "clip_name", "vae_name", "default_positive", "default_negative", "sampler_name", "scheduler", "filename_prefix"]) {
-    payload[`${mode}_${key}`] = document.getElementById(`${mode}_${key}`).value;
+function promptEnhancerPayload() {
+  const payload = {prompt_enhancer_enabled: document.getElementById("prompt_enhancer_enabled").checked};
+  for (const mode of ["txt2img", "img2img"]) {
+    const key = `prompt_enhancer_${mode}_template`;
+    const value = document.getElementById(key).value;
+    payload[key] = value.trim() === String(promptEnhancerDefaults[mode] || "").trim() ? "" : value;
   }
-  for (const key of ["steps", "cfg", "seed", "denoise", "size", "batch", "caption_tokens", "left", "top", "right", "bottom", "feathering", "horizontal_angle", "vertical_angle", "zoom"]) {
-    const element = document.getElementById(`${mode}_${key}`);
-    if (element) payload[`${mode}_${key}`] = Number(element.value);
-  }
-  for (const key of ["default_prompts", "camera_view"]) {
-    const element = document.getElementById(`${mode}_${key}`);
-    if (element) payload[`${mode}_${key}`] = element.checked;
-  }
-  payload[`workflow_${mode}`] = document.getElementById(`wf_${mode}`).value;
   return payload;
 }
-for (const [id, mode, label] of [["saveWashSettings", "wash", "洗图"], ["saveOutpaintSettings", "outpaint", "扩图"], ["saveMultiAngleSettings", "multi_angle", "多角度"]]) {
-  document.getElementById(id).onclick = async () => {
-    try { const payload = flux2ToolPayload(mode); await post(`${API}/config`, payload); Object.assign(config, payload); show(`${label}设置已保存`); }
-    catch (e) { show(e.message); }
-  };
-}
+
+document.getElementById("savePromptEnhancer").onclick = async () => {
+  try {
+    const payload = promptEnhancerPayload();
+    await post(`${API}/config`, payload);
+    Object.assign(config, payload);
+    show("提示词优化设置已保存，下一次 AI 绘图立即生效");
+  } catch (e) { show(e.message); }
+};
+document.getElementById("resetPromptEnhancer").onclick = () => {
+  for (const mode of ["txt2img", "img2img"]) {
+    document.getElementById(`prompt_enhancer_${mode}_template`).value = promptEnhancerDefaults[mode] || "";
+  }
+  show("已恢复内置模板，点击保存后生效");
+};
+document.getElementById("testPromptEnhancer").onclick = async () => {
+  const button = document.getElementById("testPromptEnhancer");
+  const status = document.getElementById("promptEnhancerStatus");
+  const output = document.getElementById("promptEnhancerResult");
+  const prompt = document.getElementById("promptEnhancerInput").value.trim();
+  if (!prompt) { show("请填写测试要求"); return; }
+  const mode = document.getElementById("promptEnhancerMode").value;
+  button.disabled = true;
+  status.textContent = "正在优化提示词…";
+  output.value = "";
+  try {
+    const modelField = mode === "txt2img" ? "model" : `${mode}_unet_name`;
+    const result = await post(`${API}/prompt_enhancer`, {
+      ...promptEnhancerPayload(), prompt, mode,
+      model: document.getElementById(modelField)?.value || "",
+      ai_base_url: document.getElementById("ai_base_url").value,
+      ai_model: document.getElementById("ai_model").value,
+      ai_api_key: document.getElementById("ai_api_key").value,
+    });
+    output.value = result.prompt || "（输入仅包含控制项，无需 AI 扩写）";
+    status.textContent = `测试成功，模型：${result.model || "当前模型"}`;
+    if (result.preset_content) status.textContent += `；最终合并预设：${result.preset_content}`;
+    if (result.loras?.length) status.textContent += `；已识别 LoRA：${result.loras.join("、")}`;
+  } catch (e) { status.textContent = `测试失败：${e.message}`; show(e.message); }
+  finally { button.disabled = false; }
+};
+
 document.getElementById("saveTxt2ImgSettings").onclick = async () => {
   const payload = {};
   for (const id of ["width", "height", "steps", "seed", "cfg", "sampler_name", "scheduler", "denoise", "hires_scale", "hires_steps", "hires_denoise", "hires_upscale_model"]) {
@@ -1425,6 +1779,11 @@ document.getElementById("saveTxt2ImgSettings").onclick = async () => {
   }
   const animaInput = document.getElementById("plugin_ai_anima_context").value;
   payload.model_name = document.getElementById("model").value;
+  payload.workflow_txt2img = document.getElementById("txt2img_workflow_select").value;
+  payload.qwen21_turbo_enabled = document.getElementById("qwen21_turbo_enabled").checked;
+  payload.qwen21_turbo_lora_strength = Number(document.getElementById("qwen21_turbo_lora_strength").value || 1);
+  payload.clip_name = document.getElementById("clip_name").value;
+  payload.vae_name = document.getElementById("vae_name").value;
   payload.llm_prompt_source = document.getElementById("llm_prompt_source").value;
   payload.plugin_ai_debug = document.getElementById("plugin_ai_debug").checked;
   payload.plugin_ai_llm_system_prompt = document.getElementById("plugin_ai_llm_system_prompt").value;
@@ -1434,7 +1793,7 @@ document.getElementById("saveTxt2ImgSettings").onclick = async () => {
   payload.plain_translate_url = document.getElementById("plain_translate_url").value;
   payload.default_positive = document.getElementById("default_positive").value;
   payload.default_negative = document.getElementById("default_negative").value;
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); updateModelHint(); show("文生图模型、参数和提示词设置已保存"); } catch (e) { show(e.message); }
+  try { await post(`${API}/config`, payload); Object.assign(config, payload); await saveModelProfile("txt2img"); updateModelHint(); show("文生图模型、参数和当前模型档案已保存"); } catch (e) { show(e.message); }
 };
 document.getElementById("loraDisplayToggle").onclick = () => {
   expandedLoraFile = "";
@@ -1606,17 +1965,21 @@ document.getElementById("saveAi").onclick = async () => {
 };
 document.getElementById("saveImg2ImgSettings").onclick = async () => {
   const payload = {};
-  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
+  payload.workflow_img2img = document.getElementById("wf_img2img").value;
+  for (const id of ["img2img_unet_name", "img2img_clip_name", "img2img_vae_name", "img2img_lora_name", "img2img_nsfw_lora_name", "img2img_sampler_name", "img2img_scheduler", "img2img_scale_method", "img2img_default_positive", "img2img_default_negative", "img2img_filename_prefix"]) {
     payload[id] = document.getElementById(id).value;
   }
-  for (const id of ["img2img_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
+  for (const id of ["img2img_lora_strength", "img2img_nsfw_lora_strength", "img2img_width", "img2img_height", "img2img_steps", "img2img_cfg", "img2img_seed", "img2img_denoise", "img2img_largest_size", "img2img_sampling_shift"]) {
     payload[id] = Number(document.getElementById(id).value);
   }
   payload.img2img_keep_aspect_ratio = document.getElementById("img2img_keep_aspect_ratio")?.checked !== false;
   payload.img2img_match_input_size = document.getElementById("img2img_match_input_size")?.checked !== false;
+  payload.qwen21_img2img_turbo_enabled = document.getElementById("qwen21_img2img_turbo_enabled").checked;
+  payload.img2img_nsfw_lora_enabled = document.getElementById("img2img_nsfw_lora_enabled").checked;
   payload.img2img_crop = document.getElementById("img2img_crop").value;
   try {
     await post(`${API}/config`, payload);
+    await saveModelProfile("img2img");
     Object.assign(config, payload);
     show("独立图生图模型和节点参数已保存");
   } catch (e) { show(e.message); }
@@ -1632,31 +1995,6 @@ document.getElementById("saveImg2ImgAi").onclick = async () => {
     img2img_plain_translate_url: document.getElementById("img2img_plain_translate_url")?.value || "",
   };
   try { await post(`${API}/config`, payload); Object.assign(config, payload); show("图生图 LLM 和插件 AI 设置已保存"); } catch (e) { show(e.message); }
-};
-document.getElementById("saveImg2ImgFlux2Settings").onclick = async () => {
-  const payload = {};
-  for (const id of ["img2img_flux2_unet_name", "img2img_flux2_clip_name", "img2img_flux2_vae_name", "img2img_flux2_lora_name", "img2img_flux2_sampler_name", "img2img_flux2_scheduler", "img2img_flux2_default_positive", "img2img_flux2_default_negative", "img2img_flux2_filename_prefix"]) {
-    payload[id] = document.getElementById(id).value;
-  }
-  for (const id of ["img2img_flux2_lora_strength", "img2img_flux2_size", "img2img_flux2_steps", "img2img_flux2_cfg", "img2img_flux2_seed", "img2img_flux2_denoise", "img2img_flux2_batch"]) {
-    payload[id] = Number(document.getElementById(id).value);
-  }
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 图生图模型和参数已保存"); }
-  catch (e) { show(e.message); }
-};
-document.getElementById("saveImg2ImgFlux2Ai").onclick = async () => {
-  const payload = {
-    img2img_flux2_llm_prompt_source: document.getElementById("img2img_flux2_llm_prompt_source").value,
-    img2img_flux2_plugin_ai_debug: document.getElementById("img2img_flux2_plugin_ai_debug").checked,
-    img2img_flux2_plain_translate_enabled: document.getElementById("img2img_flux2_plain_translate_enabled").checked,
-    img2img_flux2_plain_translate_url: document.getElementById("img2img_flux2_plain_translate_url").value,
-    img2img_flux2_ai_system_prompt: document.getElementById("img2img_flux2_ai_system_prompt").value,
-    img2img_flux2_plugin_ai_knowledge: document.getElementById("img2img_flux2_plugin_ai_knowledge").value,
-    img2img_flux2_prompt_template: document.getElementById("img2img_flux2_prompt_template").value,
-    img2img_flux2_output_format: document.getElementById("img2img_flux2_output_format").value,
-  };
-  try { await post(`${API}/config`, payload); Object.assign(config, payload); show("Flux2 中文 AI 设置已保存"); }
-  catch (e) { show(e.message); }
 };
 document.getElementById("saveDrawLimit").onclick = async () => {
   const payload = {
@@ -1836,8 +2174,6 @@ load();
   }
   ["loraSaveSelection", "saveStyleLora", "saveWorkflows", "saveTxt2ImgSettings",
    "saveImg2ImgWorkflow", "saveImg2ImgSettings", "saveImg2ImgAi",
-   "saveImg2ImgFlux2Workflow", "saveImg2ImgFlux2Settings", "saveImg2ImgFlux2Ai",
-   "saveWashSettings", "saveOutpaintSettings", "saveMultiAngleSettings",
    "saveAi", "saveReply", "saveDrawLimit", "saveModeration"].forEach(track);
 })();
 

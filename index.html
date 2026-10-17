@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Anima 全能绘画台</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.4.0-enginelora">
 </head>
 <body>
 
@@ -13,7 +13,7 @@
       <div class="brand">
         <p class="eyebrow">ASTRBOT 插件</p>
         <h1>Anima 全能绘画台</h1>
-        <p id="version" class="version">版本 v1.3.1</p>
+        <p id="version" class="version">版本 v1.4.0</p>
       </div>
 
       <nav class="page-tabs" aria-label="控制台功能页面">
@@ -22,15 +22,6 @@
       <div class="nav-group-body">
         <button class="page-tab" type="button" data-view-tab="txt2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>文生图</button>
         <button class="page-tab" type="button" data-view-tab="img2img"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>图生图</button>
-        <button class="page-tab" type="button" data-view-tab="img2img_flux2"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2</button>
-      </div>
-    </details>
-    <details class="nav-group" open>
-      <summary class="nav-group-head" aria-expanded="true"><span>图像工具</span><svg class="nav-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></summary>
-      <div class="nav-group-body">
-        <button class="page-tab" type="button" data-view-tab="wash"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</button>
-        <button class="page-tab" type="button" data-view-tab="outpaint"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</button>
-        <button class="page-tab" type="button" data-view-tab="multi_angle"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</button>
       </div>
     </details>
     <details class="nav-group" open>
@@ -78,6 +69,8 @@
     <div class="lora-section-switcher" role="tablist" aria-label="LoRA 模块">
       <button id="normalLoraTab" class="lora-section-tab active" type="button" data-lora-section="normal" role="tab" aria-selected="true">普通 LoRA</button>
       <button id="styleLoraTab" class="lora-section-tab" type="button" data-lora-section="style" role="tab" aria-selected="false">画风 LoRA</button>
+      <button id="krea2LoraTab" class="lora-section-tab" type="button" data-lora-section="krea2" role="tab" aria-selected="false">Krea 2 LoRA</button>
+      <button id="qwen21LoraTab" class="lora-section-tab" type="button" data-lora-section="qwen21" role="tab" aria-selected="false">Qwen 2.1 LoRA</button>
     </div>
 
     <section class="band">
@@ -143,6 +136,30 @@
       <div id="styleLoras" class="style-lora-grid"></div>
     </section>
 
+    <section class="band engine-lora-band" data-engine-lora-panel="krea2" hidden>
+      <div class="section-head">
+        <div><h2>Krea 2 独立 LoRA</h2><p>只对 <code>/水粉</code> 与 LLM 的 <code>engine=krea2</code> 生效。它不读 Anima 的默认 LoRA，也不参与画风随机；文件名不含 krea2 的 LoRA 会在出图时被跳过，避免把别家权重塞进 Krea 的采样器。</p></div>
+        <button id="saveKrea2Loras" class="primary" type="button" data-save-engine-lora="krea2">保存 Krea 2 选择</button>
+      </div>
+      <div class="engine-lora-toolbar">
+        <label class="lora-search">搜索 LoRA<input id="krea2LoraSearch" class="input" type="search" placeholder="按昵称或文件名搜索"></label>
+        <label class="check"><input id="krea2LoraOnlyCompatible" type="checkbox" checked>只显示文件名含 krea2 的 LoRA</label>
+      </div>
+      <div id="krea2Loras" class="engine-lora-list"></div>
+    </section>
+
+    <section class="band engine-lora-band" data-engine-lora-panel="qwen21" hidden>
+      <div class="section-head">
+        <div><h2>Qwen Image 2.1 独立 LoRA</h2><p>只对 <code>/qwen</code> 与 LLM 的 <code>engine=qwen21</code> 生效（图生图仍用「图生图」页面的独立 LoRA）。它不读 Anima 的默认 LoRA，也不参与画风随机。</p></div>
+        <button id="saveQwen21Loras" class="primary" type="button" data-save-engine-lora="qwen21">保存 Qwen 2.1 选择</button>
+      </div>
+      <div class="engine-lora-toolbar">
+        <label class="lora-search">搜索 LoRA<input id="qwen21LoraSearch" class="input" type="search" placeholder="按昵称或文件名搜索"></label>
+        <label class="check"><input id="qwen21LoraOnlyCompatible" type="checkbox">只显示文件名含 qwen 的 LoRA</label>
+      </div>
+      <div id="qwen21Loras" class="engine-lora-list"></div>
+    </section>
+
     </div>
 <div id="view-workflow" class="view-panel" data-view-panel="workflow" hidden>
 
@@ -150,7 +167,16 @@
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流</h2><p>工作流基于原始难工作流的修复副本，原文件不会被覆盖。</p></div>
+        <div><h2>内置模型与工作流方案</h2><p>插件自带工作流、推荐参数和可编辑提示词规则；模型权重需在 ComfyUI 安装。检查和应用不会下载模型，不改动其它模式的参数、预设或 LoRA。</p></div>
+        <button id="checkBundles" class="secondary" type="button">检查环境</button>
+      </div>
+      <p id="bundleStatus" class="field-hint" role="status">点击检查环境，查看本机缺少的模型与节点。</p>
+      <div id="builtinBundles" class="builtin-bundle-grid"></div>
+    </section>
+
+    <section class="band">
+      <div class="section-head">
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>工作流</h2><p>内置基础工作流与高级工作流均可选择，也可以上传自己的工作流。自定义节点与适配范围请先检查。</p></div>
         <button id="saveWorkflows" class="primary"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存选择</button>
       </div>
       <div class="workflow-grid">
@@ -187,6 +213,13 @@
       </div>
       <select id="model" class="select"></select>
       <p id="modelHint" class="field-hint"></p>
+      <div class="form-grid">
+        <label>文生图文本编码器<select id="clip_name" class="select"></select></label>
+        <label>文生图 VAE<select id="vae_name" class="select"></select></label>
+      </div>
+      <p class="field-hint">上述独立组件用于原生 Anima / Qwen 2.1 工作流；旧高级 Anima 工作流仍沿用自身节点的组件。</p>
+      <label class="txt2img-workflow-setting">当前文生图工作流<select id="txt2img_workflow_select" class="select"></select><small class="field-hint">切换已识别模型时会自动选择推荐工作流；也可以在这里手动切换，点击“保存文生图设置”后固定为当前模型的配置。</small></label>
+      <div class="form-grid"><label class="check"><input id="qwen21_turbo_enabled" type="checkbox">Qwen Image 2.1 Turbo LoRA 加速（8 步官方 sigma）</label><label>Turbo LoRA 权重<input id="qwen21_turbo_lora_strength" class="input" type="number" min="0" max="2" step="0.05"></label></div>
       <div class="form-grid draw-settings-grid">
         <label>宽度<input id="width" class="input" type="number" min="64" step="8"></label>
         <label>高度<input id="height" class="input" type="number" min="64" step="8"></label>
@@ -228,18 +261,17 @@
     <div class="page-head"><h2>图生图（Qwen）</h2><p>独立 Qwen Image Edit 工作流与模型链，不读取文生图的模型和 LoRA；支持 1–2 张参考图。</p></div>
 
     <div class="lora-isolation-notice" role="note">
-      <strong>【特别标注】图生图只受「独立 LoRA」影响</strong>
-      <span>本页的“独立 LoRA”是图生图唯一长期生效的 LoRA：它不会加载文生图的默认 LoRA 列表，也不会参与画风 LoRA 的随机/全部自动选择。只有你在指令中显式写出的 LoRA 简称才会在本次任务中临时叠加。</span>
+      <strong>【特别标注】图生图 LoRA 与文生图完全隔离</strong>
+      <span>图生图默认使用 Qwen Image 2.1 原生编辑工作流；可额外启用下方的 Qwen Image 2.1 NSFW LoRA。文生图 LoRA 列表和画风随机选择不会串入图生图。</span>
     </div>
 
     <section class="band">
       <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>图生图工作流</h2><p>图生图使用独立的 Qwen Image Edit 工作流，不读取文生图核心模型。</p></div>
+        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/><line x1="6" x2="6" y1="3" y2="15"/></svg>图生图工作流</h2><p>图生图使用独立的 Qwen Image 2.1 编辑工作流，不读取文生图核心模型。</p></div>
         <button id="saveImg2ImgWorkflow" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存图生图工作流</button>
       </div>
       <div class="workflow-grid">
         <label>图生图工作流<select id="wf_img2img" class="select"></select></label>
-        <label>默认图生图引擎<select id="img2img_engine" class="select"><option value="qwen">Qwen 图生图</option><option value="flux2">Flux2 图生图</option></select><small class="field-hint">普通 /图生图 走哪个引擎；/图生图Flux2 始终强制 Flux2。</small></label>
       </div>
     </section>
 
@@ -249,15 +281,19 @@
         <button id="saveImg2ImgSettings" class="primary" type="button"><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>保存图生图设置</button>
       </div>
       <div class="form-grid">
-        <label>独立 UNet 模型<select id="img2img_unet_name" class="select"></select></label>
+        <label>图生图核心模型（UNet）<select id="img2img_unet_name" class="select"></select><small class="field-hint">在此选择 Qwen Image 2.1；选择后自动套用 Qwen Edit 工作流及对应编码器、VAE 和采样参数。</small></label>
+        <label class="check"><input id="qwen21_img2img_turbo_enabled" type="checkbox">Qwen Image 2.1 Turbo LoRA 加速（官方 8 步）</label>
         <label>独立文本编码器<select id="img2img_clip_name" class="select"></select></label>
         <label>独立 VAE<select id="img2img_vae_name" class="select"></select></label>
         <label class="lora-isolated-field">★ 独立 LoRA（图生图唯一长期生效）<select id="img2img_lora_name" class="select"><option value="">不使用</option></select></label>
         <label>LoRA 权重<input id="img2img_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
+        <label class="check"><input id="img2img_nsfw_lora_enabled" type="checkbox">额外启用 Qwen Image 2.1 NSFW LoRA（默认关闭）</label>
+        <label>Qwen Image 2.1 NSFW LoRA<select id="img2img_nsfw_lora_name" class="select"><option value="">未检测到 LoRA</option></select><small class="field-hint">只兼容 Qwen Image 2.1 基础模型；不强行注入触发词。</small></label>
+        <label>NSFW LoRA 权重<input id="img2img_nsfw_lora_strength" class="input" type="number" min="0" max="2" step="0.05"><small class="field-hint">默认 0.8；只在上方开关开启时叠加。</small></label>
         <label>输出宽度<input id="img2img_width" class="input" type="number" min="64" step="8"></label>
         <label>输出高度<input id="img2img_height" class="input" type="number" min="64" step="8"></label>
         <label class="check"><input id="img2img_keep_aspect_ratio" type="checkbox" checked>按原图宽高比输出</label>
-        <label>采样步数<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">Qwen 图生图建议 4 步</small></label>
+        <label>采样步数<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">Qwen 2.1 普通档自动设为 25 步；开启 Turbo 后自动设为 8 步。</small></label>
         <label>CFG<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">Qwen 图生图建议 CFG 1.0</small></label>
         <label>种子<input id="img2img_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
         <label>采样器<input id="img2img_sampler_name" class="input" type="text"></label>
@@ -299,160 +335,24 @@
     </section>
 
     </div>
-<div id="view-img2img_flux2" class="view-panel" data-view-panel="img2img_flux2" hidden>
-
-    <div class="page-head"><h2>图生图 Flux2</h2><p>独立 Flux2 Klein 编辑链路，支持 1–3 张参考图，可直接使用中文提示词。</p></div>
-
-    <div class="lora-isolation-notice" role="note">
-      <strong>【特别标注】Flux2 图生图只受「独立 LoRA」影响</strong>
-      <span>本页的“独立 LoRA”是 Flux2 图生图唯一长期生效的 LoRA：它不读取文生图默认 LoRA 列表，也不参与画风 LoRA 的随机/全部自动选择，且不会混入 Qwen 图生图的 LoRA 设置。</span>
-    </div>
-
-    <section class="band">
-      <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>图生图 Flux2 工作流</h2><p>独立于 Qwen 图生图的 Flux2 Klein 模块，按附图数量自动接入 1–3 张参考图。</p></div>
-        <button id="saveImg2ImgFlux2Workflow" class="primary" type="button">保存 Flux2 工作流设置</button>
-      </div>
-      <div class="workflow-grid">
-                <label>Flux2 图生图工作流<select id="wf_img2img_flux2" class="select"></select></label>
-        <label class="wide">Flux2 源工作流位置<input id="img2img_flux2_source_workflow" class="input" type="text"><small class="field-hint">插件会复制源文件到自己的 workflows 目录，不会覆盖源文件。</small></label>
-      </div>
-    </section>
-
-    <section class="band img2img-settings-band">
-      <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>Flux2 独立模型与参数</h2><p>本页设置只供 Flux2 图生图使用，不读取 Qwen 图生图和文生图的模型、LoRA 或参数。</p></div>
-        <button id="saveImg2ImgFlux2Settings" class="primary" type="button">保存 Flux2 模型与参数</button>
-      </div>
-      <div class="form-grid">
-        <label>核心模型<select id="img2img_flux2_unet_name" class="select"></select></label>
-        <label>文本编码器<select id="img2img_flux2_clip_name" class="select"></select></label>
-        <label>VAE<select id="img2img_flux2_vae_name" class="select"></select></label>
-        <label class="lora-isolated-field">★ 独立 LoRA（留空=沿用源工作流 LoRA）<select id="img2img_flux2_lora_name" class="select"><option value="">沿用源工作流 LoRA</option></select></label>
-        <label>LoRA 权重<input id="img2img_flux2_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
-        <p class="field-hint wide">Flux2 按源工作流运行：留空时沿用该工作流自带的 LoRA（模型链的一部分，含权重），填写则用它替换。不会额外加入加速 LoRA、KV Cache 或其它节点。</p>
-        <label>参考图最大边<input id="img2img_flux2_size" class="input" type="number" min="0" step="64"><small class="field-hint">0 表示沿用工作流；按最长边等比例缩放，不改变原图宽高比。</small></label>
-        <label>采样步数<input id="img2img_flux2_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">源工作流默认 6 步</small></label>
-        <label>CFG<input id="img2img_flux2_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">源工作流默认 1.0</small></label>
-        <label>种子<input id="img2img_flux2_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机。</small></label>
-        <label>采样器<input id="img2img_flux2_sampler_name" class="input" type="text"></label>
-        <label>调度器<input id="img2img_flux2_scheduler" class="input" type="text"></label>
-        <label>重绘幅度<input id="img2img_flux2_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
-        <label>输出批次<input id="img2img_flux2_batch" class="input" type="number" min="1" max="4" step="1"></label>
-        <label class="wide">Flux2 默认正面提示词<textarea id="img2img_flux2_default_positive" class="textarea" placeholder="留空表示只使用中文编辑要求"></textarea></label>
-        <label class="wide">Flux2 默认负面提示词<textarea id="img2img_flux2_default_negative" class="textarea"></textarea></label>
-        <label class="wide">输出文件名前缀<input id="img2img_flux2_filename_prefix" class="input" type="text" placeholder="例如：astrbot/img2img_flux2_klein"></label>
-      </div>
-      <p class="field-hint wide">上传 1–3 张参考图，按顺序接入。工作流按最长边等比例缩放，输出画布沿用原图宽高比，不会拉伸或裁剪成固定比例。</p>
-    </section>
-
-    <section class="band">
-      <div class="section-head">
-        <div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/></svg>Flux2 中文 AI 编辑提示词</h2><p>Flux2 支持中文提示词。AI 只把用户要求整理成简短中文编辑句，不会翻译成英文，也不会重述整张原图。</p></div>
-        <button id="saveImg2ImgFlux2Ai" class="primary" type="button">保存 Flux2 AI 设置</button>
-      </div>
-      <div class="form-grid">
-        <label>AI 来源<select id="img2img_flux2_llm_prompt_source" class="select"><option value="plugin">插件 AI</option><option value="astrbot">AstrBot 当前 AI</option></select></label>
-        <label class="check"><input id="img2img_flux2_plugin_ai_debug" type="checkbox">显示 Flux2 AI 调试过程（开发者）</label>
-        <label class="check"><input id="img2img_flux2_plain_translate_enabled" type="checkbox">Flux2 普通中文翻译（默认关闭）</label>
-        <label>普通翻译网站地址<input id="img2img_flux2_plain_translate_url" class="input" type="url" placeholder="https://translate.googleapis.com/translate_a/single"></label>
-        <label class="wide">Flux2 中文 AI 系统提示词<textarea id="img2img_flux2_ai_system_prompt" class="textarea" placeholder="留空使用内置中文编辑规则"></textarea></label>
-        <label class="wide">Flux2 编辑知识<textarea id="img2img_flux2_plugin_ai_knowledge" class="textarea" placeholder="可补充你自己的中文编辑约束"></textarea></label>
-        <label class="wide">Flux2 用户输入模板<textarea id="img2img_flux2_prompt_template" class="textarea" placeholder="使用 {request} 代表用户的编辑要求"></textarea><small class="field-hint">可用占位符：{request}、{用户要求}、{用户原话}。</small></label>
-        <label class="wide">Flux2 AI 输出格式要求<textarea id="img2img_flux2_output_format" class="textarea" placeholder="留空使用内置中文短编辑句格式"></textarea></label>
-      </div>
-    </section>
-
-    </div>
-<div id="view-wash" class="view-panel" data-view-panel="wash" hidden>
-
-    <div class="page-head"><h2>洗图</h2><p>只使用第一张输入图片。中文要求直接交给工作流，不调用 AI、翻译或全局 LoRA。</p></div>
-      <section class="band tool-panel">
-        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg>洗图</h2><p>只使用第一张输入图片。中文要求直接交给工作流，不调用 AI、普通翻译、全局 LoRA 或临时 LoRA。</p></div><button id="saveWashSettings" class="primary" type="button">保存洗图设置</button></div>
-        <div class="form-grid">
-          <label>洗图工作流<select id="wf_wash" class="select"></select></label>
-          <label>源工作流位置<input id="wash_source_workflow" class="input" type="text"></label>
-          <label>核心模型（留空沿用工作流）<input id="wash_model_name" class="input" type="text"></label>
-          <label>文本编码器（留空沿用工作流）<input id="wash_clip_name" class="input" type="text"></label>
-          <label>VAE（留空沿用工作流）<input id="wash_vae_name" class="input" type="text"></label>
-          <label>步数<input id="wash_steps" class="input" type="number" min="1" max="200" step="1"></label>
-          <label>CFG<input id="wash_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
-          <label>种子<input id="wash_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示随机</small></label>
-          <label>重绘幅度<input id="wash_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
-          <label>采样器<input id="wash_sampler_name" class="input" type="text"></label>
-          <label>调度器<input id="wash_scheduler" class="input" type="text"></label>
-          <label>工作流缩放长度<input id="wash_size" class="input" type="number" min="0" step="64"><small class="field-hint">0 表示沿用工作流</small></label>
-          <label>Florence2 最大输出 Token<input id="wash_caption_tokens" class="input" type="number" min="64" max="4096" step="1"></label>
-          <label>批次<input id="wash_batch" class="input" type="number" min="1" max="4" step="1"></label>
-          <label class="wide">默认正面提示词<textarea id="wash_default_positive" class="textarea"></textarea></label>
-          <label class="wide">默认负面提示词<textarea id="wash_default_negative" class="textarea"></textarea></label>
-          <label class="wide">输出文件名前缀<input id="wash_filename_prefix" class="input" type="text"></label>
-        </div>
-      </section>
-    </div>
-<div id="view-outpaint" class="view-panel" data-view-panel="outpaint" hidden>
-
-    <div class="page-head"><h2>扩图</h2><p>只使用第一张输入图片。扩展方向、边距与羽化边缘在本页设置。</p></div>
-      <section class="band tool-panel">
-        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>扩图</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；扩展方向和羽化边缘使用本页设置。</p></div><button id="saveOutpaintSettings" class="primary" type="button">保存扩图设置</button></div>
-        <div class="form-grid">
-          <label>扩图工作流<select id="wf_outpaint" class="select"></select></label>
-          <label>源工作流位置<input id="outpaint_source_workflow" class="input" type="text"></label>
-          <label>核心模型（留空沿用工作流）<input id="outpaint_model_name" class="input" type="text"></label>
-          <label>文本编码器（留空沿用工作流）<input id="outpaint_clip_name" class="input" type="text"></label>
-          <label>VAE（留空沿用工作流）<input id="outpaint_vae_name" class="input" type="text"></label>
-          <label>左侧边距<input id="outpaint_left" class="input" type="number" min="0" step="8"></label>
-          <label>上侧边距<input id="outpaint_top" class="input" type="number" min="0" step="8"></label>
-          <label>右侧边距<input id="outpaint_right" class="input" type="number" min="0" step="8"></label>
-          <label>下侧边距<input id="outpaint_bottom" class="input" type="number" min="0" step="8"></label>
-          <label>羽化边缘<input id="outpaint_feathering" class="input" type="number" min="0" step="1"></label>
-          <label>步数<input id="outpaint_steps" class="input" type="number" min="1" max="200" step="1"></label>
-          <label>CFG<input id="outpaint_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
-          <label>种子<input id="outpaint_seed" class="input" type="number" min="-1" step="1"></label>
-          <label>重绘幅度<input id="outpaint_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
-          <label>采样器<input id="outpaint_sampler_name" class="input" type="text"></label>
-          <label>调度器<input id="outpaint_scheduler" class="input" type="text"></label>
-          <label>工作流缩放长度<input id="outpaint_size" class="input" type="number" min="0" step="64"></label>
-          <label>批次<input id="outpaint_batch" class="input" type="number" min="1" max="4" step="1"></label>
-          <label class="wide">默认正面提示词<textarea id="outpaint_default_positive" class="textarea"></textarea></label>
-          <label class="wide">默认负面提示词<textarea id="outpaint_default_negative" class="textarea"></textarea></label>
-          <label class="wide">输出文件名前缀<input id="outpaint_filename_prefix" class="input" type="text"></label>
-        </div>
-      </section>
-    </div>
-<div id="view-multi_angle" class="view-panel" data-view-panel="multi_angle" hidden>
-
-    <div class="page-head"><h2>多角度</h2><p>只使用第一张输入图片。相机角度与默认镜头提示在本页设置。</p></div>
-      <section class="band tool-panel">
-        <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>多角度</h2><p>只使用第一张输入图片。输入中文要求直接交给工作流；相机角度和默认镜头提示在本页设置。</p></div><button id="saveMultiAngleSettings" class="primary" type="button">保存多角度设置</button></div>
-        <div class="form-grid">
-          <label>多角度工作流<select id="wf_multi_angle" class="select"></select></label>
-          <label>源工作流位置<input id="multi_angle_source_workflow" class="input" type="text"></label>
-          <label>核心模型（留空沿用工作流）<input id="multi_angle_model_name" class="input" type="text"></label>
-          <label>文本编码器（留空沿用工作流）<input id="multi_angle_clip_name" class="input" type="text"></label>
-          <label>VAE（留空沿用工作流）<input id="multi_angle_vae_name" class="input" type="text"></label>
-          <label>水平角度<input id="multi_angle_horizontal_angle" class="input" type="number" min="-180" max="180" step="1"></label>
-          <label>垂直角度<input id="multi_angle_vertical_angle" class="input" type="number" min="-90" max="90" step="1"></label>
-          <label>缩放<input id="multi_angle_zoom" class="input" type="number" min="0.1" max="20" step="0.1"></label>
-          <label>步数<input id="multi_angle_steps" class="input" type="number" min="1" max="200" step="1"></label>
-          <label>CFG<input id="multi_angle_cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
-          <label>种子<input id="multi_angle_seed" class="input" type="number" min="-1" step="1"></label>
-          <label>重绘幅度<input id="multi_angle_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
-          <label>采样器<input id="multi_angle_sampler_name" class="input" type="text"></label>
-          <label>调度器<input id="multi_angle_scheduler" class="input" type="text"></label>
-          <label>工作流缩放长度<input id="multi_angle_size" class="input" type="number" min="0" step="64"></label>
-          <label>批次<input id="multi_angle_batch" class="input" type="number" min="1" max="4" step="1"></label>
-          <label class="check"><input id="multi_angle_default_prompts" type="checkbox">使用工作流默认镜头提示</label>
-          <label class="check"><input id="multi_angle_camera_view" type="checkbox">启用相机视角描述</label>
-          <label class="wide">默认正面提示词<textarea id="multi_angle_default_positive" class="textarea"></textarea></label>
-          <label class="wide">默认负面提示词<textarea id="multi_angle_default_negative" class="textarea"></textarea></label>
-          <label class="wide">输出文件名前缀<input id="multi_angle_filename_prefix" class="input" type="text"></label>
-        </div>
-      </section>
-    </div>
 <div id="view-ai" class="view-panel" data-view-panel="ai" hidden>
 
-    <div class="page-head"><h2>AI 与回复</h2><p>AI 服务、图片安全审核、回复方式、绘图限额与 ComfyUI 控制。</p></div>
+    <div class="page-head"><h2>AI 与回复</h2><p>AI 服务、提示词优化、图片安全审核、回复方式、绘图限额与 ComfyUI 控制。</p></div>
+
+    <section class="band">
+      <div class="section-head"><div><h2>AI 提示词优化</h2><p>参考 ComfyUI-PromptEnhancer 的模型专用优化流程，使用下方已配置的 AI API。预设与 LoRA 简称先匹配，优化后合并。</p></div><button id="savePromptEnhancer" class="primary" type="button">保存优化设置</button></div>
+      <div class="form-grid">
+        <label class="check wide"><input id="prompt_enhancer_enabled" type="checkbox">启用提示词优化模板</label>
+        <p class="field-hint wide">指令使用“ai”时启用，例如 /文生图 ai 窗台上的白猫、/图生图 ai 把外套换成蓝色夹克（附图）。自然语言绘图沿用各页面的 LLM 提示词来源；使用插件 AI 时由插件优化，AstrBot 来源按同样规则生成。不使用 ai 的普通指令仍保留原来的处理方式。这里只输出最终提示词，格式无效时最多重新整理一次。</p>
+        <label class="wide">文生图优化模板<textarea id="prompt_enhancer_txt2img_template" class="textarea"></textarea><small class="field-hint">Qwen / Flux 使用中文自然语言；Anima 使用英文标签。留空使用内置模板。</small></label>
+        <label class="wide">Qwen 图生图优化模板<textarea id="prompt_enhancer_img2img_template" class="textarea"></textarea><small class="field-hint">只改变用户指定内容。当前优化 AI 接收文字，参考图片由绘图工作流读取。</small></label>
+        <label>测试模式<select id="promptEnhancerMode" class="select"><option value="txt2img">文生图</option><option value="img2img">Qwen 图生图</option></select></label>
+        <label class="wide">测试要求<textarea id="promptEnhancerInput" class="textarea" placeholder="例如：把外套换成蓝色夹克，保持表情与背景"></textarea></label>
+        <div class="ai-actions wide"><button id="testPromptEnhancer" class="secondary" type="button">测试优化</button><button id="resetPromptEnhancer" class="secondary" type="button">恢复内置模板</button><span id="promptEnhancerStatus" class="muted">测试只调用插件 AI，不会生成图片或保存设置</span></div>
+        <label class="wide">最终提示词<textarea id="promptEnhancerResult" class="textarea" readonly></textarea></label>
+        <p class="field-hint wide">模板设计参考：<a href="https://github.com/MaxKruse/ComfyUI-PromptEnhancer" target="_blank" rel="noopener noreferrer">ComfyUI-PromptEnhancer</a>。本插件内置中文适配模板，无需额外运行 llama-server。</p>
+      </div>
+    </section>
 
     <section class="band">
       <div class="section-head"><div><h2><svg class="ui-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>AI 服务设置</h2><p>填写兼容 OpenAI 的服务地址和 API Key，先获取模型并测试连接，成功后再保存。</p></div><button id="saveAi" class="primary">保存设置</button></div>
@@ -580,6 +480,6 @@
     </div>
   </main>
 <script src="/api/plugin/page/bridge-sdk.js"></script>
-  <script src="app.js?v=1.3.1"></script>
+  <script src="app.js?v=1.4.0-enginelora"></script>
 </body>
 </html>

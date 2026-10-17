@@ -34,16 +34,39 @@ from astrbot.core.star.filter.command import GreedyStr
 from astrbot.core.utils.astrbot_path import get_astrbot_plugin_data_path
 
 from .ai import DANBOORU_SYSTEM_PROMPT, AIError, AITranslator
+from .prompt_enhancer import (
+    IMG2IMG_TEMPLATE,
+    SOURCE_URL as PROMPT_ENHANCER_SOURCE,
+    TXT2IMG_TEMPLATE,
+    build_system_prompt as build_enhancer_system_prompt,
+    clean_enhanced_prompt,
+)
 from .anima_knowledge import (
     build_context as build_anima_context,
     find_template_path,
     is_drawing_request,
 )
+from .prompt_profiles import (
+    build_llm_style,
+    describe as describe_prompt_profile,
+    negative_is_effective,
+    resolve_prompt_profile,
+)
 from .comfy import ComfyClient, ComfyError
+from .bundled_resources import COMFY_UPDATE_URL, builtin_catalog, inspect_bundle
+from .bundled_workflows import adapt_anima_template
 from .moderation import (
     ImageModerator,
     ModerationConfig,
     ModerationVerdict,
+)
+from .model_profiles import (
+    apply_profile_defaults,
+    explicit_numeric_overrides,
+    load_profiles,
+    profile_key,
+    recommended_profile,
+    save_profile,
 )
 from .paths import (
     MODEL_CATEGORIES,
@@ -68,9 +91,6 @@ from .prompting import (
 from .translation import PlainTranslationError, PlainTranslator
 from .workflow import (
     WorkflowError,
-    adapt_qwen_img2img,
-    adapt_flux2_klein_img2img,
-    adapt_flux2_tool,
     adapt_original,
     anima_sampling_defaults,
     copy_and_repair_original,
@@ -78,9 +98,11 @@ from .workflow import (
     load_api_workflow,
     load_workflow,
 )
+from .qwen21_workflows import adapt_template as adapt_qwen21_template
+from .krea2_workflows import adapt_template as adapt_krea2_template
 
 PLUGIN_NAME = "astrbot_plugin_comfyui_ai_studio"
-PLUGIN_VERSION = "1.3.1"
+PLUGIN_VERSION = "1.4.0"
 
 
 def _log_path(value: object) -> str:
@@ -148,96 +170,58 @@ CHARACTER_PRESET_SEED = {
 MODE_NAMES = {
     "txt2img": "文生图",
     "img2img": "图生图",
-    "img2img_flux2": "图生图 Flux2",
     "hires": "高清放大",
-    "wash": "洗图",
-    "outpaint": "扩图",
-    "multi_angle": "多角度",
 }
+INPUT_IMAGE_CACHE_TTL_SECONDS = 72 * 60 * 60
+INPUT_IMAGE_CACHE_PRUNE_INTERVAL_SECONDS = 15 * 60
 MODE_ALIASES = {
     "文生图": "txt2img", "图生图": "img2img", "高清放大": "hires", "高清": "hires",
-    "图生图Flux2": "img2img_flux2", "Flux2图生图": "img2img_flux2", "图生图2": "img2img_flux2",
-    "洗图": "wash", "wash": "wash",
-    "扩图": "outpaint", "outpaint": "outpaint",
-    "多角度": "multi_angle", "multi-angle": "multi_angle",
 }
 # 图生图独立 LoRA 语义的「特别标注」。图生图只受各自页面配置的独立 LoRA
 # 影响：不读取文生图的默认 LoRA 列表，也不参与画风 LoRA 的随机/全部自动
 # 选择。该文案同时用在 WebUI 提示和开始回复中，保证前后端口径一致。
 IMG2IMG_LORA_ISOLATION_NOTICE = (
-    "【特别标注】图生图只受「独立 LoRA」影响："
+    "【特别标注】Qwen Image 2.1 图生图只受本页配置的独立 LoRA 影响："
     "它不会加载文生图的默认 LoRA 列表，也不会参与画风 LoRA 的随机/全部自动选择；"
     "如需在本次图生图中叠加其它 LoRA，请在指令中显式写出该 LoRA 简称。"
 )
-# 旧版本曾把作者本机的绝对路径写成配置默认值。下面这组「指纹」只在启动时用于
-# 识别并清空历史遗留的本机路径，让插件改用自己的 workflows 目录；它们不会被写入
-# _conf_schema.json，也不会出现在任何用户可见的文案里。
-LEGACY_AUTHOR_PATH_FINGERPRINTS = {
-    "flux2_img2img": r"E:\0000001\工作流们（7个）\▶flux-2-klein-单-多图编辑.json",
-    "flux2_img2img_legacy": (r"E:\▶flux-2-klein-单-多图编辑.json",),
-    "wash": r"E:\0000001\工作流们（7个）\▶flux-2-klein-图生图洗图流.json",
-    "outpaint": r"E:\0000001\工作流们（7个）\▶flux-2-klein-图像扩展流.json",
-    "multi_angle": r"E:\0000001\工作流们（7个）\▶flux-2-klein-多角度转换流.json",
-    "qwen_img2img": r"E:\QwenImageEdit2511局部重绘替换万物 (1).json",
-    "qwen_img2img_legacy": (
-        r"E:\112121121.json",
-        r"E:\222.json",
-        r"E:\11111图生图.json",
-        r"E:\QwenImageEdit2511局部重绘替换万物.json",
-        r"E:\▶QwenImageEdit2511-AIO图生图10G.json",
-        r"E:\No2图生图模型\8G-10G显存下载\工作流\▶QwenImageEdit2511-AIO图生图10G.json",
-    ),
+QWEN21_IMG2IMG_WORKFLOW_DEFAULT = "qwen21_edit_api.json"
+# Krea 2 走独立引擎：/水粉 指令直接加载这份内置图，不占用 workflow_txt2img，
+# 因此 Anima 与 Krea 2 可以共存，不需要来回改配置。
+KREA2_WORKFLOW_FILE = "krea2_t2i_api.json"
+KREA2_ENGINE_NAME = "krea2"
+KREA2_UNET_DEFAULT = "krea2_turbo-Q4_K_M.gguf"
+KREA2_CLIP_DEFAULT = "qwen3vl_4b_fp8_scaled.safetensors"
+KREA2_VAE_DEFAULT = "qwen_image_vae.safetensors"
+KREA2_STEPS_DEFAULT = 8
+KREA2_CFG_DEFAULT = 1.0
+# Qwen Image 2.1 也有独立的文生图引擎入口（/qwen）。它复用图生图那套
+# Qwen 模型链，但加载内置的 t2i 图，所以 Anima 的文生图配置不受影响。
+QWEN21_ENGINE_NAME = "qwen21"
+QWEN21_T2I_WORKFLOW_FILE = "qwen21_t2i_api.json"
+# 每个引擎的 LoRA 启用列表彼此独立：Krea 2 / Qwen 2.1 不会读 Anima 的 lora_list，
+# 也不会参与 Anima 的画风 LoRA 随机。
+ENGINE_LORA_CONFIG_KEYS = {
+    KREA2_ENGINE_NAME: "krea2_lora_list",
+    QWEN21_ENGINE_NAME: "qwen21_lora_list",
 }
-FLUX2_IMG2IMG_SOURCE_DEFAULT = LEGACY_AUTHOR_PATH_FINGERPRINTS["flux2_img2img"]
-FLUX2_IMG2IMG_SOURCE_LEGACY = LEGACY_AUTHOR_PATH_FINGERPRINTS["flux2_img2img_legacy"]
-FLUX2_IMG2IMG_WORKFLOW_FILE = "图生图_flux2_klein.json"
 MODE_FILES = {
     "txt2img": "文生图.json",
-    "img2img": "图生图_qwen_edit.json",
-    "img2img_flux2": FLUX2_IMG2IMG_WORKFLOW_FILE,
+    "img2img": QWEN21_IMG2IMG_WORKFLOW_DEFAULT,
     "hires": "高清放大.json",
-    "wash": "洗图.json",
-    "outpaint": "扩图.json",
-    "multi_angle": "多角度.json",
-}
-FLUX2_TOOL_SOURCE_DEFAULTS = {
-    mode: LEGACY_AUTHOR_PATH_FINGERPRINTS[mode]
-    for mode in ("wash", "outpaint", "multi_angle")
 }
 # 这些名字曾随插件附带，但已经有更好的替代，且不在 MODE_FILES 里。文件已从包内
 # 删除；配置若仍指向它们，启动时统一改回该模式的默认工作流。
 REMOVED_WORKFLOW_FILES = {
     "图生图.json",
-    "图生图_flux2.json",
     "img2img_qwen.json",
-    "img2img_flux2.json",
 }
-FLUX2_TOOL_DEFAULT_POSITIVE = {
-    "wash": "皮肤白皙，柔和明亮的光线，",
-    "outpaint": "移除绿色区域",
-    "multi_angle": "姿势保持不变",
-}
-QWEN_IMG2IMG_SOURCE_DEFAULT = LEGACY_AUTHOR_PATH_FINGERPRINTS["qwen_img2img"]
-FLUX2_IMG2IMG_UNET_DEFAULT = r"flux-2-klein\flux-2-klein-9b-fp8.safetensors"
-FLUX2_IMG2IMG_CLIP_DEFAULT = "qwen_3_8b_fp8mixed.safetensors"
-FLUX2_IMG2IMG_VAE_DEFAULT = "flux2-vae.safetensors"
-# The source graph contains an example NSFW LoRA, but it must not be silently
-# applied to every reference edit. Users can still select a content LoRA in
-# the independent Flux2 WebUI section.
-FLUX2_IMG2IMG_LORA_DEFAULT = ""
-FLUX2_IMG2IMG_LEGACY_LORA_DEFAULT = r"flux-2-klein\flux-2-klein-NSFW.safetensors"
-FLUX2_IMG2IMG_SIZE_DEFAULT = 1280
-FLUX2_IMG2IMG_STEPS_DEFAULT = 6
-FLUX2_IMG2IMG_CFG_DEFAULT = 1.0
-FLUX2_IMG2IMG_DENOISE_DEFAULT = 1.0
-FLUX2_IMG2IMG_DEFAULT_POSITIVE = ""
-FLUX2_IMG2IMG_DEFAULT_NEGATIVE = ""
-QWEN_IMG2IMG_SOURCE_LEGACY = LEGACY_AUTHOR_PATH_FINGERPRINTS["qwen_img2img_legacy"]
-QWEN_IMG2IMG_UNET_DEFAULT = "Qwen-Rapid-NSFW-v23_Q3_K.gguf"
-QWEN_IMG2IMG_CLIP_DEFAULT = "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf"
-QWEN_IMG2IMG_VAE_DEFAULT = "qwen_image_vae.safetensors"
+QWEN_IMG2IMG_UNET_DEFAULT = "qwen_image_2.1_int8_convrot.safetensors"
+QWEN_IMG2IMG_CLIP_DEFAULT = "qwen3vl_8b_w4a8.safetensors"
+QWEN_IMG2IMG_VAE_DEFAULT = "qwen_image_2.1_vae_bf16.safetensors"
 QWEN_IMG2IMG_LORA_DEFAULT = ""
-QWEN_IMG2IMG_STEPS_DEFAULT = 4
+QWEN_IMG2IMG_NSFW_LORA_DEFAULT = r"qwen-image-2.1\NSFW Qwen Lora.safetensors"
+QWEN_IMG2IMG_STEPS_DEFAULT = 25
 QWEN_IMG2IMG_CFG_DEFAULT = 1.0
 QWEN_IMG2IMG_DENOISE_DEFAULT = 1.0
 # 图片字体候选：先读 WebUI 配置，再回退到系统常见中文字体。覆盖 Windows、
@@ -276,7 +260,6 @@ LLM_TOOL_NAMES = {
     "status": "comfyui_ai_studio_status",
     "generate": "comfyui_ai_studio_generate",
     "edit": "comfyui_ai_studio_edit",
-    "edit_flux2": "comfyui_ai_studio_edit_flux2",
     "upscale": "comfyui_ai_studio_upscale",
     "presets": "comfyui_ai_studio_presets",
 }
@@ -339,33 +322,13 @@ PATH_SETTING_GROUPS: tuple[dict[str, Any], ...] = (
 
 WRITABLE_CONFIG = {
     "comfyui_url", "comfyui_root", "source_workflow", "workflow_dir", "model_name",
-    "workflow_txt2img", "workflow_img2img", "workflow_img2img_flux2", "workflow_hires",
-    "img2img_engine", "img2img_flux2_source_workflow", "img2img_flux2_unet_name",
-    "img2img_flux2_clip_name", "img2img_flux2_vae_name", "img2img_flux2_lora_name",
-    "img2img_flux2_lora_strength", "img2img_flux2_default_positive",
-    "img2img_flux2_default_negative", "img2img_flux2_prompt_template",
-    "img2img_flux2_llm_prompt_source", "img2img_flux2_ai_system_prompt",
-    "img2img_flux2_plugin_ai_knowledge", "img2img_flux2_plugin_ai_debug",
-    "img2img_flux2_output_format",
-    "img2img_flux2_plain_translate_enabled", "img2img_flux2_plain_translate_url",
-    "img2img_flux2_size", "img2img_flux2_steps", "img2img_flux2_cfg",
-    "img2img_flux2_seed", "img2img_flux2_sampler_name", "img2img_flux2_scheduler",
-    "img2img_flux2_denoise", "img2img_flux2_batch", "img2img_flux2_filename_prefix",
-    "workflow_wash", "workflow_outpaint", "workflow_multi_angle",
-    "wash_source_workflow", "outpaint_source_workflow", "multi_angle_source_workflow",
-    "wash_default_positive", "wash_default_negative", "wash_model_name", "wash_clip_name", "wash_vae_name",
-    "wash_steps", "wash_cfg", "wash_seed", "wash_denoise", "wash_sampler_name", "wash_scheduler",
-    "wash_size", "wash_batch", "wash_caption_tokens", "wash_filename_prefix",
-    "outpaint_default_positive", "outpaint_default_negative", "outpaint_model_name", "outpaint_clip_name", "outpaint_vae_name",
-    "outpaint_steps", "outpaint_cfg", "outpaint_seed", "outpaint_denoise", "outpaint_sampler_name", "outpaint_scheduler",
-    "outpaint_size", "outpaint_batch", "outpaint_left", "outpaint_top", "outpaint_right", "outpaint_bottom",
-    "outpaint_feathering", "outpaint_filename_prefix",
-    "multi_angle_default_positive", "multi_angle_default_negative", "multi_angle_model_name", "multi_angle_clip_name", "multi_angle_vae_name",
-    "multi_angle_steps", "multi_angle_cfg", "multi_angle_seed", "multi_angle_denoise", "multi_angle_sampler_name", "multi_angle_scheduler",
-    "multi_angle_size", "multi_angle_batch", "multi_angle_horizontal_angle", "multi_angle_vertical_angle", "multi_angle_zoom",
-    "multi_angle_default_prompts", "multi_angle_camera_view", "multi_angle_filename_prefix",
-    "img2img_source_workflow", "img2img_unet_name", "img2img_clip_name", "img2img_vae_name",
-    "img2img_lora_name", "img2img_lora_strength", "img2img_default_positive", "img2img_default_negative",
+    "clip_name", "vae_name",
+    "qwen21_turbo_enabled", "qwen21_img2img_turbo_enabled", "qwen21_turbo_lora_strength",
+    "workflow_txt2img", "workflow_img2img", "workflow_hires",
+    "img2img_unet_name", "img2img_clip_name", "img2img_vae_name",
+    "img2img_lora_name", "img2img_lora_strength", "img2img_nsfw_lora_enabled",
+    "img2img_nsfw_lora_name", "img2img_nsfw_lora_strength",
+    "img2img_default_positive", "img2img_default_negative",
     "img2img_width", "img2img_height", "img2img_keep_aspect_ratio", "img2img_steps", "img2img_cfg", "img2img_seed",
     "img2img_sampler_name", "img2img_scheduler", "img2img_denoise", "img2img_scale_method",
     "img2img_largest_size", "img2img_crop", "img2img_sampling_shift",
@@ -383,6 +346,8 @@ WRITABLE_CONFIG = {
     "plain_translate_enabled", "plain_translate_url",
     "img2img_plain_translate_enabled", "img2img_plain_translate_url", "img2img_match_input_size",
     "llm_prompt_source", "plugin_ai_command_system_prompt", "plugin_ai_llm_system_prompt",
+    "prompt_enhancer_enabled", "prompt_enhancer_txt2img_template",
+    "prompt_enhancer_img2img_template",
     "plugin_ai_anima_context", "plugin_ai_debug", "llm_wait_timeout",
     "img2img_llm_prompt_source", "img2img_ai_system_prompt", "img2img_plugin_ai_llm_system_prompt",
     "img2img_plugin_ai_knowledge", "img2img_plugin_ai_debug",
@@ -601,6 +566,7 @@ class ComfyUIAIStudio(Star):
         self.plugin_dir = Path(__file__).resolve().parent
         self.data_dir = Path(get_astrbot_plugin_data_path()) / PLUGIN_NAME
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.model_profiles_path = self.data_dir / "model_profiles.json"
         self.output_dir = self.data_dir / "output"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         # AstrBot 的 data/temp 图片会被后台清理。图生图任务进入队列前，
@@ -652,6 +618,10 @@ class ComfyUIAIStudio(Star):
             self._save_lora_presets()
         self._civitai_cache_lock = asyncio.Lock()
         self.last_images: dict[str, str] = {}
+        # 「会话级图片记忆」：用户最近给过的图（origin -> (路径, 时间戳)）。
+        # 与 last_images（机器人最近出的图）配对使用，让图生图在用户不引用
+        # 原图时也能自动接上上一张图。
+        self.last_user_images: dict[str, tuple[str, float]] = {}
         self.semaphore: asyncio.Semaphore | None = None
         self._draw_limit_lock = asyncio.Lock()
         self._draw_limit_entries: dict[str, list[tuple[str, float, int]]] = {}
@@ -854,7 +824,7 @@ class ComfyUIAIStudio(Star):
             # 功能查询只注入一句话规则，避免人格模型把插件内部配置逐项展开。
             injection = (
                 "【ComfyUI 绘图功能】\n"
-                "用户询问本插件能做什么时，只回复这一句，不要改写、补充或逐项解释：支持文生图、图生图、高清放大、洗图、扩图、多角度处理，"
+                "用户询问本插件能做什么时，只回复这一句，不要改写、补充或逐项解释：支持文生图、图生图、高清放大，"
                 "以及 LoRA 批量导入、免 API 下载 C 站模型和提示词预设管理。"
                 "不要展开参数，不要调用绘图工具，也不要凭空开始生成图片。"
             )
@@ -883,18 +853,34 @@ class ComfyUIAIStudio(Star):
                 await self._inject_event_images_to_llm_request(event, req)
             if is_edit:
                 instruction = DEFAULT_IMG2IMG_LLM_TOOL_PROMPT
-                flux_hint = (
-                    "当前 WebUI 若选择 Flux2，优先调用 comfyui_ai_studio_edit_flux2；"
-                    "它使用当前消息中的 1 张参考图片，并使用独立的 Flux2 配置。"
-                )
-                req.system_prompt = f"【图生图编辑规则】\n{instruction}\n{flux_hint}\n\n{str(req.system_prompt or '').strip()}".strip()
+                edit_model = self._get("img2img_unet_name", QWEN_IMG2IMG_UNET_DEFAULT)
+                if self._is_qwen21_model(str(edit_model or "")):
+                    instruction += " 当前为 Qwen Image 2.1 编辑模型：prompt 用中文短句描述用户明确要改变的部分，不要转成英文标签，不要扩写未要求改变的内容。"
+                req.system_prompt = f"【图生图编辑规则】\n{instruction}\n\n{str(req.system_prompt or '').strip()}".strip()
                 return
-            context = str(self._get("plugin_ai_anima_context", "") or "").strip()
-            if not context:
-                context = build_anima_context(
-                    self.plugin_dir, 2600, self._anima_template_override()
-                )
+            selected_model = (
+                self._get("img2img_unet_name", QWEN_IMG2IMG_UNET_DEFAULT)
+                if is_edit
+                else self._get("model_name", "工作流默认")
+            )
+            profile = resolve_prompt_profile(str(selected_model or ""))
+            natural_prompt = profile.family == "natural"
+            context = ""
+            if profile.family == "tags":
+                context = str(self._get("plugin_ai_anima_context", "") or "").strip()
+                if not context:
+                    context = build_anima_context(
+                        self.plugin_dir, 2600, self._anima_template_override()
+                    )
+            elif profile.enhancer_extra:
+                # 自然语言系没有 Anima 那套标签模板，改为注入该家族的写法要点；
+                # 用户填了自定义要点时以自定义内容为准。
+                context = str(
+                    self._get(f"plugin_ai_{profile.key}_context", "") or ""
+                ).strip() or profile.enhancer_extra
             instruction = (
+                "当前请求涉及绘图。请先理解用户的完整意图，保留动作、姿势、表情、镜头、构图和场景。"
+                if natural_prompt else
                 "当前请求涉及绘图。请把自己当作 Anima3 提示词工程师：先理解用户真正想画什么，"
                 "再按 Anima 规则生成提示词；调用本插件的绘图工具时，prompt 必须是适配 Anima 工作流的"
                 "一行小写英文 Danbooru 标签。必须保留用户原话中的动作、姿势、正在进行的行为、表情、"
@@ -904,8 +890,38 @@ class ComfyUIAIStudio(Star):
                 "preset 和 lora；两者可以同时填写，多个值用逗号分隔。"
                 + self._llm_style_lora_hint()
                 + "不要把明确的绘图请求改成只查询规则。"
+                "采样参数和核心模型默认继承 WebUI 当前选择的模型配置档案。只有用户明确要求某个参数的具体数值时，"
+                "才把该数值填入工具参数；没有明确数值就省略 width、height、steps、cfg、seed、denoise 等字段。"
+                "不得根据常识补默认值，不得自行更换模型；只有用户明确要求切换并说出目标模型时才填写 model。"
             )
-            injection = f"【内置 Anima 提示词工程师】\n{instruction}\n\n{context}"
+            if is_edit:
+                profile_steps = self._get("img2img_steps", QWEN_IMG2IMG_STEPS_DEFAULT)
+                profile_cfg = self._get("img2img_cfg", QWEN_IMG2IMG_CFG_DEFAULT)
+                profile_sampler = self._get("img2img_sampler_name", "euler")
+                profile_scheduler = self._get("img2img_scheduler", "simple")
+            else:
+                profile_steps = self._get("steps", "未单独设置")
+                profile_cfg = self._get("cfg", "未单独设置")
+                profile_sampler = self._get("sampler_name", "工作流默认")
+                profile_scheduler = self._get("scheduler", "工作流默认")
+            instruction += (
+                f"\n当前绘图配置：模型={selected_model}；模式={'图生图' if is_edit else '文生图'}；"
+                f"当前配置参数：steps={profile_steps}，CFG={profile_cfg}，"
+                f"sampler={profile_sampler}，scheduler={profile_scheduler}。"
+                "这些值是当前档案状态，不要重复作为工具覆盖参数传入。"
+            )
+            instruction += (
+                "\n引擎选择：用户明确说“水粉 / 克雷亚 / Krea 2”时，调用绘图工具必须填 engine=krea2；"
+                "明确说“Qwen / Qwen Image 2.1 / 千问”时填 engine=qwen21；"
+                "没提引擎就省略，沿用 WebUI 当前模型。engine 只影响文生图，图生图不需要填。"
+            )
+            if self._get("prompt_enhancer_enabled", True) and not is_edit:
+                instruction += "\n【提示词优化规则】\n" + build_enhancer_system_prompt(
+                    {"prompt_enhancer_txt2img_template": self._get("prompt_enhancer_txt2img_template", "")},
+                    "txt2img", str(selected_model or ""),
+                )
+            prompt_style = build_llm_style(str(selected_model or ""))
+            injection = f"【当前模型提示词规则】\n{prompt_style}\n{instruction}\n\n{context}".strip()
             req.system_prompt = f"{injection}\n\n{str(req.system_prompt or '').strip()}".strip()
         except Exception as exc:
             logger.warning("[%s] 内置 Anima 规则注入失败：%s", PLUGIN_NAME, exc)
@@ -917,10 +933,13 @@ class ComfyUIAIStudio(Star):
             ("upload_workflow", self.api_upload_workflow, ["POST"], "Upload API workflow JSON"),
             ("status", self.api_status, ["GET"], "读取 ComfyUI 状态和本地路径"),
             ("models", self.api_models, ["GET"], "读取核心模型、LoRA 和放大模型"),
+            ("model_profiles", self.api_model_profiles, ["GET", "POST"], "读取和保存各模型的采样档案"),
             ("workflows", self.api_workflows, ["GET"], "读取和切换工作流"),
+            ("bundles", self.api_bundles, ["GET", "POST"], "检查和选择内置模型方案"),
             ("config", self.api_config, ["GET", "POST"], "读取和保存绘画配置"),
             ("paths", self.api_path_settings, ["GET", "POST"], "读取并修改各类文件夹位置"),
             ("ai_models", self.api_ai_models, ["GET", "POST"], "获取 AI 模型并测试连接"),
+            ("prompt_enhancer", self.api_prompt_enhancer, ["POST"], "测试 AI 提示词优化"),
             ("moderation_test", self.api_moderation_test, ["GET", "POST"], "测试图片安全审核链路"),
             ("presets", self.api_presets, ["GET", "POST"], "管理提示词预设"),
             ("artist_presets", self.api_artist_presets, ["GET", "POST"], "管理独立画师串预设"),
@@ -964,97 +983,17 @@ class ComfyUIAIStudio(Star):
             "不要把它写进 prompt，也不要把它改成英文标签。"
         )
 
-    def _refresh_flux2_tool_workflows(self) -> bool:
-        """Install the three supplied editor workflows as API workflows.
-
-        The bundled/default files are refreshed from their configured source on
-        startup. A user-selected custom file is left untouched, so changing a
-        workflow in WebUI remains persistent across plugin restarts.
-        """
+    def _refresh_img2img_workflow(self) -> bool:
+        """确保图生图指向随插件内置的 Qwen Image 2.1 编辑工作流。"""
         changed = False
-        directory = self._workflow_dir()
-        for mode in FLUX2_TOOL_SOURCE_DEFAULTS:
-            source_key = f"{mode}_source_workflow"
-            source_value = str(self._get(source_key, "") or "").strip()
-            if source_value and source_value.casefold() == str(
-                FLUX2_TOOL_SOURCE_DEFAULTS.get(mode, "")
-            ).casefold():
-                # 旧版本把作者本机路径写成了默认值，在别的机器上并不存在；
-                # 清空后由插件内置的 workflows 目录接管。
-                source_value = ""
-                self._set(source_key, "")
-                changed = True
-            if not source_value:
-                continue
-            selected_key = f"workflow_{mode}"
-            selected = str(self._get(selected_key, "") or "").strip()
-            if not selected:
-                self._set(selected_key, MODE_FILES[mode])
-                selected = MODE_FILES[mode]
-                changed = True
-            selected_path = Path(selected)
-            is_default_selection = selected.casefold() == MODE_FILES[mode].casefold()
-            target = directory / MODE_FILES[mode]
-            if not is_default_selection:
-                continue
-            source = Path(source_value)
-            if not source.is_file():
-                logger.warning("[%s] %s 源工作流不存在：%s", PLUGIN_NAME, MODE_NAMES[mode], _log_path(source))
-                continue
-            try:
-                converted = load_workflow(source)
-                target.write_text(
-                    json.dumps(converted, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                logger.info("[%s] 已安装%s工作流：%s -> %s", PLUGIN_NAME, MODE_NAMES[mode], _log_path(source), _log_path(target))
-            except (OSError, WorkflowError, ValueError) as exc:
-                logger.warning("[%s] %s工作流转换失败：%s", PLUGIN_NAME, MODE_NAMES[mode], exc)
-        return changed
-
-    def _refresh_img2img_flux2_workflow(self) -> bool:
-        """Install the independent one-to-three-reference Flux2 Klein graph."""
-        changed = False
-        source_value = str(self._get("img2img_flux2_source_workflow", "") or "").strip()
-        if source_value and source_value.casefold() in {
-            FLUX2_IMG2IMG_SOURCE_DEFAULT.casefold(),
-            *(item.casefold() for item in FLUX2_IMG2IMG_SOURCE_LEGACY),
-        }:
-            # 旧默认值是作者本机路径，清空后改用插件内置工作流副本。
-            source_value = ""
-            self._set("img2img_flux2_source_workflow", "")
-            changed = True
         selected = str(
-            self._get("workflow_img2img_flux2", FLUX2_IMG2IMG_WORKFLOW_FILE) or ""
+            self._get("workflow_img2img", QWEN21_IMG2IMG_WORKFLOW_DEFAULT) or ""
         ).strip()
         if not selected or selected.casefold() in REMOVED_WORKFLOW_FILES:
-            # 旧版本随插件附带过几个已废弃的 Flux2 图生图工作流；文件已从包内
-            # 移除，配置指过去只会让 _workflow_path() 静默回退，不如直接改正。
-            selected = FLUX2_IMG2IMG_WORKFLOW_FILE
-            self._set("workflow_img2img_flux2", selected)
+            # 旧版本随插件附带过几个已废弃的图生图工作流；文件已从包内移除，
+            # 配置指过去只会让 _workflow_path() 静默回退，不如直接改正。
+            self._set("workflow_img2img", QWEN21_IMG2IMG_WORKFLOW_DEFAULT)
             changed = True
-        if selected.casefold() != FLUX2_IMG2IMG_WORKFLOW_FILE.casefold():
-            return changed
-        if not source_value:
-            # 未配置源工作流：直接使用插件内置副本，不输出警告。
-            return changed
-        source = Path(source_value)
-        if not source.is_file():
-            logger.warning("[%s] Flux2 Klein 图生图源工作流不存在：%s", PLUGIN_NAME, _log_path(source))
-            return changed
-        target = self._workflow_dir() / FLUX2_IMG2IMG_WORKFLOW_FILE
-        try:
-            # The selected source is the execution graph of record. Keep its
-            # nodes and connections intact so the API submission matches the
-            # graph used from the ComfyUI page.
-            converted = load_workflow(source, preserve_disabled=True)
-            target.write_text(
-                json.dumps(converted, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            logger.info("[%s] 已加载独立 Flux2 Klein 图生图工作流：%s", PLUGIN_NAME, _log_path(source))
-        except (OSError, WorkflowError, ValueError) as exc:
-            logger.warning("[%s] Flux2 Klein 图生图工作流转换失败：%s", PLUGIN_NAME, exc)
         return changed
 
     async def initialize(self) -> None:
@@ -1067,47 +1006,32 @@ class ComfyUIAIStudio(Star):
                 logger.info("[%s] 已按原始工作流刷新三套默认工作流：%s", PLUGIN_NAME, _log_path(source))
             except Exception as exc:
                 logger.warning("[%s] 从原始工作流刷新副本失败：%s", PLUGIN_NAME, exc)
-        # 图生图使用独立的 Qwen Image Edit 工作流和模型链。
-        # 这里迁移旧版配置，但不修改用户提供的源文件。
-        configured_img2img_source = str(self._get("img2img_source_workflow", "") or "").strip()
-        legacy_sources = {
-            QWEN_IMG2IMG_SOURCE_DEFAULT.casefold(),
-            *(item.casefold() for item in QWEN_IMG2IMG_SOURCE_LEGACY),
-        }
+        # 图生图统一走随插件内置的 Qwen Image 2.1 编辑工作流。
         changed = False
-        if configured_img2img_source and configured_img2img_source.casefold() in legacy_sources:
-            # 旧默认值是作者本机路径，清空后改用插件内置工作流副本。
-            configured_img2img_source = ""
-            self._set("img2img_source_workflow", "")
-            changed = True
-        img2img_source = Path(configured_img2img_source) if configured_img2img_source else None
-        img2img_target = self._workflow_dir() / MODE_FILES["img2img"]
-        if img2img_source and img2img_source.is_file():
-            try:
-                img2img_workflow = load_workflow(img2img_source)
-                img2img_target.write_text(
-                    json.dumps(img2img_workflow, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                logger.info("[%s] 已加载独立 Qwen Image Edit 图生图工作流：%s", PLUGIN_NAME, _log_path(img2img_source))
-            except Exception as exc:
-                logger.warning("[%s] Qwen 图生图工作流转换失败：%s", PLUGIN_NAME, exc)
         current_img2img = str(self._get("workflow_img2img", "") or "").strip()
         if not current_img2img or current_img2img.casefold() in {
-            "图生图.json", "图生图_flux2.json", "img2img_qwen.json", "img2img_flux2.json",
+            "图生图.json", "img2img_qwen.json",
+            MODE_FILES["img2img"].casefold(),
         }:
-            self._set("workflow_img2img", MODE_FILES["img2img"])
+            # 旧的 2511 图生图工作流不能只换模型节点；它的整条编码链都不兼容
+            # Qwen Image 2.1。切到随插件打包的原生 2.1 编辑图，旧源文件保留。
+            self._set("workflow_img2img", QWEN21_IMG2IMG_WORKFLOW_DEFAULT)
             changed = True
         # 只迁移旧版插件默认值，用户手动选择的 Qwen 模型和 LoRA 保留。
         model_migrations = {
             "img2img_unet_name": (
-                "flux-2-klein-9b-kv-int8-convrot.safetensors",
-                "flux-2-klein-9b-kv-fp8.safetensors",
+                "Qwen-Rapid-NSFW-v23_Q3_K.gguf",
                 QWEN_IMG2IMG_UNET_DEFAULT,
             ),
-            "img2img_clip_name": ("Qwen3-8B-Uncensor-v2.Q4_K_M.gguf", QWEN_IMG2IMG_CLIP_DEFAULT),
-            "img2img_vae_name": ("flux2-vae.safetensors", QWEN_IMG2IMG_VAE_DEFAULT),
-            "img2img_lora_name": (QWEN_IMG2IMG_LORA_DEFAULT,),
+            "img2img_clip_name": (
+                "Qwen3-8B-Uncensor-v2.Q4_K_M.gguf",
+                "Qwen2.5-VL-7B-Instruct-abliterated.Q4_K_M.gguf",
+                QWEN_IMG2IMG_CLIP_DEFAULT,
+            ),
+            "img2img_vae_name": (
+                "qwen_image_vae.safetensors", QWEN_IMG2IMG_VAE_DEFAULT,
+            ),
+            "img2img_lora_name": ("Qwen-Image-Edit-F2P.safetensors", QWEN_IMG2IMG_LORA_DEFAULT),
         }
         for key, migration in model_migrations.items():
             old_values = migration[:-1]
@@ -1116,29 +1040,39 @@ class ComfyUIAIStudio(Star):
             if any(current_value.casefold() == str(old_value).casefold() for old_value in old_values):
                 self._set(key, new_value)
                 changed = True
-        # The Flux2 source workflow ships with an example content LoRA. It is
-        # not a safe default for image editing because it changes the subject
-        # even when acceleration is disabled.
-        current_flux2_lora = str(self._get("img2img_flux2_lora_name", "") or "").strip()
-        if current_flux2_lora.casefold() == FLUX2_IMG2IMG_LEGACY_LORA_DEFAULT.casefold():
-            self._set("img2img_flux2_lora_name", FLUX2_IMG2IMG_LORA_DEFAULT)
+        if self._refresh_img2img_workflow():
             changed = True
-        if self._refresh_flux2_tool_workflows():
-            changed = True
-        if not str(self._get("img2img_engine", "") or "").strip():
-            self._set("img2img_engine", "qwen")
-            changed = True
-        if self._refresh_img2img_flux2_workflow():
-            changed = True
-        # Flux2 Klein is restored to the original no-acceleration workflow.
-        # Remove the old experiment's settings so they cannot reappear as
-        # active controls after an upgrade.
+        # 已删除功能（Flux2 / 洗图 / 扩图 / 多角度 / 旧 Qwen 图生图）遗留的
+        # 配置键，启动时一并从持久化配置里清掉，避免旧值继续影响运行。
         for key in (
-            "img2img_flux2_accel_lora_enabled",
-            "img2img_flux2_accel_lora_name",
+            "img2img_engine", "img2img_source_workflow",
+            "qwen_img2img_source_workflow",
+            "workflow_img2img_flux2", "img2img_flux2_source_workflow",
+            "img2img_flux2_unet_name", "img2img_flux2_clip_name",
+            "img2img_flux2_vae_name", "img2img_flux2_lora_name",
+            "img2img_flux2_lora_strength", "img2img_flux2_default_positive",
+            "img2img_flux2_default_negative", "img2img_flux2_prompt_template",
+            "img2img_flux2_llm_prompt_source", "img2img_flux2_ai_system_prompt",
+            "img2img_flux2_plugin_ai_knowledge", "img2img_flux2_plugin_ai_debug",
+            "img2img_flux2_output_format",
+            "img2img_flux2_plain_translate_enabled", "img2img_flux2_plain_translate_url",
+            "img2img_flux2_size", "img2img_flux2_steps", "img2img_flux2_cfg",
+            "img2img_flux2_seed", "img2img_flux2_sampler_name", "img2img_flux2_scheduler",
+            "img2img_flux2_denoise", "img2img_flux2_batch", "img2img_flux2_filename_prefix",
+            "img2img_flux2_accel_lora_enabled", "img2img_flux2_accel_lora_name",
             "img2img_flux2_accel_lora_strength",
+            "workflow_wash", "workflow_outpaint", "workflow_multi_angle",
+            "wash_source_workflow", "outpaint_source_workflow", "multi_angle_source_workflow",
+            "prompt_enhancer_img2img_flux2_template",
         ):
             if key in self.config:
+                self.config.pop(key, None)
+                changed = True
+        for key in list(self.config):
+            head = str(key).split("_", 1)[0]
+            if head in {"wash", "outpaint", "multi_angle"} or str(key).startswith(
+                ("img2img_flux2_", "flux2_")
+            ):
                 self.config.pop(key, None)
                 changed = True
         # Remove the old acceleration settings during rollback.  They are no
@@ -1153,22 +1087,6 @@ class ComfyUIAIStudio(Star):
             if key in self.config:
                 self.config.pop(key, None)
                 changed = True
-        # Restore the original Flux2 Klein sampling defaults. The previous
-        # acceleration experiment used 12/2 and must not affect this module.
-        try:
-            configured_steps = int(self._get("img2img_flux2_steps", FLUX2_IMG2IMG_STEPS_DEFAULT) or 0)
-        except (TypeError, ValueError):
-            configured_steps = 0
-        if configured_steps in {6, 12}:
-            self._set("img2img_flux2_steps", FLUX2_IMG2IMG_STEPS_DEFAULT)
-            changed = True
-        try:
-            configured_cfg = float(self._get("img2img_flux2_cfg", FLUX2_IMG2IMG_CFG_DEFAULT) or 0)
-        except (TypeError, ValueError):
-            configured_cfg = 0.0
-        if abs(configured_cfg - 1.0) < 0.0001 or abs(configured_cfg - 2.0) < 0.0001:
-            self._set("img2img_flux2_cfg", FLUX2_IMG2IMG_CFG_DEFAULT)
-            changed = True
         if changed:
             self._save_config()
         root = detect_comfyui_root(str(self._get("comfyui_root", "")))
@@ -1619,6 +1537,11 @@ class ComfyUIAIStudio(Star):
 
     def _workflow_path(self, mode: str) -> Path:
         configured = str(self._get(f"workflow_{mode}", "") or "").strip()
+        if configured.startswith("bundled:"):
+            filename = configured.removeprefix("bundled:")
+            if not filename or any(char in filename for char in "/\\:") or Path(filename).suffix.lower() != ".json":
+                raise WorkflowError("内置工作流标识无效")
+            return self.plugin_dir / "workflows" / filename
         if configured:
             path = Path(configured)
             if path.is_file():
@@ -1626,14 +1549,60 @@ class ComfyUIAIStudio(Star):
             candidate = self._workflow_dir() / configured
             if candidate.is_file():
                 return candidate
+            bundled = self.plugin_dir / "workflows" / configured
+            if bundled.is_file():
+                return bundled
         return self._workflow_dir() / MODE_FILES[mode]
 
-    def _img2img_mode(self, engine: str | None = None) -> str:
-        """Resolve the selected image-edit engine without mixing its config."""
-        value = str(engine or self._get("img2img_engine", "qwen") or "qwen").strip().lower()
-        if value in {"flux2", "flux", "flux-2", "img2img_flux2", "图生图flux2", "图生图2"}:
-            return "img2img_flux2"
-        return "img2img"
+    def _krea2_workflow_path(self) -> Path:
+        """Krea 2 引擎专用工作流。默认用插件内置副本，可被 workflow_krea2 覆盖。"""
+        configured = str(self._get("workflow_krea2", "") or "").strip()
+        if configured:
+            path = Path(configured)
+            if path.is_file():
+                return path
+            for candidate in (
+                self._workflow_dir() / configured,
+                self.plugin_dir / "workflows" / configured,
+            ):
+                if candidate.is_file():
+                    return candidate
+        bundled = self.plugin_dir / "workflows" / KREA2_WORKFLOW_FILE
+        if bundled.is_file():
+            return bundled
+        return self._workflow_dir() / KREA2_WORKFLOW_FILE
+
+    def _qwen21_workflow_path(self, mode: str = "txt2img") -> Path:
+        """Qwen Image 2.1 专用工作流。默认用插件内置副本，可被 workflow_qwen21 覆盖。
+
+        图生图沿用原来的 img2img 工作流；只有文生图需要单独一份 t2i 图。
+        """
+        configured = str(self._get("workflow_qwen21", "") or "").strip()
+        if configured:
+            path = Path(configured)
+            if path.is_file():
+                return path
+            for candidate in (
+                self._workflow_dir() / configured,
+                self.plugin_dir / "workflows" / configured,
+            ):
+                if candidate.is_file():
+                    return candidate
+        if str(mode or "").strip().casefold() == "img2img":
+            return self._workflow_path(mode)
+        bundled = self.plugin_dir / "workflows" / QWEN21_T2I_WORKFLOW_FILE
+        if bundled.is_file():
+            return bundled
+        return self._workflow_dir() / QWEN21_T2I_WORKFLOW_FILE
+
+    def _engine_workflow_path(self, engine: str, mode: str) -> Path:
+        """按引擎选工作流：空 = WebUI 当前配置，krea2 / qwen21 = 各自内置图。"""
+        key = str(engine or "").strip().casefold()
+        if key == KREA2_ENGINE_NAME:
+            return self._krea2_workflow_path()
+        if key == QWEN21_ENGINE_NAME:
+            return self._qwen21_workflow_path(mode)
+        return self._workflow_path(mode)
 
     def _client(self) -> ComfyClient:
         return ComfyClient(str(self._get("comfyui_url", "http://127.0.0.1:8188")))
@@ -1653,12 +1622,10 @@ class ComfyUIAIStudio(Star):
             client.models("clip_vision"),
             client.models("text_encoders"),
         )
-        # ComfyUI 将 Flux2/Qwen3 的 safetensors 文本编码器放在
+        # ComfyUI 将 Qwen3 的 safetensors 文本编码器放在
         # ``models/text_encoders``，而 Qwen Image 的 GGUF 编码器放在
-        # ``models/clip`` 并通过 ``clip_gguf`` 暴露。旧代码误把
-        # categories[4] (clip_gguf) 当成了所有文本编码器，导致 Flux2
-        # 明明能在 ComfyUI 下拉框中看到的 qwen_3_8b_fp8mixed.safetensors
-        # 被插件判定为不存在。
+        # ``models/clip`` 并通过 ``clip_gguf`` 暴露。统一合并供
+        # 文本编码器下拉使用。
         clip_gguf_names = categories[4]
         text_encoder_names = categories[10]
         all_text_encoder_names = list(dict.fromkeys([*text_encoder_names, *clip_gguf_names]))
@@ -1672,10 +1639,7 @@ class ComfyUIAIStudio(Star):
             # ComfyUI-GGUF registers separate API folders for the GGUF
             # loaders. Keep these lists separate from txt2img checkpoints.
             "unet": categories[6],
-            # 保留合并列表给历史 WebUI/配置读取者；绘图路径使用下面两个
-            # 专用列表，避免不同工作流的模型目录再次混淆。
             "text_encoders": all_text_encoder_names,
-            "flux2_text_encoders": text_encoder_names,
             "clip_gguf": clip_gguf_names,
             "vae": categories[5],
             "classes": classes,
@@ -1933,10 +1897,6 @@ class ComfyUIAIStudio(Star):
             # 则优先使用上面的参数值。
             config_keys = {
                 "txt2img": "batch",
-                "img2img_flux2": "img2img_flux2_batch",
-                "wash": "wash_batch",
-                "outpaint": "outpaint_batch",
-                "multi_angle": "multi_angle_batch",
             }
             key = config_keys.get(mode)
             if key:
@@ -2309,6 +2269,96 @@ class ComfyUIAIStudio(Star):
             return result.strip(" `\n\t")
         return result.replace("\n", ", ").strip(" `,，。；;")
 
+    async def _enhance_prompt(
+        self,
+        event: AstrMessageEvent,
+        text: str,
+        *,
+        source: str,
+        mode: str,
+        model: str,
+        engine: str = "",
+        preview_config: dict[str, Any] | None = None,
+    ) -> str:
+        """Enhance a drawing request with one bounded format-repair attempt.
+
+        Args:
+            event: AstrBot event when using its active provider.
+            text: Request after preset and LoRA control terms are extracted.
+            source: Existing plugin or AstrBot AI route.
+            mode: Text-to-image or either image-editing mode.
+            model: Actual selected diffusion model.
+            engine: Optional engine key (``krea2``) that pins the prompt family
+                even when the GGUF filename carries no family hint.
+            preview_config: Unsaved WebUI templates for a non-persisting test.
+
+        Returns:
+            Validated final prompt without reasoning or metadata.
+
+        Raises:
+            AIError: Provider failed or neither attempt returned a final prompt.
+        """
+        settings = {
+            key: self._get(key, "") for key in (
+                "prompt_enhancer_txt2img_template", "prompt_enhancer_img2img_template",
+            )
+        }
+        if preview_config:
+            settings.update({key: preview_config[key] for key in settings if key in preview_config})
+        system_prompt = build_enhancer_system_prompt(settings, mode, model, engine)
+        custom_key = (
+            f"{mode}_ai_system_prompt" if mode == "img2img"
+            else "plugin_ai_llm_system_prompt" if source == "plugin_llm"
+            else "plugin_ai_command_system_prompt"
+        )
+        custom = str(self._get(custom_key, "") or "").strip()
+        if custom:
+            system_prompt = f"【现有自定义规则】\n{custom}\n\n{system_prompt}"
+        profile = resolve_prompt_profile(model, engine)
+        is_tags = mode == "txt2img" and profile.family == "tags"
+        if is_tags:
+            anima_context = str(self._get("plugin_ai_anima_context", "") or "").strip()
+            if not anima_context and hasattr(self, "plugin_dir"):
+                anima_context = build_anima_context(self.plugin_dir, 2600, self._anima_template_override())
+            if anima_context:
+                system_prompt = f"【Anima 提示词知识】\n{anima_context}\n\n{system_prompt}"
+        else:
+            # 自然语言系允许用户补充自己的写法要点（例如固定的镜头词表）。
+            override = str(
+                self._get(f"plugin_ai_{profile.key}_context", "") or ""
+            ).strip()
+            if override:
+                system_prompt = (
+                    f"【{profile.label} 补充要点】\n{override}\n\n{system_prompt}"
+                )
+        if not str(text or "").strip():
+            raise AIError("请填写需要优化的画面描述或编辑要求")
+        user_prompt = f"需要优化的绘图要求：\n{text}"
+        max_tokens = 768 if mode == "txt2img" else 512
+        for attempt in range(2):
+            if source.startswith("astrbot"):
+                raw = await self._astrbot_generate(
+                    event, user_prompt, system_prompt=system_prompt,
+                    max_tokens=max_tokens, preserve_newlines=True,
+                )
+            else:
+                raw = await AITranslator(self._ai_request_config(preview_config)).generate(
+                    user_prompt, system_prompt=system_prompt, max_tokens=max_tokens,
+                    preserve_newlines=True, allow_reasoning=False,
+                )
+            try:
+                final = clean_enhanced_prompt(raw)
+                return self._clean_txt2img_prompt(final) if is_tags else final
+            except (ValueError, AIError) as exc:
+                if attempt:
+                    raise AIError(f"AI 提示词优化失败：{exc}") from exc
+                # Retry formatting only; never echo the discarded reasoning.
+                user_prompt = (
+                    f"需要优化的绘图要求：\n{text}\n\n"
+                    "请直接输出最终绘图提示词。上一轮没有得到有效的最终结果，不要返回分析或解释。"
+                )
+        raise AIError("AI 未返回有效提示词")
+
     async def _translate_prompt(
         self,
         event: AstrMessageEvent,
@@ -2316,19 +2366,24 @@ class ComfyUIAIStudio(Star):
         *,
         force_enabled: bool = False,
         source_override: str = "",
+        model_override: str = "",
+        engine_override: str = "",
     ) -> str:
         source = str(source_override or "astrbot").lower()
-        is_flux2_img2img = source in {
-            "plugin_img2img_flux2_llm",
-            "astrbot_img2img_flux2_llm",
-        }
         is_img2img_llm = source in {
             "plugin_img2img_llm",
             "astrbot_img2img_llm",
-            "plugin_img2img_flux2_llm",
-            "astrbot_img2img_flux2_llm",
         }
-        img2img_config_prefix = "img2img_flux2" if is_flux2_img2img else "img2img"
+        img2img_config_prefix = "img2img"
+        if self._get("prompt_enhancer_enabled", True):
+            mode = img2img_config_prefix if is_img2img_llm else "txt2img"
+            model = str(model_override or self._get(
+                f"{mode}_unet_name" if is_img2img_llm else "model_name", "",
+            ) or "")
+            return await self._enhance_prompt(
+                event, text, source=source, mode=mode, model=model,
+                engine=engine_override,
+            )
         if is_img2img_llm:
             # 两个入口只使用同一套编辑规则。旧版分别配置两套系统提示词，
             # 很容易一边允许扩写、一边又把结果压缩成 change her pose。
@@ -2356,7 +2411,19 @@ class ComfyUIAIStudio(Star):
             ).strip()
         else:
             system_prompt = DANBOORU_SYSTEM_PROMPT
-        if not is_img2img_llm:
+        selected_prompt_model = str(
+            self._get(
+                "img2img_unet_name" if is_img2img_llm else "model_name",
+                "",
+            ) or ""
+        )
+        qwen21_prompt_mode = self._is_qwen21_model(selected_prompt_model)
+        if qwen21_prompt_mode:
+            system_prompt = (
+                f"{system_prompt}\n\n你当前为 Qwen Image 2.1 提示词模式。请使用简洁、自然的中文画面描述；"
+                "不得转换成 Anima/Danbooru 英文标签，不得输出分析过程，只输出供工作流使用的画面描述。"
+            )
+        elif not is_img2img_llm:
             # context.llm_generate() 不会再次经过当前插件的 on_llm_request
             # 过滤器，故在文生图提示词请求中主动复用内置 Anima 精简知识。
             anima_context = str(self._get("plugin_ai_anima_context", "") or "").strip()
@@ -2371,7 +2438,7 @@ class ComfyUIAIStudio(Star):
                 )
             except Exception as exc:
                 logger.debug("[%s] Anima 提示词知识加载失败，使用基础规则：%s", PLUGIN_NAME, exc)
-        if source in {"astrbot_img2img_llm", "astrbot_img2img_flux2_llm"}:
+        if source in {"astrbot_img2img_llm"}:
             prompt_template = str(
                 self._get(
                     f"{img2img_config_prefix}_prompt_template",
@@ -2383,7 +2450,7 @@ class ComfyUIAIStudio(Star):
             user_prompt = self._format_img2img_llm_template(prompt_template, text)
             output_format = str(
                 self._get(f"{img2img_config_prefix}_output_format", "")
-                or (self._get("img2img_plugin_ai_output_format", "") if not is_flux2_img2img else "")
+                or self._get("img2img_plugin_ai_output_format", "")
                 or DEFAULT_IMG2IMG_OUTPUT_FORMAT
             )
             system_prompt = f"{system_prompt}\n\n【输出格式要求】\n{output_format}".strip()
@@ -2407,7 +2474,7 @@ class ComfyUIAIStudio(Star):
             # 让“分析用户请求”等文字进入 ComfyUI。
             return self._clean_txt2img_prompt(result)
         ai_config = self._config_dict()
-        if source in {"plugin_img2img_llm", "plugin_img2img_flux2_llm"}:
+        if source in {"plugin_img2img_llm"}:
             prompt_template = str(
                 self._get(
                     f"{img2img_config_prefix}_prompt_template",
@@ -2419,7 +2486,7 @@ class ComfyUIAIStudio(Star):
             prompt = self._format_img2img_llm_template(prompt_template, text)
             output_format = str(
                 self._get(f"{img2img_config_prefix}_output_format", "")
-                or (self._get("img2img_plugin_ai_output_format", "") if not is_flux2_img2img else "")
+                or self._get("img2img_plugin_ai_output_format", "")
                 or DEFAULT_IMG2IMG_OUTPUT_FORMAT
             )
             system_prompt = f"{system_prompt}\n\n【输出格式要求】\n{output_format}".strip()
@@ -2449,10 +2516,7 @@ class ComfyUIAIStudio(Star):
         )
 
     def _plain_translation_enabled(self, mode: str = "txt2img") -> bool:
-        if mode == "img2img_flux2":
-            key = "img2img_flux2_plain_translate_enabled"
-            default = False
-        elif mode == "img2img":
+        if mode == "img2img":
             key = "img2img_plain_translate_enabled"
             default = False
         else:
@@ -2471,9 +2535,7 @@ class ComfyUIAIStudio(Star):
         """非 AI 模式下翻译用户中文；失败时保留原文，不中断绘图。"""
         if not self._plain_translation_enabled(mode) or not contains_chinese(text):
             return text, ""
-        if mode == "img2img_flux2":
-            url_key = "img2img_flux2_plain_translate_url"
-        elif mode == "img2img":
+        if mode == "img2img":
             url_key = "img2img_plain_translate_url"
         else:
             url_key = "plain_translate_url"
@@ -2864,18 +2926,34 @@ class ComfyUIAIStudio(Star):
         # 结构化 LLM 工具的 prompt 已经是上游 LLM 或 WebUI 选择的插件 AI
         # 处理结果。这里再次按 ``ai`` 进入文生图翻译，会导致二次调用、
         # 推理文本污染和“LLM 触发却回退普通绘图”。
+        is_img2img = mode == "img2img"
+        engine_prompt_mode = str(getattr(params, "engine", "") or "").strip().casefold()
+        selected_prompt_model = params.model or (
+            self._get("img2img_unet_name", QWEN_IMG2IMG_UNET_DEFAULT)
+            if is_img2img or engine_prompt_mode == QWEN21_ENGINE_NAME
+            else self._get("model_name", "")
+        )
+        qwen21_prompt_mode = (
+            engine_prompt_mode == QWEN21_ENGINE_NAME
+            or self._is_qwen21_model(str(selected_prompt_model or ""))
+        )
+        # Krea 2 的文本编码器是 Qwen3VL-4B，原生吃中文自然语言；不能把它当
+        # Anima 送翻译站转成一串 Danbooru 标签，也不要注入画师串/默认正面词。
+        krea2_prompt_mode = (
+            engine_prompt_mode == KREA2_ENGINE_NAME
+            or self._is_krea2_model(str(selected_prompt_model or ""))
+        )
         use_ai = (
             not getattr(params, "llm_invocation", False)
             and (params.auto_ai or params.ai is True)
         )
-        is_img2img = mode in {"img2img", "img2img_flux2"}
         plain_img2img_command = (
             is_img2img
             and params.command_invocation
             and not use_ai
             and not params.img2img_edit_instruction_ready
         )
-        img2img_config_prefix = "img2img_flux2" if mode == "img2img_flux2" else "img2img"
+        img2img_config_prefix = "img2img"
         if is_img2img and params.img2img_edit_instruction_ready:
             # LLM 图生图的编辑结果是独立字段。params.prompt 可能仍是
             # AstrBot 工具传入的自然语言或旧版长描述，不能让它覆盖最终编辑指令。
@@ -2885,21 +2963,11 @@ class ComfyUIAIStudio(Star):
             # 图生图不适用 Anima 文生图扩写；即使是 /图生图 ai，也使用
             # 专用编辑知识把需求收敛成“只改什么”。
             configured_source = str(
-                self._get(
-                    "img2img_flux2_llm_prompt_source"
-                    if mode == "img2img_flux2"
-                    else "img2img_llm_prompt_source",
-                    "plugin",
-                )
+                self._get("img2img_llm_prompt_source", "plugin")
                 or "plugin"
             ).lower()
             source = (
-                "astrbot_img2img_flux2_llm"
-                if mode == "img2img_flux2"
-                and configured_source in {"astrbot", "astrbot_ai", "astrbot llm", "astrbot_llm"}
-                else "plugin_img2img_flux2_llm"
-                if mode == "img2img_flux2"
-                else "astrbot_img2img_llm"
+                "astrbot_img2img_llm"
                 if configured_source in {"astrbot", "astrbot_ai", "astrbot llm", "astrbot_llm"}
                 else "plugin_img2img_llm"
             )
@@ -2919,21 +2987,32 @@ class ComfyUIAIStudio(Star):
                     text,
                     force_enabled=params.ai is True or params.auto_ai,
                     source_override=source,
+                    model_override=params.model,
+                    engine_override=params.engine,
                 )
                 if is_img2img:
                     text = self._repair_img2img_edit_instruction(
                         text,
                         self._remove_locked_control_terms(original_img2img_text, params),
                     )
+                # 自然语言系（Qwen 2.1 / Krea 2）不应在提示里说成 Danbooru 标签。
+                target_form = (
+                    "自然语言描述"
+                    if krea2_prompt_mode or qwen21_prompt_mode
+                    else "Danbooru 标签"
+                )
                 note = (
+                    "提示词已由 AI 按当前模型的优化模板整理"
+                    if self._get("prompt_enhancer_enabled", True)
+                    else
                     "图生图编辑要求已由插件 AI 整理为精简编辑指令"
                     if source == "plugin_img2img_llm"
                     else
-                    "提示词已由插件 AI 根据 LLM 绘图要求整理为 Danbooru 标签"
+                    f"提示词已由插件 AI 根据 LLM 绘图要求整理为{target_form}"
                     if source == "plugin_llm"
-                    else "提示词已由插件 AI 优化为 Danbooru 标签并修正角色词条"
+                    else f"提示词已由插件 AI 优化为{target_form}并修正角色词条"
                     if source == "plugin"
-                    else "提示词已由 AstrBot 当前 AI 优化为 Danbooru 标签并修正角色词条"
+                    else f"提示词已由 AstrBot 当前 AI 优化为{target_form}并修正角色词条"
                 )
             except AIError as exc:
                 # AI/noai 是可选增强功能，AI 服务异常不应阻断普通绘图。
@@ -2955,6 +3034,8 @@ class ComfyUIAIStudio(Star):
             and not plain_img2img_command
             and not (is_img2img and params.img2img_edit_instruction_ready)
             and not getattr(params, "llm_invocation", False)
+            and not qwen21_prompt_mode
+            and not krea2_prompt_mode
         ):
             text, plain_note = await self._plain_translate_prompt(text, mode=mode)
             note = plain_note
@@ -2988,6 +3069,11 @@ class ComfyUIAIStudio(Star):
                 or self._get("quality_prefix", "")
                 or ""
             ).strip()
+        if krea2_prompt_mode or engine_prompt_mode == QWEN21_ENGINE_NAME:
+            # Krea 2 / Qwen 2.1 走自然语言：不追加 Anima 的默认正面词
+            # （masterpiece 一类）和画师串，否则会把风格拉回二次元标签。
+            quality = ""
+            artist_text = ""
         # 预设和 LoRA 专属预设是插件控制项，必须在翻译完成后重新放入最终
         # 提示词最前面。它们不会被 AI/普通翻译改写；CivitAI 触发词只展示，
         # 不参与绘图提示词合成。
@@ -3006,6 +3092,16 @@ class ComfyUIAIStudio(Star):
             else self._get("default_negative", "")
             or ""
         )
+        if params.negative and not negative_is_effective(
+            str(selected_prompt_model or ""), params.engine
+        ):
+            # Krea 2 / Qwen 2.1 Turbo 的 CFG 固定为 1，负面提示词不参与引导。
+            # 用户显式写了负面词却看不到效果时，这句日志是唯一线索。
+            logger.info(
+                "[%s] 当前模型 CFG=1，负面提示词不参与引导：%s",
+                PLUGIN_NAME,
+                str(params.negative)[:120],
+            )
         # 黑名单群不依赖中文关键词命中，直接把安全约束写入最终负面提示词。
         # 这样“低胸、露背”等边界描述也会按群聊策略处理，同时普通图片仍可生成。
         negative = self._apply_group_safety_negative(event, negative)
@@ -6452,17 +6548,193 @@ class ComfyUIAIStudio(Star):
         await upload.save(str(target))
         return filename
 
+    def _lora_forward_endpoint(self, category: str = "") -> str:
+        """云端看不到本机模型盘时，上传要转发给本机控制器；返回完整端点 URL。"""
+        base = self._comfy_control_url()
+        if not base:
+            return ""
+        action = "upload_style_lora" if str(category or "").strip() == "画风" else "upload_lora"
+        return f"{base}/{action}"
+
+    def _forward_lora_blocking(
+        self, endpoint: str, filename: str, tmp_path: Path, token: str
+    ) -> dict[str, Any]:
+        """阻塞式地把临时文件流式转发到本机控制器（由调用方丢进子线程）。
+
+        显式带上 Content-Length，控制器据此按长度读 socket 落盘；
+        传文件对象而非 bytes，避免整份文件再进一次内存。
+        """
+        import http.client
+        from urllib.parse import quote
+
+        parsed = urlparse(endpoint)
+        scheme = (parsed.scheme or "http").lower()
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        target = f"{parsed.path.rstrip('/')}?name={quote(filename)}"
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": str(os.path.getsize(tmp_path)),
+        }
+        if token:
+            headers["X-Token"] = token
+        conn_cls = http.client.HTTPSConnection if scheme == "https" else http.client.HTTPConnection
+        conn = conn_cls(host, port, timeout=1800)
+        try:
+            with open(tmp_path, "rb") as fh:
+                conn.request("POST", target, body=fh, headers=headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+            status = resp.status
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        try:
+            payload = json.loads(raw.decode("utf-8", "replace") or "{}")
+        except ValueError:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payload.setdefault("status", status)
+        return payload
+
+    async def _forward_lora_uploads(
+        self, uploads: list[Any], category: str = ""
+    ) -> tuple[list[str], list[dict[str, str]], str]:
+        """把上传文件转发给本机控制器落盘。
+
+        返回 (成功文件名, 失败明细, 首个落盘路径)。本机模型盘不可见时由
+        :meth:`_upload_lora_file` 调用；上传项先落到插件进程的临时目录，
+        再流式转发，避免把整份 LoRA 读进内存。
+        """
+        import shutil
+        import tempfile
+
+        endpoint = self._lora_forward_endpoint(category)
+        if not endpoint:
+            raise UsageError("未检测到本机模型盘，也未配置 ComfyUI 控制器地址，无法导入 LoRA")
+        token = str(self._get("comfyui_control_token", "") or "").strip()
+        saved: list[str] = []
+        failed: list[dict[str, str]] = []
+        first_path = ""
+        tmp_root = Path(tempfile.mkdtemp(prefix="lora_fwd_"))
+        try:
+            for upload in uploads:
+                filename = Path(str(getattr(upload, "filename", "") or "")).name
+                if not filename:
+                    failed.append({"file_name": "", "error": "上传项缺少文件名"})
+                    continue
+                if Path(filename).suffix.lower() not in self.LORA_FILE_SUFFIXES:
+                    failed.append(
+                        {
+                            "file_name": filename,
+                            "error": f"{filename}：只支持 safetensors、pt、ckpt、bin 文件",
+                        }
+                    )
+                    continue
+                tmp_path = tmp_root / filename
+                try:
+                    await upload.save(str(tmp_path))
+                    if tmp_path.stat().st_size <= 0:
+                        raise UsageError("文件内容为空")
+                except (OSError, UsageError) as exc:
+                    failed.append({"file_name": filename, "error": str(exc)})
+                    continue
+                try:
+                    payload = await asyncio.to_thread(
+                        self._forward_lora_blocking, endpoint, filename, tmp_path, token
+                    )
+                except OSError as exc:
+                    failed.append(
+                        {
+                            "file_name": filename,
+                            "error": (
+                                f"连接不上本机控制器 {endpoint}：{exc}；"
+                                "请确认本机 ComfyUI 后台服务（含反向隧道）正在运行"
+                            ),
+                        }
+                    )
+                    continue
+                except Exception as exc:  # noqa: BLE001 - 网络/协议异常统一回报
+                    failed.append({"file_name": filename, "error": f"转发失败：{exc}"})
+                    continue
+                status = int(payload.get("status") or 0)
+                if payload.get("ok"):
+                    saved.append(str(payload.get("file_name") or filename))
+                    if not first_path:
+                        first_path = str(payload.get("path") or "")
+                    continue
+                hint = ""
+                if status == 401:
+                    hint = "；控制器 Token 不匹配，请核对插件配置里的控制器 Token 与本机 comfy_controller_token.txt"
+                elif status == 404:
+                    hint = "；本机控制器版本过旧（没有 /upload_lora），请重启本机 ComfyUI 后台服务"
+                failed.append(
+                    {
+                        "file_name": str(payload.get("file_name") or filename),
+                        "error": f"{payload.get('error') or f'控制器返回 {status}'}{hint}",
+                    }
+                )
+        finally:
+            shutil.rmtree(tmp_root, ignore_errors=True)
+        self._record_lora_upload(saved, category)
+        return saved, failed, first_path
+
     async def _upload_lora_file(self, *, category: str = "", batch: bool = False):
-        """上传 LoRA；``batch=True`` 时支持一次提交多个文件（批量导入）。"""
+        """上传 LoRA；``batch=True`` 时支持一次提交多个文件（批量导入）。
+
+        本机模型盘可见就直写磁盘；云端容器看不到本机模型盘时，改为把文件
+        转发给本机 ComfyUI 启停控制器（``/upload_lora``）由本机落盘。
+        """
         from astrbot.api.web import json_response, request
 
         try:
-            directory = self._model_folder_path("loras")
-            directory.mkdir(parents=True, exist_ok=True)
             files = await self._request_files(request)
             uploads = self._collect_upload_items(files, self.LORA_UPLOAD_FIELDS)
-            if not uploads:
-                return json_response({"error": "请选择 LoRA 文件"}, status_code=400)
+        except (OSError, UsageError) as exc:
+            return json_response({"error": str(exc)}, status_code=400)
+        if not uploads:
+            return json_response({"error": "请选择 LoRA 文件"}, status_code=400)
+
+        # 判定本机模型盘是否可见；云端容器必抛 UsageError，此时走转发。
+        try:
+            directory = self._model_folder_path("loras")
+            directory.mkdir(parents=True, exist_ok=True)
+        except (OSError, UsageError):
+            directory = None
+
+        if directory is None:
+            try:
+                saved, failed, remote_path = await self._forward_lora_uploads(uploads, category)
+            except UsageError as exc:
+                return json_response({"error": str(exc)}, status_code=400)
+            if not saved:
+                detail = failed[0]["error"] if failed else "导入失败"
+                return json_response(
+                    {
+                        "error": "全部文件都导入失败" if batch else detail,
+                        "ok": False,
+                        "saved": [],
+                        "failed": failed,
+                    },
+                    status_code=400,
+                )
+            if not batch:
+                return json_response({"ok": True, "file_name": saved[0], "path": remote_path})
+            return json_response(
+                {
+                    "ok": True,
+                    "batch": True,
+                    "count": len(saved),
+                    "saved": saved,
+                    "failed": failed,
+                    "file_name": saved[0],
+                }
+            )
+
+        try:
             if not batch:
                 filename = await self._save_single_lora_upload(uploads[0], directory)
                 self._record_lora_upload([filename], category)
@@ -6956,11 +7228,11 @@ class ComfyUIAIStudio(Star):
         return self._lora_relative_target(file_name)
 
     def _lora_architecture_profile(self, file_name: str) -> str:
-        """识别 LoRA 适用的架构：anima_base、anima_29b、flux2 或 unknown。
+        """识别 LoRA 适用的架构：anima_base、anima_29b、flux 或 unknown。
 
         Anima Base 是 28 层（块编号 0-27），Anima-2.9B 是扩展后的 40 层。
         维里奈 LoRA 的元数据为 ``networks.lora_anima`` 且最大块编号为 27，
-        因此只能安全地用于 Base，不应悄悄塞进 2.9B 或 Flux2。
+        因此只能安全地用于 Base，不应悄悄塞进 2.9B 或 Flux。
         """
         key = str(file_name or "").replace("\\", "/").casefold()
         if key in self._lora_profile_cache:
@@ -6982,7 +7254,7 @@ class ComfyUIAIStudio(Star):
                             metadata_text = json.dumps(metadata, ensure_ascii=False).casefold()
                             tensor_text = header.decode("utf-8", errors="ignore")
                             if "flux" in metadata_text or "flux" in tensor_text.casefold():
-                                profile = "flux2"
+                                profile = "flux"
                             elif "lora_anima" in metadata_text or "ss_base_model_version" in metadata_text:
                                 blocks = [
                                     int(match.group(1))
@@ -6997,32 +7269,39 @@ class ComfyUIAIStudio(Star):
         self._lora_profile_cache[key] = profile
         return profile
 
-    def _assert_flux2_loras_compatible(self, loras: list[str]) -> None:
+    def _assert_qwen_loras_compatible(self, loras: list[str]) -> None:
+        """允许 Qwen 图生图 LoRA，并拒绝已明确识别为 Flux 架构的 LoRA。"""
         incompatible = []
         for item in loras:
             name = item.rsplit(":", 1)[0].strip()
-            profile = self._lora_architecture_profile(name)
-            if profile in {"anima_base", "anima_29b"}:
+            if self._lora_architecture_profile(name) == "flux":
                 incompatible.append(name)
         if incompatible:
             raise UsageError(
-                "当前图生图工作流使用 Flux2 Klein，不能加载 Anima/SD LoRA："
+                "当前 Qwen 图生图工作流不能加载 Flux 架构 LoRA："
                 + "、".join(incompatible)
-                + "。请使用 /文生图 维里奈；如果要在图生图使用 LoRA，需准备 Flux2 版本的该 LoRA。"
+                + "。请在图生图设置中选择 Qwen 兼容的 LoRA。"
             )
 
-    def _assert_qwen_loras_compatible(self, loras: list[str]) -> None:
-        """允许 Qwen Image Edit LoRA，并拒绝已明确识别为 Flux2 的 LoRA。"""
+    def _assert_qwen21_loras_compatible(self, loras: list[str]) -> None:
+        """Qwen Image 2.1 可叠加其原生 LoRA，但不能混入已识别的异架构 LoRA。"""
+        self._assert_qwen_loras_compatible(loras)
         incompatible = []
         for item in loras:
             name = item.rsplit(":", 1)[0].strip()
-            if self._lora_architecture_profile(name) == "flux2":
+            normalized = name.replace("\\", "/").casefold()
+            if (
+                self._lora_architecture_profile(name) in {"anima_base", "anima_29b"}
+                or "qwen-image-edit-2511" in normalized
+                or "qwen_image_edit_2511" in normalized
+                or "mcnl-v1-qwen-image-edit" in normalized
+            ):
                 incompatible.append(name)
         if incompatible:
             raise UsageError(
-                "当前 Qwen 图生图工作流不能加载 Flux2 LoRA："
+                "当前核心模型是 Qwen Image 2.1，不能加载 Anima 或 Qwen Image Edit 2511 架构 LoRA："
                 + "、".join(incompatible)
-                + "。请在图生图设置中选择 Qwen Image Edit 兼容的 LoRA。"
+                + "。请改用 Qwen Image 2.1 兼容的 LoRA。"
             )
 
     def _assert_anima_loras_compatible(self, model: str, loras: list[str]) -> None:
@@ -7064,18 +7343,41 @@ class ComfyUIAIStudio(Star):
         return any(path.is_file() for path in candidates)
 
     @staticmethod
-    def _model_profile(model_name: str) -> dict[str, Any]:
-        if is_anima_29b_model(model_name):
-            return {
-                "family": "Anima-2.9B",
-                "description": "需要 ComfyUI-Anima-2.9B 动态层数补丁；推荐 28-50 步、CFG 3.5-5",
-                "recommended": anima_sampling_defaults(model_name),
-            }
-        return {
-            "family": "Anima Base 1.0",
-            "description": "使用标准 Anima 28 层模型配置；推荐 30 步、CFG 5",
-            "recommended": anima_sampling_defaults(model_name),
-        }
+    def _is_qwen21_model(model_name: str) -> bool:
+        normalized = str(model_name or "").replace("-", "_").casefold()
+        return "qwen_image_2.1" in normalized or "qwen_image_2_1" in normalized
+
+    @staticmethod
+    def _is_krea2_model(model_name: str) -> bool:
+        normalized = str(model_name or "").replace("-", "_").casefold()
+        return "krea2" in normalized or "krea_2" in normalized
+
+    @staticmethod
+    def _normalize_engine_key(value: Any) -> str:
+        """把 LLM / 配置里的引擎别名收敛成 krea2 / qwen21；空串表示走默认工作流。"""
+        text = re.sub(r"[\s_\-.]", "", str(value or "").strip().casefold())
+        if text in {"", "anima", "default", "auto", "默认"}:
+            return ""
+        if text in {KREA2_ENGINE_NAME, "krea", "克雷亚", "水粉"}:
+            return KREA2_ENGINE_NAME
+        if text in {QWEN21_ENGINE_NAME, "qwen", "qwenimage21", "千问"}:
+            return QWEN21_ENGINE_NAME
+        return ""
+
+    def _model_profile(self, model_name: str, mode: str = "txt2img", accelerated: bool = False) -> dict[str, Any]:
+        saved = load_profiles(self.model_profiles_path).get(
+            profile_key(model_name, mode, accelerated), {}
+        )
+        profile = apply_profile_defaults(model_name, mode, saved, accelerated)
+        if profile.get("family") == "Anima-2.9B":
+            profile["description"] = "需要 ComfyUI-Anima-2.9B 动态层数补丁；已保存档案优先。"
+            if not saved:
+                profile["recommended"].update(anima_sampling_defaults(model_name))
+        elif profile.get("family") == "Anima Base":
+            profile["description"] = "Anima Base 推荐参数；已保存档案优先。"
+            if not saved:
+                profile["recommended"].update(anima_sampling_defaults(model_name))
+        return profile
 
     def _model_name(self, env: dict[str, Any], requested: str = "", mode: str = "txt2img") -> str:
         candidates = self._compatible_models(env, mode)
@@ -7097,6 +7399,7 @@ class ComfyUIAIStudio(Star):
         source = Path(path)
         if not source.is_file():
             return ""
+        self._prune_input_image_cache()
         suffix = source.suffix.lower()
         if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}:
             suffix = ".img"
@@ -7118,6 +7421,33 @@ class ComfyUIAIStudio(Star):
         if last_error:
             logger.warning("[%s] 缓存输入图片失败：%s -> %s：%s", PLUGIN_NAME, source, target, last_error)
         return ""
+
+    def _prune_input_image_cache(self, *, now: float | None = None, force: bool = False) -> int:
+        """仅删除过期输入图；绘图任务可能共享缓存，不能在单个任务结束时删除。"""
+        cache_dir = getattr(self, "input_cache_dir", None)
+        if not cache_dir:
+            return 0
+        current_time = time.time() if now is None else float(now)
+        last_pruned = float(getattr(self, "_input_cache_last_pruned_at", 0.0) or 0.0)
+        if not force and current_time - last_pruned < INPUT_IMAGE_CACHE_PRUNE_INTERVAL_SECONDS:
+            return 0
+        self._input_cache_last_pruned_at = current_time
+        cutoff = current_time - INPUT_IMAGE_CACHE_TTL_SECONDS
+        removed = 0
+        try:
+            candidates = tuple(Path(cache_dir).glob("input_*"))
+        except OSError:
+            return 0
+        for cached in candidates:
+            try:
+                if cached.is_file() and cached.stat().st_mtime < cutoff:
+                    cached.unlink(missing_ok=True)
+                    removed += 1
+            except OSError as exc:
+                logger.debug("[%s] 清理过期输入图片失败：%s：%s", PLUGIN_NAME, cached, exc)
+        if removed:
+            logger.info("[%s] 已清理 %s 个超过 72 小时的输入图片缓存", PLUGIN_NAME, removed)
+        return removed
 
     @staticmethod
     def _image_ref_key(image_ref: str) -> str:
@@ -7170,11 +7500,79 @@ class ComfyUIAIStudio(Star):
         except (OSError, ValueError):
             return ""
 
+    def _image_memory_enabled(self) -> bool:
+        """图生图是否可以自动使用会话里记住的图（默认开）。"""
+        return self._bool_config("recent_image_memory_enabled", True)
+
+    def _image_memory_ttl_seconds(self) -> float:
+        """记忆有效期，默认 30 分钟；设为 0 表示永不过期。"""
+        try:
+            minutes = float(self._get("recent_image_memory_ttl_minutes", 30) or 0)
+        except (TypeError, ValueError):
+            minutes = 30.0
+        if minutes <= 0:
+            return 0.0
+        return minutes * 60.0
+
+    def _remember_user_images(self, event: AstrMessageEvent, images: list[str]) -> None:
+        """记住用户这次给出的图（含引用/合并转发里提取出来的）。"""
+        if not images:
+            return
+        first = str(images[0] or "").strip()
+        if not first:
+            return
+        try:
+            self.last_user_images[self._origin(event)] = (first, time.time())
+        except Exception:
+            pass
+
+    def _recall_recent_image(self, event: AstrMessageEvent) -> str:
+        """回忆会话里最近可用的图，供没引用原图时自动续接。
+
+        优先级：用户最近给的图 > 机器人最近出的图。
+        过期的记忆会被丢弃；返回 "" 表示这次真的没有可用的图。
+        """
+        if not self._image_memory_enabled():
+            return ""
+        origin = self._origin(event)
+        ttl = self._image_memory_ttl_seconds()
+        now = time.time()
+
+        def fresh(path: str, stamp: float | None) -> str:
+            if not path or not Path(path).is_file():
+                return ""
+            if ttl and stamp is not None and now - float(stamp) > ttl:
+                return ""
+            return path
+
+        remembered = self.last_user_images.get(origin)
+        if isinstance(remembered, tuple) and len(remembered) == 2:
+            path = fresh(str(remembered[0] or ""), remembered[1])
+            if path:
+                logger.info(
+                    "[%s] 图生图未引用原图，自动使用用户最近给过的图：%s",
+                    PLUGIN_NAME,
+                    path,
+                )
+                return path
+            if not path:
+                self.last_user_images.pop(origin, None)
+        output = fresh(str(self.last_images.get(origin, "") or ""), None)
+        if output:
+            logger.info(
+                "[%s] 图生图未引用原图，自动使用机器人最近出图：%s",
+                PLUGIN_NAME,
+                output,
+            )
+            return output
+        return ""
+
     async def _persist_image_ref(self, image_ref: str) -> str:
         """将本地路径、file URI 或远程图片引用缓存到插件目录。"""
         value = str(image_ref or "").strip()
         if not value:
             return ""
+        self._prune_input_image_cache()
         cache = getattr(self, "_image_ref_cache", None)
         if not isinstance(cache, dict):
             cache = {}
@@ -8099,6 +8497,7 @@ class ComfyUIAIStudio(Star):
                     seen.add(cached)
         if result:
             self._remember_event_images(event, result)
+            self._remember_user_images(event, result)
             return result
         if has_explicit_reference:
             # 消息明确引用了图片/合并转发但远程接口暂时取不到时，不能
@@ -8130,7 +8529,7 @@ class ComfyUIAIStudio(Star):
         return ""
 
     @staticmethod
-    def _resolve_flux2_model(value: str, values: list[str], label: str) -> str:
+    def _resolve_model_name(value: str, values: list[str], label: str) -> str:
         """Resolve a WebUI model selection while preserving ComfyUI's spelling.
 
         Model names are identifiers, not filesystem paths.  ComfyUI may return
@@ -8155,365 +8554,8 @@ class ComfyUIAIStudio(Star):
             if Path(candidate_text).name.casefold() == basename:
                 return candidate_original
         raise UsageError(
-            f"Flux2 {label}未检测到：{value}；请确认文件已放入 ComfyUI 对应模型目录并刷新模型列表"
+            f"{label}未检测到：{value}；请确认文件已放入 ComfyUI 对应模型目录并刷新模型列表"
         )
-
-    async def _generate_flux2_tool(
-        self,
-        event: AstrMessageEvent,
-        params: DrawParams,
-        mode: str,
-        image_path: str,
-    ) -> list[Path]:
-        """Run one of the standalone Flux.2 image tools.
-
-        This path deliberately does not call prompt expansion, translation,
-        inline LoRA extraction, or the global LoRA list. The editor workflow
-        remains the source of truth for its own enabled LoRA nodes.
-        """
-        if not image_path:
-            raise UsageError(f"{MODE_NAMES[mode]}需要附一张图片或回复一张图片")
-        client = self._client()
-        env = await self._environment(client)
-
-        def configured(name: str, default: Any) -> Any:
-            value = self._get(f"{mode}_{name}", default)
-            return default if value is None else value
-
-        model_value = str(params.model or configured("model_name", "") or "").strip()
-        clip_value = str(configured("clip_name", "") or "").strip()
-        vae_value = str(configured("vae_name", "") or "").strip()
-        model_name = (
-            self._resolve_flux2_model(
-                model_value,
-                list(dict.fromkeys(env["diffusion_models"] + env["unet"] + env["checkpoints"])),
-                "核心模型",
-            )
-            if model_value
-            else ""
-        )
-        clip_name = (
-            self._resolve_flux2_model(
-                clip_value,
-                env.get("flux2_text_encoders") or env["text_encoders"],
-                "文本编码器",
-            )
-            if clip_value
-            else ""
-        )
-        vae_name = (
-            self._resolve_flux2_model(vae_value, env["vae"], "VAE")
-            if vae_value
-            else ""
-        )
-        uploaded = await client.upload_image(image_path)
-        image_name = str(uploaded.get("name", "") or "")
-        if not image_name:
-            raise ComfyError(f"{MODE_NAMES[mode]}上传输入图片后没有返回图片名称")
-        logger.info(
-            "[%s] %s只使用第一张输入图：name=%s；忽略其它图片由命令层传入的参考图",
-            PLUGIN_NAME,
-            MODE_NAMES[mode],
-            image_name,
-        )
-
-        default_positive = str(
-            configured("default_positive", FLUX2_TOOL_DEFAULT_POSITIVE.get(mode, ""))
-            or FLUX2_TOOL_DEFAULT_POSITIVE.get(mode, "")
-        ).strip()
-        user_prompt = str(params.prompt or "").strip()
-        positive = ", ".join(value for value in (default_positive, user_prompt) if value)
-        if not positive:
-            positive = FLUX2_TOOL_DEFAULT_POSITIVE.get(mode, "请保持主体清晰，画面自然")
-        negative = str(params.negative or configured("default_negative", "") or "").strip()
-        negative = self._apply_group_safety_negative(event, negative)
-        params.generated_positive = positive
-        params.generated_negative = negative
-
-        def as_int(value: Any, default: int) -> int:
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return default
-
-        def as_float(value: Any, default: float) -> float:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return default
-
-        configured_seed = as_int(configured("seed", -1), -1)
-        seed = params.seed if params.seed >= 0 else configured_seed
-        if seed < 0:
-            seed = random.randint(0, 2**32 - 1)
-        batch = params.batch if params.batch != 1 else as_int(configured("batch", 1), 1)
-        workflow = load_workflow(self._workflow_path(mode))
-        patched, report = adapt_flux2_tool(
-            workflow,
-            tool=mode,
-            positive=positive,
-            negative=negative,
-            image_name=image_name,
-            model_name=model_name,
-            clip_name=clip_name,
-            vae_name=vae_name,
-            size=as_int(configured("size", 0), 0),
-            steps=params.steps or as_int(configured("steps", 6), 6),
-            cfg=params.cfg or as_float(configured("cfg", 1.0), 1.0),
-            seed=seed,
-            denoise=params.denoise or as_float(configured("denoise", 0.6), 0.6),
-            sampler_name=params.sampler or str(configured("sampler_name", "euler") or "euler"),
-            scheduler=params.scheduler or str(configured("scheduler", "simple") or "simple"),
-            filename_prefix=str(configured("filename_prefix", f"astrbot/{mode}") or f"astrbot/{mode}"),
-            left=as_int(configured("left", 0), 0),
-            top=as_int(configured("top", 0), 0),
-            right=as_int(configured("right", 0), 0),
-            bottom=as_int(configured("bottom", 0), 0),
-            feathering=as_int(configured("feathering", 0), 0),
-            horizontal_angle=as_int(configured("horizontal_angle", 71), 71),
-            vertical_angle=as_int(configured("vertical_angle", 42), 42),
-            zoom=as_float(configured("zoom", 4.5), 4.5),
-            default_prompts=self._bool_config(f"{mode}_default_prompts", True),
-            camera_view=self._bool_config(f"{mode}_camera_view", False),
-            caption_tokens=as_int(configured("caption_tokens", 1024), 1024),
-            batch=max(1, min(4, as_int(batch, 1))),
-        )
-        logger.info("[%s] %s兼容提示：%s", PLUGIN_NAME, MODE_NAMES[mode], "；".join(report) or "无")
-        prompt_id = await client.queue(patched)
-        history = await client.wait(prompt_id, timeout=900)
-        images = await client.download_outputs(history, self.output_dir)
-        if not images:
-            raise ComfyError(f"{MODE_NAMES[mode]}完成，但没有找到 SaveImage 输出")
-        self.last_images[self._origin(event)] = str(images[0])
-        return images
-
-    async def _generate_img2img_flux2(
-        self,
-        event: AstrMessageEvent,
-        params: DrawParams,
-        image_paths: list[str],
-    ) -> list[Path]:
-        """Run the independent Flux2 Klein one-to-three-reference editor."""
-        image_paths = [str(value or "").strip() for value in image_paths if str(value or "").strip()]
-        if not image_paths:
-            raise UsageError("图生图 Flux2 需要一张参考图片")
-        if len(image_paths) > 3:
-            raise UsageError("图生图 Flux2 最多支持 3 张参考图片")
-
-        # 普通命令的 ``ai`` 开关也必须使用 Flux2 自己的中文编辑规则。
-        # LLM 工具已经在 _prepare_llm_prompt() 中处理过，不能再次调用 AI，
-        # 否则会把一条短编辑句重复改写或变成长描述。
-        if (
-            params.ai is True
-            and not getattr(params, "llm_invocation", False)
-            and not params.img2img_edit_instruction_ready
-        ):
-            source = (
-                "plugin_img2img_flux2_llm"
-                if self._img2img_flux2_llm_plugin_ai_enabled()
-                else "astrbot_img2img_flux2_llm"
-            )
-            source_text = str(params.prompt or "").strip()
-            if source_text:
-                params.plugin_ai_debug_input = source_text
-                try:
-                    params.prompt = await self._translate_prompt(
-                        event,
-                        source_text,
-                        force_enabled=True,
-                        source_override=source,
-                    )
-                    params.prompt = self._repair_img2img_edit_instruction(
-                        params.prompt,
-                        source_text,
-                    )
-                    params.img2img_edit_instruction = params.prompt
-                    params.img2img_edit_instruction_ready = True
-                    params.plugin_ai_debug_prompt = params.prompt
-                except AIError as exc:
-                    params.prompt = self._repair_img2img_edit_instruction(
-                        source_text,
-                        source_text,
-                    )
-                    params.img2img_edit_instruction = params.prompt
-                    params.img2img_edit_instruction_ready = True
-                    params.plugin_ai_fallback_note = f"Flux2 图生图 AI 不可用，已按原中文要求继续：{exc}"
-                    logger.warning("[%s] Flux2 图生图命令 AI 失败，回退原中文要求：%s", PLUGIN_NAME, exc)
-
-        client = self._client()
-        env = await self._environment(client)
-
-        def configured(name: str, default: Any) -> Any:
-            value = self._get(f"img2img_flux2_{name}", default)
-            return default if value is None else value
-
-        def as_int(value: Any, default: int) -> int:
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return default
-
-        def as_float(value: Any, default: float) -> float:
-            try:
-                return float(value)
-            except (TypeError, ValueError):
-                return default
-
-        model_value = str(
-            params.model or configured("unet_name", FLUX2_IMG2IMG_UNET_DEFAULT) or ""
-        ).strip()
-        clip_value = str(configured("clip_name", FLUX2_IMG2IMG_CLIP_DEFAULT) or "").strip()
-        vae_value = str(configured("vae_name", FLUX2_IMG2IMG_VAE_DEFAULT) or "").strip()
-        model_name = self._resolve_flux2_model(
-            model_value,
-            list(dict.fromkeys(env["diffusion_models"] + env["unet"] + env["checkpoints"])),
-            "核心模型",
-        )
-        clip_name = self._resolve_flux2_model(
-            clip_value,
-            env.get("flux2_text_encoders") or env["text_encoders"],
-            "文本编码器",
-        )
-        vae_name = self._resolve_flux2_model(vae_value, env["vae"], "VAE")
-        lora_value = str(configured("lora_name", FLUX2_IMG2IMG_LORA_DEFAULT) or "").strip()
-        lora_name = (
-            self._resolve_lora(lora_value, list(env["loras"]))
-            if lora_value
-            else ""
-        )
-        if lora_value and not lora_name:
-            raise UsageError(
-                f"Flux2 图生图独立 LoRA 未检测到：{lora_value}；"
-                "请确认文件已放入 ComfyUI 的 loras 文件夹"
-            )
-        # 【特别标注】Flux2 图生图只受本页的独立 LoRA 影响：不读取文生图的
-        # lora_list，也不参与画风 LoRA 的随机/全部自动选择。这里显式记录，
-        # 便于日志核对，也用于开始回复中的特别标注。
-        params.lora_isolation_notice = IMG2IMG_LORA_ISOLATION_NOTICE
-        logger.info(
-            "[%s] 图生图 Flux2 独立 LoRA 隔离生效：独立 LoRA=%s；文生图 LoRA 列表与画风 LoRA 均不参与",
-            PLUGIN_NAME,
-            lora_name or "未启用",
-        )
-        # Flux2 Klein is deliberately restored to the pre-acceleration graph.
-        # Keep legacy settings readable, but never resolve or inject them.
-        uploaded_names: list[str] = []
-        for index, image_path in enumerate(image_paths, 1):
-            uploaded = await client.upload_image(image_path)
-            image_name = str(uploaded.get("name", "") or "").strip()
-            if not image_name:
-                raise ComfyError(f"Flux2 图生图第 {index} 张参考图上传后没有返回图片名称")
-            uploaded_names.append(image_name)
-            logger.info(
-                "[%s] Flux2 图生图参考图 %d 已上传：name=%s；subfolder=%s；type=%s",
-                PLUGIN_NAME,
-                index,
-                image_name,
-                uploaded.get("subfolder", ""),
-                uploaded.get("type", ""),
-            )
-
-        default_positive = str(configured("default_positive", FLUX2_IMG2IMG_DEFAULT_POSITIVE) or "").strip()
-        user_prompt = str(params.prompt or "").strip()
-        positive = ", ".join(value for value in (default_positive, user_prompt) if value)
-        if not positive:
-            positive = "保持人物主体和构图基本不变，根据编辑要求修改画面"
-        negative = str(params.negative or configured("default_negative", FLUX2_IMG2IMG_DEFAULT_NEGATIVE) or "").strip()
-        negative = self._apply_group_safety_negative(event, negative)
-        params.generated_positive = positive
-        params.generated_negative = negative
-
-        configured_seed = as_int(configured("seed", -1), -1)
-        seed = params.seed if params.seed >= 0 else configured_seed
-        if seed < 0:
-            seed = random.randint(0, 2**32 - 1)
-        # ``size`` is the maximum edge passed to EasySizeSimpleImage.  That
-        # node scales the longest edge and keeps the source aspect ratio. Do
-        # not replace it with the raw input dimensions: a portrait image can
-        # otherwise submit millions of pixels to an 8 GB GPU and appear stuck.
-        size = as_int(configured("size", FLUX2_IMG2IMG_SIZE_DEFAULT), FLUX2_IMG2IMG_SIZE_DEFAULT)
-        # Keep 0 as "use the source workflow default".  The adapter only
-        # writes node 90 when a positive size is configured.
-        size = max(0, size)
-        if params.width or params.height:
-            requested_size = max(int(params.width or 0), int(params.height or 0), 64)
-            size = requested_size if size <= 0 else min(size, requested_size)
-        batch = params.batch if params.batch != 1 else as_int(configured("batch", 1), 1)
-        workflow = load_workflow(self._workflow_path("img2img_flux2"))
-
-        # 源工作流自带的 LoRA（节点 38）属于它「模型链」的一部分，独立 LoRA 留空时
-        # 必须沿用，否则采样器会退化成没有内容 LoRA 的裸基模——这正是此前
-        # Flux2 图生图看起来「无效」的原因。只有该文件在 ComfyUI 中确实不可用，
-        # 才自动关闭并给出提示，避免直接提交失败。
-        keep_source_lora = True
-        source_lora_name = ""
-        source_lora_node = workflow.get("38")
-        if isinstance(source_lora_node, dict):
-            source_lora_name = str(
-                (source_lora_node.get("inputs") or {}).get("lora_name") or ""
-            ).strip()
-        if not str(lora_name or "").strip() and source_lora_name:
-            try:
-                available_loras = {
-                    name.replace("\\", "/").casefold()
-                    for name in await self._available_loras()
-                }
-            except Exception as exc:  # noqa: BLE001 - 查询失败时保守沿用，交给 ComfyUI 报错
-                logger.warning(
-                    "[%s] 查询 ComfyUI LoRA 列表失败，暂按源工作流 LoRA 处理：%s",
-                    PLUGIN_NAME,
-                    exc,
-                )
-                available_loras = set()
-            if available_loras and source_lora_name.replace("\\", "/").casefold() not in available_loras:
-                keep_source_lora = False
-                logger.warning(
-                    "[%s] 源工作流 LoRA 在 ComfyUI 中不可用，将自动关闭：%s",
-                    PLUGIN_NAME,
-                    source_lora_name,
-                )
-
-        patched, report = adapt_flux2_klein_img2img(
-            workflow,
-            positive=positive,
-            negative=negative,
-            image_names=uploaded_names,
-            unet_name=model_name,
-            clip_name=clip_name,
-            vae_name=vae_name,
-            lora_name=lora_name,
-            lora_strength=as_float(configured("lora_strength", 0.9), 0.9),
-            keep_source_lora=keep_source_lora,
-            size=size,
-            steps=params.steps or as_int(configured("steps", FLUX2_IMG2IMG_STEPS_DEFAULT), FLUX2_IMG2IMG_STEPS_DEFAULT),
-            cfg=params.cfg or as_float(configured("cfg", FLUX2_IMG2IMG_CFG_DEFAULT), FLUX2_IMG2IMG_CFG_DEFAULT),
-            seed=seed,
-            sampler_name=params.sampler or str(configured("sampler_name", "euler") or "euler"),
-            scheduler=params.scheduler or str(configured("scheduler", "simple") or "simple"),
-            denoise=params.denoise or as_float(configured("denoise", FLUX2_IMG2IMG_DENOISE_DEFAULT), FLUX2_IMG2IMG_DENOISE_DEFAULT),
-            batch=max(1, min(4, as_int(batch, 1))),
-            filename_prefix=str(
-                configured("filename_prefix", "astrbot/img2img_flux2_klein")
-                or "astrbot/img2img_flux2_klein"
-            ),
-        )
-        logger.info(
-            "[%s] Flux2 Klein 图生图已准备：参考图=%d；核心模型=%s；LoRA=%s；正面=%s；兼容提示=%s",
-            PLUGIN_NAME,
-            len(uploaded_names),
-            model_name,
-            lora_name or (source_lora_name if keep_source_lora and source_lora_name else "关闭"),
-            positive[:300],
-            "；".join(report) or "无",
-        )
-        prompt_id = await client.queue(patched)
-        logger.info("[%s] Flux2 Klein 图生图已提交：prompt_id=%s", PLUGIN_NAME, prompt_id)
-        history = await client.wait(prompt_id, timeout=900)
-        images = await client.download_outputs(history, self.output_dir)
-        if not images:
-            raise ComfyError("图生图 Flux2 完成，但没有找到 SaveImage 输出")
-        self.last_images[self._origin(event)] = str(images[0])
-        return images
 
     def _drop_ungrounded_llm_controls(
         self,
@@ -8590,16 +8632,6 @@ class ComfyUIAIStudio(Star):
             image_path or "无",
             str(params.prompt or "")[:160],
         )
-        if mode in {"wash", "outpaint", "multi_angle"}:
-            # These workflows are intentionally independent tools: only the
-            # first image is used and all prompt/LoRA automation is bypassed.
-            return await self._generate_flux2_tool(event, params, mode, image_path)
-        if mode == "img2img_flux2":
-            return await self._generate_img2img_flux2(
-                event,
-                params,
-                [path for path in (image_path, second_image_path, third_image_path) if path],
-            )
         if mode == "img2img" and not image_path:
             raise UsageError(
                 f"{MODE_NAMES.get(mode, mode)}没有拿到输入图片，已阻止提交空白图任务；"
@@ -8607,6 +8639,9 @@ class ComfyUIAIStudio(Star):
             )
         client = self._client()
         env = await self._environment(client)
+        img2img_nsfw_lora_enabled = str(
+            self._get("img2img_nsfw_lora_enabled", False)
+        ).strip().casefold() in {"1", "true", "yes", "on"}
         model = ""
         if mode != "img2img":
             model = self._model_name(env, params.model, mode)
@@ -8621,21 +8656,51 @@ class ComfyUIAIStudio(Star):
                 configured_img2img_loras.append(
                     f"{configured_img2img_lora}:{float(self._get('img2img_lora_strength', 0.8) or 0.0):g}"
                 )
+            resolved_nsfw_lora = ""
+            if img2img_nsfw_lora_enabled:
+                selected_img2img_model = str(
+                    self._get("img2img_unet_name", QWEN_IMG2IMG_UNET_DEFAULT)
+                    or QWEN_IMG2IMG_UNET_DEFAULT
+                )
+                if not self._is_qwen21_model(selected_img2img_model):
+                    raise UsageError(
+                        "当前附加 NSFW LoRA 适用于 Qwen Image 2.1；"
+                        "请将图生图核心模型切换到 Qwen Image 2.1，或关闭该 LoRA。"
+                    )
+                nsfw_lora = str(
+                    self._get("img2img_nsfw_lora_name", QWEN_IMG2IMG_NSFW_LORA_DEFAULT)
+                    or QWEN_IMG2IMG_NSFW_LORA_DEFAULT
+                ).strip()
+                if nsfw_lora:
+                    resolved_nsfw_lora = self._resolve_lora(nsfw_lora, list(env["loras"]))
+                    if not resolved_nsfw_lora:
+                        raise UsageError(f"Qwen NSFW LoRA 不存在：{nsfw_lora}；请刷新 ComfyUI 模型列表")
+                    nsfw_weight = float(self._get("img2img_nsfw_lora_strength", 0.8) or 0.0)
+                    if nsfw_weight != 0:
+                        configured_img2img_loras.append(f"{resolved_nsfw_lora}:{nsfw_weight:g}")
             params.lora_isolation_notice = IMG2IMG_LORA_ISOLATION_NOTICE
             logger.info(
-                "[%s] 图生图独立 LoRA 隔离生效：独立 LoRA=%s；文生图 LoRA 列表与画风 LoRA 均不参与",
+                "[%s] 图生图独立 LoRA 隔离生效：独立 LoRA=%s；附加 NSFW LoRA=%s；文生图 LoRA 列表与画风 LoRA 均不参与",
                 PLUGIN_NAME,
                 configured_img2img_lora or "未启用",
+                resolved_nsfw_lora or "未启用",
             )
-        configured_loras = (
-            configured_img2img_loras
-            if mode == "img2img"
-            else list(self._get("lora_list", []) or [])
-        )
+        engine_key = str(getattr(params, "engine", "") or "").strip().casefold()
+        if mode == "img2img":
+            configured_loras = configured_img2img_loras
+        elif engine_key in ENGINE_LORA_CONFIG_KEYS:
+            # 每个引擎只读自己的 LoRA 列表；undefined/空列表 = 本次不带常驻 LoRA。
+            configured_loras = list(
+                self._get(ENGINE_LORA_CONFIG_KEYS[engine_key], []) or []
+            )
+        else:
+            configured_loras = list(self._get("lora_list", []) or [])
         temporary_loras = list(params.loras)
+        # 画风 LoRA 是 Anima 文生图专属链路；Krea 2 / Qwen 2.1 的自然语言
+        # 提示词里不该被塞进 Danbooru 画风触发词，因此整条链路关闭。
         style_catalog = (
             self._style_lora_entries(list(env["loras"]), selected_only=False)
-            if mode == "txt2img"
+            if mode == "txt2img" and engine_key not in ENGINE_LORA_CONFIG_KEYS
             else []
         )
         style_names = {
@@ -8860,17 +8925,35 @@ class ComfyUIAIStudio(Star):
         # temporary command LoRA. Duplicate files are already collapsed above,
         # with the later command value taking precedence.
         prompt_loras = list(loras)
+        # Krea 2 引擎会跳过非 Krea 系 LoRA，这里同步跳过它们的触发词，
+        # 否则 Anima/画风 LoRA 的 tags 会被拼进 Krea 的自然语言提示词。
+        krea2_engine = (
+            str(getattr(params, "engine", "") or "").strip().casefold()
+            == KREA2_ENGINE_NAME
+        )
         for item in prompt_loras:
             actual = item.rsplit(":", 1)[0]
+            if krea2_engine and not self._is_krea2_model(actual):
+                continue
             key = actual.replace("\\", "/").casefold()
             if key in random_style_prompt_values:
                 lora_prompt_values.extend(random_style_prompt_values[key])
             elif key not in random_style_preset_disabled:
                 lora_prompt_values.extend(self._lora_prompt_values_for_task(params, actual))
         lora_prompt_values = self._normalize_civitai_tags(lora_prompt_values)
-        if mode == "img2img":
-            # 图生图使用 Qwen Image Edit 的独立模型链。兼容性检查不能再
-            # 按 Flux2 规则执行，否则会错误拒绝 Qwen LoRA。
+        selected_qwen_model = (
+            self._get("img2img_unet_name", "")
+            if mode == "img2img" or engine_key == QWEN21_ENGINE_NAME
+            else model
+        )
+        if engine_key == KREA2_ENGINE_NAME:
+            # Krea 2 的 LoRA 是它自己的族，不套用 Anima / Qwen 的架构断言。
+            pass
+        elif self._is_qwen21_model(str(selected_qwen_model or "")):
+            self._assert_qwen21_loras_compatible(prompt_loras)
+        elif mode == "img2img":
+            # 图生图使用 Qwen 的独立模型链；只拒绝已明确识别为 Flux 架构的
+            # LoRA，不要按 Anima 规则拒绝 Qwen LoRA。
             self._assert_qwen_loras_compatible(prompt_loras)
         else:
             self._assert_anima_loras_compatible(model, loras)
@@ -8949,17 +9032,34 @@ class ComfyUIAIStudio(Star):
                 max_edge=img2img_input_max_edge,
             )
         scale = params.scale or float(self._get("hires_scale", 2.0) or 2.0)
-        workflow = load_workflow(self._workflow_path(mode))
-        is_qwen_img2img = mode == "img2img" and all(
-            node_id in workflow
-            for node_id in ("1", "10", "11", "13", "14", "30", "39", "119", "152", "158", "160", "161")
+        engine_workflow_path = self._engine_workflow_path(engine_key, mode)
+        workflow = load_workflow(engine_workflow_path)
+        is_krea2_workflow = any(
+            isinstance(node, dict) and node.get("class_type") == "UnetLoaderGGUF"
+            for node in workflow.values()
         )
-        if mode == "img2img" and not is_qwen_img2img:
+        if krea2_engine and not is_krea2_workflow:
             raise WorkflowError(
-                "当前图生图工作流不是 Qwen Image Edit 工作流；"
-                "请在 WebUI 的「Qwen Image Edit 图生图源工作流位置」填入正确的文件后重启插件，"
-                "或清空该项以使用插件内置工作流"
+                "Krea 2 引擎需要一个含 UnetLoaderGGUF 的 API 工作流；"
+                f"当前文件 {engine_workflow_path.name} 不匹配，"
+                "请清空 workflow_krea2 配置以使用插件内置工作流"
+            )
+        is_qwen21_workflow = (not is_krea2_workflow) and any(
+            isinstance(node, dict) and node.get("class_type") == "TextEncodeQwenImage21"
+            for node in workflow.values()
         )
+        if mode == "img2img" and not is_qwen21_workflow:
+            raise WorkflowError(
+                "当前图生图工作流不是 Qwen Image 2.1 图生图工作流；"
+                "请在 WebUI 的图生图设置里选择 Qwen Image 2.1 工作流后重启插件，"
+                "或清空该项以使用插件内置工作流"
+            )
+        if engine_key == QWEN21_ENGINE_NAME and not is_qwen21_workflow:
+            raise WorkflowError(
+                "Qwen 2.1 引擎需要一个含 TextEncodeQwenImage21 的 API 工作流；"
+                f"当前文件 {engine_workflow_path.name} 不匹配，"
+                "请清空 workflow_qwen21 配置以使用插件内置工作流"
+            )
         image_name = ""
         second_image_name = ""
         if image_path:
@@ -8986,108 +9086,214 @@ class ComfyUIAIStudio(Star):
             )
             if not second_image_name:
                 raise ComfyError("ComfyUI 上传第二张参考图后没有返回图片名称")
-        if not image_path:
+        if (
+            not image_path
+            and not is_qwen21_workflow
+            and not is_krea2_workflow
+            and "anima_model" not in workflow
+        ):
             image_name = await self._ensure_blank_image(client, width, height, scale)
         upscale = params.upscale_model or str(self._get("hires_upscale_model", "") or "")
         if not upscale and env["upscale_models"]:
             upscale = env["upscale_models"][0]
-        if is_qwen_img2img:
-            def resolve_model(value: str, values: list[str], label: str) -> str:
-                configured = str(value or "").strip().replace("\\", "/")
-                normalized = configured.casefold()
-                match = next(
-                    (candidate for candidate in values if str(candidate).replace("\\", "/").casefold() == normalized),
-                    "",
+        if is_krea2_workflow:
+            krea_unet = self._resolve_model_name(
+                str(self._get("krea2_unet_name", "") or KREA2_UNET_DEFAULT),
+                list(env["unet"]) or list(env["diffusion_models"]),
+                "Krea 2 核心模型",
+            )
+            krea_clip = self._resolve_model_name(
+                str(self._get("krea2_clip_name", "") or KREA2_CLIP_DEFAULT),
+                list(env["text_encoders"]),
+                "Krea 2 文本编码器",
+            )
+            krea_vae = self._resolve_model_name(
+                str(self._get("krea2_vae_name", "") or KREA2_VAE_DEFAULT),
+                list(env["vae"]),
+                "Krea 2 VAE",
+            )
+            krea_loras: list[tuple[str, float]] = []
+            for item in loras:
+                raw_name, raw_weight, _ = self._split_lora_weight(item)
+                resolved = self._resolve_lora(raw_name, list(env["loras"]))
+                if not resolved:
+                    continue
+                # Krea 2 与 Anima/Qwen 的 LoRA 权重结构不通用：只保留 krea 系
+                # 文件，其余跳过（否则会把别家 LoRA 塞进来画出噪点）。
+                if not self._is_krea2_model(resolved):
+                    logger.info(
+                        "[%s] Krea 2 引擎跳过非 Krea LoRA：%s", PLUGIN_NAME, resolved
+                    )
+                    continue
+                try:
+                    weight = float(raw_weight)
+                except (TypeError, ValueError):
+                    weight = 1.0
+                krea_loras.append((resolved, weight))
+            try:
+                krea_steps = int(
+                    params.steps
+                    or self._get("krea2_steps", KREA2_STEPS_DEFAULT)
+                    or KREA2_STEPS_DEFAULT
                 )
-                if match:
-                    return match
-                base = Path(configured).name.casefold()
-                match = next(
-                    (candidate for candidate in values if Path(str(candidate).replace("\\", "/")).name.casefold() == base),
-                    "",
-                )
-                if match:
-                    return match
-                raise UsageError(
-                    f"Qwen 图生图未检测到可用的{label}：{value or '未配置'}；"
-                    "请确认模型已放入 ComfyUI 对应目录，然后刷新模型列表"
-                )
-
-            qwen_unet = resolve_model(
-                str(self._get("img2img_unet_name", "") or QWEN_IMG2IMG_UNET_DEFAULT),
-                env["unet"],
-                "UNet",
-            )
-            qwen_clip = resolve_model(
-                str(self._get("img2img_clip_name", "") or QWEN_IMG2IMG_CLIP_DEFAULT),
-                # Qwen Image 的文本编码器是 GGUF，来自 models/clip；
-                # Flux2 才使用 models/text_encoders 下的 safetensors。
-                env.get("clip_gguf") or env["text_encoders"],
-                "文本编码器",
-            )
-            qwen_vae = resolve_model(
-                str(self._get("img2img_vae_name", "") or QWEN_IMG2IMG_VAE_DEFAULT),
-                env["vae"],
-                "VAE",
-            )
-            configured_img2img_lora = str(self._get("img2img_lora_name", "") or "").strip()
-            if configured_img2img_lora:
-                configured_img2img_lora = self._resolve_lora(configured_img2img_lora, list(env["loras"])) or configured_img2img_lora
-            normal_steps = int(
-                self._get("img2img_steps", QWEN_IMG2IMG_STEPS_DEFAULT)
-                or QWEN_IMG2IMG_STEPS_DEFAULT
-            )
-            normal_cfg = float(
-                self._get("img2img_cfg", QWEN_IMG2IMG_CFG_DEFAULT)
-                or QWEN_IMG2IMG_CFG_DEFAULT
-            )
-            configured_steps = normal_steps
-            configured_cfg = normal_cfg
-            configured_largest_size = img2img_input_max_edge
-            if use_input_size:
-                # ImageScaleToMaxDimension 位于 Qwen 编码前。不要把小图先
-                # 放大到 1152 再缩回去；这会增加显存和时间，却不会增加
-                # 原图信息。超大图则使用上面相同的最长边上限。
-                configured_largest_size = min(configured_largest_size, max(width, height))
-            patched, report = adapt_qwen_img2img(
+            except (TypeError, ValueError):
+                krea_steps = KREA2_STEPS_DEFAULT
+            patched = adapt_krea2_template(
                 workflow,
-                positive=positive,
+                prompt=positive,
                 negative=negative,
-                image_name=image_name,
-                second_image_name=second_image_name,
-                unet_name=qwen_unet,
-                clip_name=qwen_clip,
-                vae_name=qwen_vae,
-                lora_name=configured_img2img_lora,
-                lora_strength=float(self._get("img2img_lora_strength", 0.8) or 0.0),
-                loras=prompt_loras,
+                model=krea_unet,
+                clip=krea_clip,
+                vae=krea_vae,
+                seed=seed,
                 width=width,
                 height=height,
-                steps=params.steps or configured_steps,
-                cfg=params.cfg or configured_cfg,
+                steps=krea_steps,
+                cfg=float(params.cfg or KREA2_CFG_DEFAULT),
+                sampler_name=params.sampler or "euler",
+                scheduler=params.scheduler or "simple",
+                denoise=1.0,
+                loras=krea_loras,
+                filename_prefix="astrbot/krea2",
+            )
+            report = [
+                f"Krea 2 Turbo（GGUF）· {krea_steps} 步 · CFG=1。",
+                "中文自然语言提示词直接生效，不需要翻译成 Danbooru 标签。",
+            ]
+        elif is_qwen21_workflow:
+            # 图生图与 /qwen 文生图共用同一套 Qwen 模型链（UNet / 文本编码器 / VAE），
+            # 只是工作流图不同。
+            use_qwen_chain = mode == "img2img" or engine_key == QWEN21_ENGINE_NAME
+            available_models = list(dict.fromkeys(env["diffusion_models"] + env["unet"]))
+            requested_model = (
+                params.model
+                or (
+                    self._get("img2img_unet_name", "")
+                    if use_qwen_chain
+                    else self._get("model_name", "")
+                )
+                or ""
+            )
+            qwen_model = self._resolve_model_name(str(requested_model), available_models, "Qwen Image 2.1 核心模型")
+            turbo_mode = "turbo" in engine_workflow_path.name.casefold()
+            full_turbo = "turbo_model" in engine_workflow_path.name.casefold()
+            profile = self._model_profile(qwen_model, mode, accelerated=turbo_mode and not full_turbo)
+            recommended = profile.get("recommended", {})
+
+            def resolve_qwen_component(requested: str, fallback: str, values: list[str], label: str) -> str:
+                def find(value: str) -> str:
+                    normalized = str(value or "").strip().replace("\\", "/").casefold()
+                    if not normalized:
+                        return ""
+                    base = Path(normalized).name
+                    return next(
+                        (
+                            candidate for candidate in values
+                            if str(candidate).replace("\\", "/").casefold() == normalized
+                            or Path(str(candidate).replace("\\", "/")).name.casefold() == base
+                        ),
+                        "",
+                    )
+
+                return find(requested) or find(fallback) or self._resolve_model_name(
+                    str(requested or fallback), values, f"Qwen Image 2.1 {label}"
+                )
+
+            qwen_clip = resolve_qwen_component(
+                str((self._get("img2img_clip_name", "") if use_qwen_chain else self._get("clip_name", "")) or ""),
+                str(recommended.get("clip_name", "qwen3vl_8b_w4a8.safetensors")),
+                env["text_encoders"], "文本编码器",
+            )
+            qwen_vae = resolve_qwen_component(
+                str((self._get("img2img_vae_name", "") if use_qwen_chain else self._get("vae_name", "")) or ""),
+                str(recommended.get("vae_name", "qwen_image_2.1_vae_bf16.safetensors")),
+                env["vae"], "VAE",
+            )
+            if turbo_mode and not full_turbo:
+                turbo_lora = self._resolve_model_name(
+                    "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+                    env["loras"], "Qwen Image 2.1 Turbo LoRA",
+                )
+            else:
+                turbo_lora = ""
+            lora_values: list[tuple[str, float]] = []
+            for item in loras:
+                raw_name, raw_weight, _ = self._split_lora_weight(item)
+                resolved = self._resolve_lora(raw_name, list(env["loras"]))
+                if resolved:
+                    try:
+                        weight = float(raw_weight or self._lora_trigger_weight_text(resolved))
+                    except (TypeError, ValueError):
+                        weight = 0.8
+                    lora_values.append((resolved, weight))
+            self._assert_qwen21_loras_compatible([name for name, _ in lora_values])
+            normal_steps = int(recommended.get("steps", 25 if not turbo_mode else 8))
+            normal_cfg = float(recommended.get("cfg", 1.0))
+            is_edit_graph = mode == "img2img"
+            template_images = [value for value in (image_name, second_image_name) if value]
+            if third_image_path:
+                uploaded_third = await client.upload_image(third_image_path)
+                third_name = str(uploaded_third.get("name", "") or "")
+                if third_name:
+                    template_images.append(third_name)
+            patched = adapt_qwen21_template(
+                workflow,
+                prompt=positive,
+                negative=negative,
+                model=qwen_model,
+                clip=qwen_clip,
+                vae=qwen_vae,
                 seed=seed,
-                sampler_name=params.sampler or str(self._get("img2img_sampler_name", "euler") or "euler"),
-                scheduler=params.scheduler or str(self._get("img2img_scheduler", "simple") or "simple"),
-                denoise=params.denoise or float(
-                    self._get("img2img_denoise", QWEN_IMG2IMG_DENOISE_DEFAULT)
-                    or QWEN_IMG2IMG_DENOISE_DEFAULT
+                resolution=int(recommended.get("resolution", 1024)),
+                width=(
+                    int(params.width or recommended.get("width", width))
+                    if mode == "txt2img" else width
                 ),
-                scale_method=str(self._get("img2img_scale_method", "lanczos") or "lanczos"),
-                largest_size=configured_largest_size,
-                # disabled/none 表示保持原图完整画布；只有用户明确选择
-                # center 等裁剪模式时才允许工作流裁掉输入图边缘。
-                crop=str(self._get("img2img_crop", "disabled") or "disabled"),
-                filename_prefix=str(self._get("img2img_filename_prefix", "astrbot/img2img_qwen") or "astrbot/img2img_qwen"),
+                height=(
+                    int(params.height or recommended.get("height", height))
+                    if mode == "txt2img" else height
+                ),
+                steps=params.steps or normal_steps,
+                cfg=params.cfg or normal_cfg,
+                sampler_name=params.sampler or str(recommended.get("sampler_name", "euler")),
+                scheduler=params.scheduler or str(recommended.get("scheduler", "simple")),
+                denoise=params.denoise or float(recommended.get("denoise", 1.0)),
+                image_names=template_images if is_edit_graph else [],
+                loras=lora_values,
+                turbo_lora=turbo_lora,
+                turbo_strength=float(recommended.get(
+                    "turbo_lora_strength", self._get("qwen21_turbo_lora_strength", 1.0)
+                )),
+                filename_prefix=f"astrbot/qwen21_{mode}",
             )
-            logger.info(
-                "[%s] Qwen 节点1 prompt 已写入：%s；节点39 negative=%s；节点152 steps=%s cfg=%s denoise=%s；加速LoRA=关闭",
-                PLUGIN_NAME,
-                str(patched.get("1", {}).get("inputs", {}).get("prompt", ""))[:500],
-                str(patched.get("39", {}).get("inputs", {}).get("prompt", ""))[:300],
-                patched.get("152", {}).get("inputs", {}).get("steps", ""),
-                patched.get("152", {}).get("inputs", {}).get("cfg", ""),
-                patched.get("152", {}).get("inputs", {}).get("denoise", ""),
+            report = [
+                f"Qwen Image 2.1 {'Turbo 官方 8 步手动 sigma' if turbo_mode else '普通 25 步'}；CFG={params.cfg or normal_cfg:g}。",
+                "CFG=1 时负面提示词不会参与引导。",
+            ]
+        elif mode == "txt2img" and "anima_model" in workflow:
+            components = []
+            for key, fallback, choices, label in (
+                ("clip_name", "qwen_3_06b_base.safetensors", env["text_encoders"], "Anima 文本编码器"),
+                ("vae_name", "qwen_image_vae.safetensors", env["vae"], "Anima VAE"),
+            ):
+                components.append(self._resolve_model_name(
+                    str(self._get(key, "") or fallback), choices, label,
+                ))
+            lora_values = []
+            for item in loras:
+                raw_name, raw_weight, _ = self._split_lora_weight(item)
+                lora_values.append((raw_name, float(raw_weight or self._lora_trigger_weight_text(raw_name))))
+            sampling = anima_sampling_defaults(model)
+            patched = adapt_anima_template(
+                workflow, model=model, clip=components[0], vae=components[1],
+                positive=positive, negative=negative, loras=lora_values,
+                width=width, height=height, steps=params.steps or int(self._get("steps", sampling["steps"])),
+                cfg=params.cfg or float(self._get("cfg", sampling["cfg"])), seed=seed,
+                sampler_name=params.sampler or str(self._get("sampler_name", "") or sampling["sampler_name"]),
+                scheduler=params.scheduler or str(self._get("scheduler", "") or sampling["scheduler"]),
+                batch=params.batch, filename_prefix="astrbot/txt2img",
             )
+            report = ["使用 Anima 原生节点工作流；沿用已匹配的预设及 LoRA。"]
         else:
             model = self._model_name(env, params.model, mode)
             if is_anima_29b_model(model) and not self._anima_29b_patch_installed():
@@ -9380,19 +9586,6 @@ class ComfyUIAIStudio(Star):
                 await self._release_draw_limit(params)
                 logger.exception("[%s] 生成异常", PLUGIN_NAME)
                 return [Plain(f"生成失败：{exc}")]
-            finally:
-                # 只有 _extract_image() 创建的 input_cache 文件会命中这里；
-                # 最近生成图片和用户配置的其它路径不会被误删。
-                for cleanup_path in {image_path, second_image_path, third_image_path}:
-                    if not cleanup_path:
-                        continue
-                    try:
-                        cached_path = Path(cleanup_path).resolve()
-                        cache_root = self.input_cache_dir.resolve()
-                        if cached_path.parent == cache_root:
-                            cached_path.unlink(missing_ok=True)
-                    except (OSError, RuntimeError):
-                        logger.debug("[%s] 清理输入图片缓存失败：%s", PLUGIN_NAME, cleanup_path)
             # 合并转发模式下，提示词作为最后一个节点放回图片转发记录；
             # 普通模式仍由完成回复发送层附带提示词。
             if str(self._get("draw_delivery_mode", "normal") or "normal").lower() == "forward":
@@ -9818,8 +10011,6 @@ class ComfyUIAIStudio(Star):
                 if (
                     self._img2img_plugin_ai_debug_enabled()
                     if params.mode == "img2img"
-                    else self._img2img_flux2_plugin_ai_debug_enabled()
-                    if params.mode == "img2img_flux2"
                     else self._plugin_ai_debug_enabled()
                 ) and getattr(params, "plugin_ai_debug_prompt", ""):
                     debug_reply = self._llm_debug_reply(
@@ -9873,12 +10064,10 @@ class ComfyUIAIStudio(Star):
         return (
             "Anima 全能绘画台指令\n"
             "/文生图 描述\n"
-            "/图生图 描述（同一条消息附图，或回复一张图片/含图合并转发）\n"
-            "/图生图Flux2 描述（支持 1 到 3 张参考图，第一张为主参考图）\n"
+            "/水粉 描述（Krea 2 Turbo 引擎，中文自然语言即可；写“krea2”亦可）\n"
+            "/qwen 描述（Qwen Image 2.1 引擎，中文自然语言；写“千问”亦可）\n"
+            "/图生图 描述（同一条消息附图，或回复一张图片/含图合并转发；最多 3 张参考图）\n"
             "/高清放大（附图片、回复图片，或放大最近出图）\n"
-            "/洗图 中文要求（可附多张图片，只使用第一张，其余忽略；不调用 AI 或翻译）\n"
-            "/扩图 中文要求（可附多张图片，只使用第一张，其余忽略；扩展边距在 WebUI 设置）\n"
-            "/多角度 中文要求（可附多张图片，只使用第一张，其余忽略；角度参数在 WebUI 设置）\n"
             "在画图指令中单独写 ai 可开启本次 AI 提示词优化，例如：/文生图 ai 夏空；ai 不会进入最终提示词。也可写 noai 或继续使用 --ai=开、--noai。\n"
             "画图指令末尾可直接写 LoRA 指令简称临时加载，例如：/文生图 夏空海边 1号lora；权重可写 1号lora:0.6、1号lora=0.6，未写时使用 WebUI 的“指令触发权重”。\n"
             "本次不想使用任何画风 LoRA 时，可在指令或自然语言中写“不用画风”；它会同时跳过常态画风和随机画风，不影响普通 LoRA。\n"
@@ -9887,7 +10076,7 @@ class ComfyUIAIStudio(Star):
             "/lora 或 /.lora 查看全部 LoRA 总览图片（含每个 LoRA 一张预览图、分类、简称和开启状态）；/lora 1号lora 查看单个 LoRA；/loraon 1号lora 或 /loraon 1号lora 0.6 开启 LoRA；/lora权重 1号lora 0.6 修改指令触发默认权重；/lora 添加或删除 指令简称\n"
             "/预设 列表 查看按 LoRA 分类的指令简称与预设图片；/预设 添加 夏空=ciaccona；/预设 修改 夏空=新内容；/预设 翻译 夏空；/预设 删除 夏空\n"
             "/画师串 列表；/画师串 使用 画风001；/画师串 添加 名称=画师 tags；/画师串 关闭\n"
-            "/工作流 列表；/工作流 文生图 文件名；/工作流 图生图 文件名；/工作流 高清放大 文件名；/工作流 洗图 文件名；/工作流 扩图 文件名；/工作流 多角度 文件名\n"
+            "/工作流 列表；/工作流 文生图 文件名；/工作流 图生图 文件名；/工作流 高清放大 文件名\n"
             "/画图配置 查询模型位置、工作流位置和当前配置\n"
             "/comfy状态 查询 ComfyUI 状态；管理员可用 /comfy打开 启动本机 ComfyUI、/comfy关闭 关闭服务\n"
             "直接用自然语言要求 AstrBot 画图时，会自动识别提示词预设和 LoRA 指令简称；预设与 LoRA 可同时生效，其余内容作为画面描述。\n"
@@ -10169,9 +10358,7 @@ class ComfyUIAIStudio(Star):
                 "基础绘图",
                 [
                     "/文生图 内容：文生图",
-                    "/图生图 内容：附图后修改画面",
-                    "/图生图Flux2 内容：强制 Flux2，使用 1 张参考图",
-                    "普通 /图生图 使用 WebUI 选择的 Qwen 或 Flux2 引擎",
+                    "/图生图 内容：附图后修改画面，最多 3 张参考图",
                     "/高清放大 附图、回复图片或放大最近出图",
                     "画图时可以继续聊天，任务完成后会自动发送结果",
                 ],
@@ -10190,11 +10377,8 @@ class ComfyUIAIStudio(Star):
             (
                 "工作流与配置",
                 [
-                    "/洗图 中文要求：可附多张图，仅使用第一张，其余忽略",
-                    "/扩图 中文要求：可附多张图，仅使用第一张，其余忽略",
-                    "/多角度 中文要求：可附多张图，仅使用第一张，其余忽略",
                     "/模型 列表 或 /模型 名称",
-                    "/工作流 列表；/工作流 文生图 文件名；图生图、高清放大、洗图、扩图、多角度均可切换",
+                    "/工作流 列表；/工作流 文生图 文件名；图生图、高清放大均可切换",
                     "/画图配置 查看模型、LoRA 和工作流位置",
                     "宽高、步数、种子、CFG、采样器等可在 WebUI 调整",
                 ],
@@ -10341,6 +10525,76 @@ class ComfyUIAIStudio(Star):
             yield event.plain_result(start_reply)
         self._schedule_draw(event, params, "txt2img")
 
+    @filter.command("水粉", alias=["krea2", "克雷亚"], desc="使用 Krea 2 Turbo 引擎生成图片（中文自然语言提示词）")
+    async def command_krea2(self, event: AstrMessageEvent, prompt: GreedyStr):
+        """Krea 2 专用入口。
+
+        与 /文生图 共用排队、限额、审核、出图回传链路，只把本次任务强制
+        切到 Krea 2 图，不改动 WebUI 里的 workflow_txt2img，因此 Anima 与
+        Krea 2 可以随时切换、互不影响。
+        """
+        try:
+            params = fill_params(str(prompt), "txt2img")
+            params.engine = KREA2_ENGINE_NAME
+            # Krea 2 吃自然语言，画师串是 Anima 的标签体系，这里显式关闭。
+            params.artist_preset = "无"
+            await self._extract_inline_loras(params)
+            self._extract_inline_presets(params)
+            if not params.prompt and not params.presets and not params.loras:
+                raise UsageError("请提供画面描述、提示词预设或 LoRA 指令简称")
+        except (UsageError, ComfyError) as exc:
+            yield event.plain_result(f"用法错误：{exc}")
+            return
+        try:
+            await self._check_draw_queue(params, "txt2img", event)
+        except UsageError as exc:
+            yield event.plain_result(f"生成失败：{exc}")
+            return
+        try:
+            await self._reserve_draw_limit(event, params)
+        except UsageError as exc:
+            yield event.plain_result(f"生成失败：{exc}")
+            return
+        start_reply = await self._draw_start_reply_for_command(event, params, "txt2img")
+        if start_reply:
+            yield event.plain_result(start_reply)
+        self._schedule_draw(event, params, "txt2img")
+
+    @filter.command("qwen", alias=["千问", "qwen21"], desc="使用 Qwen Image 2.1 引擎生成图片（中文自然语言提示词）")
+    async def command_qwen21(self, event: AstrMessageEvent, prompt: GreedyStr):
+        """Qwen Image 2.1 文生图专用入口。
+
+        复用图生图那套 Qwen 模型链（UNet / 文本编码器 / VAE / LoRA 列表），
+        但加载内置的 qwen21_t2i_api.json，所以与 Anima 文生图配置互不影响。
+        需要 Qwen 模型在 ComfyUI 的 diffusion_models 里可用。
+        """
+        try:
+            params = fill_params(str(prompt), "txt2img")
+            params.engine = QWEN21_ENGINE_NAME
+            # Qwen 2.1 同样吃自然语言，Anima 画师串不适用。
+            params.artist_preset = "无"
+            await self._extract_inline_loras(params)
+            self._extract_inline_presets(params)
+            if not params.prompt and not params.presets and not params.loras:
+                raise UsageError("请提供画面描述、提示词预设或 LoRA 指令简称")
+        except (UsageError, ComfyError) as exc:
+            yield event.plain_result(f"用法错误：{exc}")
+            return
+        try:
+            await self._check_draw_queue(params, "txt2img", event)
+        except UsageError as exc:
+            yield event.plain_result(f"生成失败：{exc}")
+            return
+        try:
+            await self._reserve_draw_limit(event, params)
+        except UsageError as exc:
+            yield event.plain_result(f"生成失败：{exc}")
+            return
+        start_reply = await self._draw_start_reply_for_command(event, params, "txt2img")
+        if start_reply:
+            yield event.plain_result(start_reply)
+        self._schedule_draw(event, params, "txt2img")
+
     async def _command_img2img_mode(
         self,
         event: AstrMessageEvent,
@@ -10371,6 +10625,17 @@ class ComfyUIAIStudio(Star):
         image_path = image_paths[0] if image_paths else ""
         second_image_path = image_paths[1] if len(image_paths) > 1 else ""
         third_image_path = image_paths[2] if len(image_paths) > 2 else ""
+        if not image_path and not self._event_has_explicit_image_reference(event):
+            remembered = self._recall_recent_image(event)
+            if remembered:
+                image_path = remembered
+                image_paths = [remembered]
+                logger.info(
+                    "[%s] %s命令未引用原图，已自动续接会话最近图片：%s",
+                    PLUGIN_NAME,
+                    MODE_NAMES[mode],
+                    remembered,
+                )
         if not image_path:
             logger.warning("[%s] %s命令已触发，但未提取到输入图片", PLUGIN_NAME, MODE_NAMES[mode])
             yield event.plain_result(f"{MODE_NAMES[mode]}需要在同一条消息附图，或回复一张图片/含图合并转发后发送指令")
@@ -10382,15 +10647,13 @@ class ComfyUIAIStudio(Star):
         if blocked_chain is not None:
             yield event.chain_result(blocked_chain)
             return
-        if mode == "img2img" and third_image_path:
-            yield event.plain_result("原版 Qwen 图生图最多使用两张参考图，第三张及之后的图片已忽略。")
-        elif mode == "img2img_flux2" and len(image_paths) > 3:
+        if mode == "img2img" and len(image_paths) > 3:
             logger.info(
-                "[%s] Flux2 图生图收到 %s 张图片，只使用前三张",
+                "[%s] Qwen Image 2.1 图生图收到 %s 张图片，只使用前三张",
                 PLUGIN_NAME,
                 len(image_paths),
             )
-            yield event.plain_result("Flux2 图生图最多支持 3 张参考图，第 4 张及之后的图片已忽略。")
+            yield event.plain_result("图生图最多支持 3 张参考图，第 4 张及之后的图片已忽略。")
             image_paths = image_paths[:3]
             image_path = image_paths[0]
             second_image_path = image_paths[1] if len(image_paths) > 1 else ""
@@ -10423,7 +10686,7 @@ class ComfyUIAIStudio(Star):
             mode,
             image_path,
             second_image_path,
-            third_image_path if mode == "img2img_flux2" else "",
+            third_image_path,
         )
 
     @filter.command("图生图", alias=["img2img", "局部重绘", "inpaint"], desc="使用当前选择的图生图工作流进行参考图编辑")
@@ -10431,77 +10694,9 @@ class ComfyUIAIStudio(Star):
         async for result in self._command_img2img_mode(
             event,
             str(prompt),
-            self._img2img_mode(),
+            "img2img",
         ):
             yield result
-
-    @filter.command("图生图Flux2", alias=["图生图2", "Flux2图生图"], desc="使用 Flux2 Klein 工作流进行 1 到 3 张参考图编辑")
-    async def command_img2img_flux2(self, event: AstrMessageEvent, prompt: GreedyStr):
-        async for result in self._command_img2img_mode(event, str(prompt), "img2img_flux2"):
-            yield result
-
-    async def _command_flux2_tool(
-        self,
-        event: AstrMessageEvent,
-        prompt: str,
-        mode: str,
-    ):
-        try:
-            params = fill_params(str(prompt), mode)
-        except UsageError as exc:
-            yield event.plain_result(f"用法错误：{exc}")
-            return
-        image_paths = await self._extract_images(event)
-        image_path = image_paths[0] if image_paths else ""
-        if not image_path:
-            yield event.plain_result(f"{MODE_NAMES[mode]}需要在同一条消息附一张图片，或回复一张图片/含图合并转发")
-            return
-        # 只审核实际会使用的第一张图片，其余图片本来就会被忽略。
-        blocked_chain = await self._moderation_input_chain(event, image_path)
-        if blocked_chain is not None:
-            yield event.chain_result(blocked_chain)
-            return
-        if len(image_paths) > 1:
-            logger.info(
-                "[%s] %s收到 %s 张图片，只使用第一张：%s",
-                PLUGIN_NAME,
-                MODE_NAMES[mode],
-                len(image_paths),
-                image_path,
-            )
-        # Flux2 工具模式不会读取全局/临时 LoRA、预设、AI 或普通翻译。
-        params.loras = []
-        params.presets = []
-        try:
-            await self._check_draw_queue(params, mode, event)
-        except UsageError as exc:
-            yield event.plain_result(f"生成失败：{exc}")
-            return
-        try:
-            await self._reserve_draw_limit(event, params)
-        except UsageError as exc:
-            yield event.plain_result(f"生成失败：{exc}")
-            return
-        start_reply = await self._draw_start_reply_for_command(event, params, mode)
-        if start_reply:
-            yield event.plain_result(start_reply)
-        self._schedule_draw(event, params, mode, image_path)
-
-    @filter.command("洗图", alias=["wash"], desc="使用 Flux2 洗图工作流处理第一张输入图")
-    async def command_wash(self, event: AstrMessageEvent, prompt: GreedyStr):
-        async for result in self._command_flux2_tool(event, str(prompt), "wash"):
-            yield result
-
-    @filter.command("扩图", alias=["outpaint"], desc="使用 Flux2 工作流扩展第一张输入图")
-    async def command_outpaint(self, event: AstrMessageEvent, prompt: GreedyStr):
-        async for result in self._command_flux2_tool(event, str(prompt), "outpaint"):
-            yield result
-
-    @filter.command("多角度", alias=["multi_angle"], desc="使用 Flux2 工作流转换第一张输入图的视角")
-    async def command_multi_angle(self, event: AstrMessageEvent, prompt: GreedyStr):
-        async for result in self._command_flux2_tool(event, str(prompt), "multi_angle"):
-            yield result
-
 
     @filter.command("高清放大", alias=["upscale"], desc="使用原始工作流进行高清放大")
     async def command_hires(self, event: AstrMessageEvent, prompt: GreedyStr):
@@ -11074,6 +11269,17 @@ class ComfyUIAIStudio(Star):
         return arguments.get(name, default)
 
     @staticmethod
+    def _llm_explicit_model(event: AstrMessageEvent, requested: Any) -> str | None:
+        """Accept a model override only when the user named it and asked to switch."""
+        model_name = str(requested or "").strip()
+        message = str(getattr(event, "message_str", "") or "").strip()
+        if not model_name or model_name.casefold() not in message.casefold():
+            return None
+        if re.search(r"(?:切换|更换|改用|换成|使用).{0,40}", message, re.IGNORECASE):
+            return model_name
+        return None
+
+    @staticmethod
     def _llm_event_prompt_fallback(event: AstrMessageEvent) -> str:
         """工具参数缺失时读取本条用户消息，同时过滤无描述的裸命令。"""
         text = str(getattr(event, "message_str", "") or "").strip()
@@ -11105,6 +11311,7 @@ class ComfyUIAIStudio(Star):
         denoise: float | None = None,
         scale: float | None = None,
         ai: bool | None = None,
+        engine: str | None = None,
     ) -> DrawParams:
         """Convert structured LLM arguments to the same options as chat commands."""
         raw = str(prompt or "").strip()
@@ -11153,6 +11360,9 @@ class ComfyUIAIStudio(Star):
         params.ai = False
         params.auto_ai = False
         params.ai_source = ""
+        engine_key = self._normalize_engine_key(engine)
+        if engine_key:
+            params.engine = engine_key
         return params
 
     def _llm_plugin_ai_enabled(self) -> bool:
@@ -11170,12 +11380,6 @@ class ComfyUIAIStudio(Star):
             "plugin", "plugin_ai", "插件", "插件ai",
         }
 
-    def _img2img_flux2_llm_plugin_ai_enabled(self) -> bool:
-        value = self._get("img2img_flux2_llm_prompt_source", "plugin")
-        return str(value or "plugin").strip().lower() in {
-            "plugin", "plugin_ai", "插件", "插件ai",
-        }
-
     def _plugin_ai_debug_enabled(self) -> bool:
         value = self._get("plugin_ai_debug", False)
         if isinstance(value, str):
@@ -11184,12 +11388,6 @@ class ComfyUIAIStudio(Star):
 
     def _img2img_plugin_ai_debug_enabled(self) -> bool:
         value = self._get("img2img_plugin_ai_debug", False)
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes", "on", "是", "开启"}
-        return bool(value)
-
-    def _img2img_flux2_plugin_ai_debug_enabled(self) -> bool:
-        value = self._get("img2img_flux2_plugin_ai_debug", False)
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on", "是", "开启"}
         return bool(value)
@@ -11292,15 +11490,11 @@ class ComfyUIAIStudio(Star):
         mode: str = "txt2img",
     ) -> str:
         """按模式选择对应的 LLM 提示词整理器。"""
-        if mode in {"img2img", "img2img_flux2"}:
-            # 图生图只需告诉 Qwen Image Edit 要改什么。预设和 LoRA 已在外层
+        if mode == "img2img":
+            # 图生图只需告诉 Qwen Image 2.1 要改什么。预设和 LoRA 已在外层
             # 锁定，不能交给 AI 改写或删除。
             source = (
-                "plugin_img2img_flux2_llm"
-                if mode == "img2img_flux2" and self._img2img_flux2_llm_plugin_ai_enabled()
-                else "astrbot_img2img_flux2_llm"
-                if mode == "img2img_flux2"
-                else "plugin_img2img_llm"
+                "plugin_img2img_llm"
                 if self._img2img_llm_plugin_ai_enabled()
                 else "astrbot_img2img_llm"
             )
@@ -11324,13 +11518,14 @@ class ComfyUIAIStudio(Star):
                     source_text,
                     force_enabled=True,
                     source_override=source,
+                    model_override=params.model,
                 )
             except AIError as exc:
                 # AI 连接异常或误返回推理文本时，只翻译用户的原始编辑要求。
                 # 不回退到 AstrBot 的长画面描述，避免图生图变成文生图。
                 fallback, plain_note = await self._plain_translate_prompt(
                     source_text,
-                    mode="img2img_flux2" if mode == "img2img_flux2" else "img2img",
+                    mode="img2img",
                 )
                 fallback = self._repair_img2img_edit_instruction(
                     fallback,
@@ -11353,7 +11548,7 @@ class ComfyUIAIStudio(Star):
             logger.info(
                 "[%s] 图生图 LLM 编辑指令已生成：来源=%s；指令=%s",
                 PLUGIN_NAME,
-                "插件 AI" if source in {"plugin_img2img_llm", "plugin_img2img_flux2_llm"} else "AstrBot AI",
+                "插件 AI" if source in {"plugin_img2img_llm"} else "AstrBot AI",
                 translated,
             )
             return translated
@@ -11374,6 +11569,7 @@ class ComfyUIAIStudio(Star):
                 source_text,
                 force_enabled=True,
                 source_override="plugin_llm",
+                model_override=params.model,
             )
         except AIError as exc:
             # 插件 AI 只负责优化提示词，不能让 LLM 已经识别出的绘图任务失败。
@@ -11445,18 +11641,12 @@ class ComfyUIAIStudio(Star):
                     params.prompt,
                     original_text,
                 )
-            if mode == "img2img_flux2":
-                # Flux2 图生图的模型、LoRA 和提示词配置全部独立；不把
-                # 文生图/Qwen 的预设或简称带入新工作流。
-                params.presets = []
-                params.loras = []
-            else:
-                self._extract_inline_presets(params, original_text)
-                await self._extract_inline_loras(
-                    params,
-                    original_text,
-                    allow_fuzzy=True,
-                )
+            self._extract_inline_presets(params, original_text)
+            await self._extract_inline_loras(
+                params,
+                original_text,
+                allow_fuzzy=True,
+            )
         except ComfyError as exc:
             return f"{MODE_NAMES[mode]}失败：无法读取 LoRA 列表：{exc}"
         if mode == "txt2img" and not params.prompt and not params.presets and not params.loras:
@@ -11467,9 +11657,9 @@ class ComfyUIAIStudio(Star):
         third_image_path = ""
         if require_image:
             image_paths = await self._extract_images(event)
-            if mode == "img2img_flux2" and len(image_paths) > 3:
+            if mode == "img2img" and len(image_paths) > 3:
                 logger.info(
-                    "[%s] LLM Flux2 图生图收到 %s 张图片，只使用前三张",
+                    "[%s] LLM 图生图收到 %s 张图片，只使用前三张",
                     PLUGIN_NAME,
                     len(image_paths),
                 )
@@ -11478,6 +11668,18 @@ class ComfyUIAIStudio(Star):
             second_image_path = image_paths[1] if len(image_paths) > 1 else ""
             third_image_path = image_paths[2] if len(image_paths) > 2 else ""
             has_explicit_reference = self._event_has_explicit_image_reference(event)
+            if not image_path and not has_explicit_reference:
+                # 用户没有引用任何图：允许自动续接会话里记住的图。
+                # 若用户确实引用了（has_explicit_reference）却取不到，
+                # 绝不能拿别的图顶替，否则会改错对象。
+                remembered = self._recall_recent_image(event)
+                if remembered:
+                    image_path = remembered
+                    logger.info(
+                        "[%s] LLM 图生图未引用原图，已自动续接会话最近图片：%s",
+                        PLUGIN_NAME,
+                        remembered,
+                    )
             if not image_path:
                 if has_explicit_reference:
                     logger.warning(
@@ -11526,12 +11728,10 @@ class ComfyUIAIStudio(Star):
             await self._release_draw_limit(params)
             return f"{MODE_NAMES[mode]}失败：{exc}"
         # _prepare_llm_prompt 只负责整理画面描述，绝不能改变已经识别的
-        # 控制项。所有普通绘图模式都恢复预设、LoRA 和命中的专属预设；
-        # Flux2 独立图生图在上面已经清空，因此不会串入文生图配置。
-        if mode != "img2img_flux2":
-            params.presets = locked_presets
-            params.loras = locked_loras
-            params.lora_preset_tags = locked_lora_preset_tags
+        # 控制项。所有绘图模式都恢复预设、LoRA 和命中的专属预设。
+        params.presets = locked_presets
+        params.loras = locked_loras
+        params.lora_preset_tags = locked_lora_preset_tags
         try:
             await self._check_draw_queue(params, mode, event)
         except UsageError as exc:
@@ -11549,8 +11749,8 @@ class ComfyUIAIStudio(Star):
             params,
             mode,
             image_path,
-            second_image_path if mode == "img2img_flux2" else second_image_path,
-            third_image_path if mode == "img2img_flux2" else "",
+            second_image_path,
+            third_image_path,
         )
         if result is not None:
             return result
@@ -11722,6 +11922,7 @@ class ComfyUIAIStudio(Star):
         preset: str | None = None,
         artist_preset: str | None = None,
         ai: bool | None = None,
+        engine: str | None = None,
         arguments: Any = None,
     ) -> str:
         """使用本插件基于原始工作流执行文生图。
@@ -11731,23 +11932,27 @@ class ComfyUIAIStudio(Star):
         用户用自然语言提出绘画要求时必须调用此工具。即使用户只说“帮我画一张夏空的图”，
         也要调用此工具，不要先单独回复查资料。把命中的提示词预设填入 preset，
         把命中的 LoRA 指令简称填入 lora；preset 和 lora 可以同时填写。其余画面描述填入 prompt，
-        不要把“我来画一张”等聊天套话放入 prompt。prompt 必须是适配 ComfyUI Anima 工作流的英文 Danbooru 标签，
+        不要把“我来画一张”等聊天套话放入 prompt。prompt 必须遵循当前模型家族：Qwen Image 2.1 使用中文自然语言；Anima 使用英文 Danbooru 标签，
         按主体、角色、外观、服装、动作、表情、镜头、构图、场景的顺序组织，并完整保留用户要求的动作。
-        任务提交后后台执行，用户可以继续聊天。
+        用户明确要求换引擎时必须填写 engine：说“水粉/克雷亚/Krea 2”填 krea2，
+        说“Qwen/Qwen Image 2.1/千问”填 qwen21；没提就省略，沿用 WebUI 当前模型。
+        任务提交后后台执行，用户可以继续聊天。模型与采样参数默认继承 WebUI 当前模型配置档案；
+        未经用户明确指定的具体数值，不要传入任何参数覆盖项，也不要填写 model。
 
         Args:
             prompt(string): 画面描述，可以是用户自然语言；不要把预设名或 LoRA 简称遗漏在描述之外。
-            width(number): 可选图片宽度；与 height 一起设置。
-            height(number): 可选图片高度；与 width 一起设置。
-            steps(number): 可选采样步数。
-            cfg(number): 可选 CFG。
-            seed(number): 可选随机种子；不传则随机生成。
+            width(number): 仅当用户明确指定数值或宽高尺寸时填写；否则省略并继承模型档案。
+            height(number): 仅当用户明确指定数值或宽高尺寸时填写；否则省略并继承模型档案。
+            steps(number): 仅当用户明确要求具体步数时填写；否则省略并继承模型档案。
+            cfg(number): 仅当用户明确要求具体 CFG 数值时填写；否则省略并继承模型档案。
+            seed(number): 仅当用户明确要求具体种子时填写；否则省略并继承随机种子设置。
             negative_prompt(string): 可选负面提示词；不传使用 WebUI 默认值。
             model(string): 可选核心模型文件名；不传使用 WebUI 当前模型。
             lora(string): 可选多个 LoRA，优先填写指令简称，格式为 1号lora:0.8,2号lora:0.6。
             preset(string): 可选一个或多个提示词预设名称，多个用逗号分隔，例如 夏空,画面预设。
             artist_preset(string): 可选画师串预设名称，不传使用 WebUI 当前画师串。
             ai(boolean): 为兼容旧工具字段而保留；是否使用插件 AI 由 WebUI 的 LLM 提示词来源决定。
+            engine(string): 可选绘图引擎：anima（默认）、krea2（Krea 2 Turbo）、qwen21（Qwen Image 2.1）。
         """
         llm_arguments = self._normalize_llm_arguments(arguments)
         prompt = self._llm_argument_value(prompt, llm_arguments, "prompt", "")
@@ -11759,13 +11964,23 @@ class ComfyUIAIStudio(Star):
         negative_prompt = self._llm_argument_value(
             negative_prompt, llm_arguments, "negative_prompt"
         )
-        model = self._llm_argument_value(model, llm_arguments, "model")
+        model = self._llm_explicit_model(
+            event, self._llm_argument_value(model, llm_arguments, "model")
+        )
         lora = self._llm_argument_value(lora, llm_arguments, "lora")
         preset = self._llm_argument_value(preset, llm_arguments, "preset")
         artist_preset = self._llm_argument_value(
             artist_preset, llm_arguments, "artist_preset"
         )
         ai = self._llm_argument_value(ai, llm_arguments, "ai")
+        engine = self._llm_argument_value(engine, llm_arguments, "engine")
+        original_request = str(getattr(event, "message_str", "") or "").strip()
+        explicit_values = explicit_numeric_overrides(original_request)
+        width = explicit_values.get("width")
+        height = explicit_values.get("height")
+        steps = explicit_values.get("steps")
+        cfg = explicit_values.get("cfg")
+        seed = explicit_values.get("seed")
         if (
             not str(prompt or "").strip()
             and not str(preset or "").strip()
@@ -11775,7 +11990,9 @@ class ComfyUIAIStudio(Star):
 
         # LLM 偶尔会把带图的“修改图片”请求误选为 generate。工具层再做一次
         # 路由兜底，确保不会把图生图请求送进文生图工作流。
-        if self._event_has_image_hint(event) or self._looks_like_edit_request(event, prompt):
+        if (
+            self._event_has_image_hint(event) or self._looks_like_edit_request(event, prompt)
+        ) and await self._auto_edit_grounded(event):
             logger.warning(
                 "[%s] LLM 错误调用文生图工具，已自动改走图生图：提示词=%s；消息含图=%s",
                 PLUGIN_NAME,
@@ -11810,10 +12027,36 @@ class ComfyUIAIStudio(Star):
                 cfg=cfg,
                 seed=seed,
                 ai=ai,
+                engine=engine,
             )
         except UsageError as exc:
             return f"文生图参数错误：{exc}"
         return await self._llm_execute(event, params, "txt2img", require_image=False)
+
+    async def _auto_edit_grounded(self, event: AstrMessageEvent) -> bool:
+        """判断「文生图被改道图生图」是否有真实图片兜底。
+
+        插件对「引用/转发」一律按“可能含图”处理，但用户常常只是引用了一条纯文字消息。
+        若改道后取不到图片，图生图会直接拒绝并回复“请重新引用那条转发消息”。这里在改道前
+        先真取一次图，取不到就不改道，按用户原本的文生图请求继续。
+        """
+        try:
+            images = await self._extract_images(event)
+        except Exception as exc:
+            logger.warning(
+                "[%s] 判断能否改道图生图时取图失败，按文生图继续：%s",
+                PLUGIN_NAME,
+                exc,
+            )
+            return False
+        if images:
+            return True
+        logger.info(
+            "[%s] 文生图请求虽被判定为含图/改图，但未取到图片，按文生图继续：%s",
+            PLUGIN_NAME,
+            str(getattr(event, "message_str", "") or "")[:160],
+        )
+        return False
 
     @filter.llm_tool(name=LLM_TOOL_NAMES["edit"])
     async def llm_edit(
@@ -11851,7 +12094,9 @@ class ComfyUIAIStudio(Star):
         negative_prompt = self._llm_argument_value(
             negative_prompt, llm_arguments, "negative_prompt"
         )
-        model = self._llm_argument_value(model, llm_arguments, "model")
+        model = self._llm_explicit_model(
+            event, self._llm_argument_value(model, llm_arguments, "model")
+        )
         lora = self._llm_argument_value(lora, llm_arguments, "lora")
         preset = self._llm_argument_value(preset, llm_arguments, "preset")
         artist_preset = self._llm_argument_value(
@@ -11866,7 +12111,7 @@ class ComfyUIAIStudio(Star):
             prompt = self._llm_event_prompt_fallback(event)
         if not str(prompt or "").strip() and not str(preset or "").strip() and not str(lora or "").strip():
             return "图生图失败：缺少编辑要求、提示词预设或 LoRA 指令简称。"
-        draw_mode = self._img2img_mode()
+        draw_mode = "img2img"
         try:
             params = self._llm_params(
                 prompt,
@@ -11905,64 +12150,6 @@ class ComfyUIAIStudio(Star):
                 denoise,
             )
         return await self._llm_execute(event, params, draw_mode, require_image=True)
-
-    @filter.llm_tool(name=LLM_TOOL_NAMES["edit_flux2"])
-    async def llm_edit_flux2(
-        self,
-        event: AstrMessageEvent,
-        prompt: str = "",
-        denoise: float | None = None,
-        negative_prompt: str | None = None,
-        model: str | None = None,
-        ai: bool | None = None,
-        arguments: Any = None,
-    ) -> str:
-        """强制使用独立 Flux2 Klein 工作流进行图生图，支持 1 到 3 张参考图。
-
-        新引擎的模型、LoRA、提示词模板和参数均从 WebUI 的“图生图
-        Flux2”页面读取；不会读取 Qwen 图生图或文生图的 LoRA/预设。
-        第一张图片作为主参考图，第二、第三张图片会接入工作流的后续参考条件链。
-
-        Args:
-            prompt(string): 修改要求。
-            denoise(number): 可选重绘幅度。
-            negative_prompt(string): 可选负面提示词。
-            model(string): 可选核心模型文件名。
-            ai(boolean): 为兼容旧工具字段而保留。
-        """
-        llm_arguments = self._normalize_llm_arguments(arguments)
-        prompt = self._llm_argument_value(prompt, llm_arguments, "prompt", "")
-        denoise = self._llm_argument_value(denoise, llm_arguments, "denoise")
-        negative_prompt = self._llm_argument_value(
-            negative_prompt, llm_arguments, "negative_prompt"
-        )
-        model = self._llm_argument_value(model, llm_arguments, "model")
-        ai = self._llm_argument_value(ai, llm_arguments, "ai")
-        if not str(prompt or "").strip():
-            prompt = self._llm_event_prompt_fallback(event)
-        if not str(prompt or "").strip():
-            return "图生图 Flux2 失败：请提供要修改的内容。"
-        try:
-            params = self._llm_params(
-                prompt,
-                "img2img_flux2",
-                negative_prompt=negative_prompt,
-                model=model,
-                denoise=denoise,
-                ai=ai,
-            )
-        except UsageError as exc:
-            return f"图生图 Flux2 参数错误：{exc}"
-        original_request = " ".join(
-            str(value or "") for value in (getattr(event, "message_str", ""), prompt)
-        )
-        if denoise is not None and not re.search(
-            r"(?:denoise|重绘(?:幅度|强度)?|去噪(?:幅度|强度)?|强度)\s*[:：=]?\s*\d+(?:\.\d+)?",
-            original_request,
-            flags=re.IGNORECASE,
-        ):
-            params.denoise = 0.0
-        return await self._llm_execute(event, params, "img2img_flux2", require_image=True)
 
     @filter.llm_tool(name=LLM_TOOL_NAMES["upscale"])
     async def llm_upscale(
@@ -12006,7 +12193,9 @@ class ComfyUIAIStudio(Star):
         negative_prompt = self._llm_argument_value(
             negative_prompt, llm_arguments, "negative_prompt"
         )
-        model = self._llm_argument_value(model, llm_arguments, "model")
+        model = self._llm_explicit_model(
+            event, self._llm_argument_value(model, llm_arguments, "model")
+        )
         lora = self._llm_argument_value(lora, llm_arguments, "lora")
         preset = self._llm_argument_value(preset, llm_arguments, "preset")
         artist_preset = self._llm_argument_value(
@@ -12042,6 +12231,11 @@ class ComfyUIAIStudio(Star):
         data["moderation_api_key_configured"] = bool(self._get("moderation_api_key", ""))
         data["moderation_ready"] = self._moderator().available
         data["workflow_selected"] = {mode: self._workflow_path(mode).name for mode in MODE_NAMES}
+        data["prompt_enhancer_enabled"] = self._get("prompt_enhancer_enabled", True)
+        data["prompt_enhancer_defaults"] = {
+            "txt2img": TXT2IMG_TEMPLATE, "img2img": IMG2IMG_TEMPLATE,
+            "source": PROMPT_ENHANCER_SOURCE,
+        }
         data["plugin_ai_anima_context_preview"] = str(
             self._get("plugin_ai_anima_context", "")
             or build_anima_context(self.plugin_dir, 6000, self._anima_template_override())
@@ -12062,14 +12256,6 @@ class ComfyUIAIStudio(Star):
             "astrbot_user_prompt_template": DEFAULT_IMG2IMG_ASTRBOT_USER_PROMPT_TEMPLATE,
             "output_format": DEFAULT_IMG2IMG_OUTPUT_FORMAT,
             "system_prompt": DEFAULT_IMG2IMG_PLUGIN_AI_LLM_SYSTEM_PROMPT,
-        }
-        data["img2img_flux2_prompt_defaults"] = {
-            "system_prompt": DEFAULT_IMG2IMG_PLUGIN_AI_LLM_SYSTEM_PROMPT,
-            "knowledge": DEFAULT_IMG2IMG_PLUGIN_AI_KNOWLEDGE,
-            "prompt_template": DEFAULT_IMG2IMG_PLUGIN_AI_USER_PROMPT_TEMPLATE,
-            "output_format": DEFAULT_IMG2IMG_OUTPUT_FORMAT,
-            "default_positive": FLUX2_IMG2IMG_DEFAULT_POSITIVE,
-            "default_negative": FLUX2_IMG2IMG_DEFAULT_NEGATIVE,
         }
         return data
 
@@ -12118,6 +12304,23 @@ class ComfyUIAIStudio(Star):
             env = await self._environment(self._client())
             # classes 只用于运行时诊断，不能把 set 直接交给 JSON 编码器。
             compatible_models = self._compatible_models(env)
+            txt2img_profiles = {
+                name: self._model_profile(name, "txt2img") for name in compatible_models
+            }
+            img2img_models = list(dict.fromkeys(env["diffusion_models"] + env["unet"]))
+            img2img_profiles = {
+                name: self._model_profile(name, "img2img") for name in img2img_models
+            }
+            qwen_model_names = [name for name in img2img_models if self._is_qwen21_model(name)]
+            qwen_txt2img_models = [name for name in compatible_models if self._is_qwen21_model(name)]
+            txt2img_turbo_profiles = {
+                name: self._model_profile(name, "txt2img", accelerated=True)
+                for name in qwen_txt2img_models
+            }
+            img2img_turbo_profiles = {
+                name: self._model_profile(name, "img2img", accelerated=True)
+                for name in qwen_model_names
+            }
             return json_response({
                 "diffusion_models": env["diffusion_models"],
                 "checkpoints": env["checkpoints"],
@@ -12128,29 +12331,65 @@ class ComfyUIAIStudio(Star):
                 "vae": env["vae"],
                 "compatible_models": compatible_models,
                 "current_model": self._model_name(env, mode="txt2img"),
-                "model_profiles": {
-                    name: self._model_profile(name) for name in compatible_models
+                "model_profiles": txt2img_profiles,
+                "model_profiles_turbo": txt2img_turbo_profiles,
+                "img2img_model_profiles": img2img_profiles,
+                "img2img_model_profiles_turbo": img2img_turbo_profiles,
+                "qwen21_components": {
+                    "base_model": qwen_model_names,
+                    "text_encoder": [name for name in env["text_encoders"] if "qwen3vl" in name.casefold()],
+                    "vae": [name for name in env["vae"] if "qwen_image_2.1" in name.casefold() or "qwen_image_2_1" in name.casefold()],
+                    "turbo_lora": [name for name in env["loras"] if "qwen_image_2.1_turbo" in name.casefold() or "qwen_image_2_1_turbo" in name.casefold()],
                 },
+                "qwen21_nsfw_lora_default": QWEN_IMG2IMG_NSFW_LORA_DEFAULT,
+                "qwen21_nsfw_loras": [
+                    name for name in env["loras"]
+                    if (
+                        "qwen-image-2.1/" in name.replace("\\", "/").casefold()
+                        or "qwen_image_2.1/" in name.replace("\\", "/").casefold()
+                    )
+                    and "turbo" not in name.casefold()
+                ],
                 "anima_29b_patch_installed": self._anima_29b_patch_installed(),
                 "img2img_models": list(dict.fromkeys(env["diffusion_models"] + env["unet"])),
-                "img2img_clip_models": env.get("clip_gguf") or env["text_encoders"],
+                # Qwen Image Edit GGUF 编码器与 Qwen Image 2.1 的 Qwen3-VL
+                # safetensors 编码器分别位于 clip / text_encoders；完整显示
+                # 两类模型，否则有 GGUF 时 WebUI 会把 Qwen 2.1 编码器藏掉。
+                "img2img_clip_models": list(dict.fromkeys([
+                    *env.get("clip_gguf", []), *env["text_encoders"]
+                ])),
                 "img2img_vae_models": env["vae"],
                 "current_img2img": self._get("img2img_unet_name", QWEN_IMG2IMG_UNET_DEFAULT),
                 "current_img2img_clip": self._get("img2img_clip_name", QWEN_IMG2IMG_CLIP_DEFAULT),
                 "current_img2img_vae": self._get("img2img_vae_name", QWEN_IMG2IMG_VAE_DEFAULT),
-                "img2img_flux2_models": list(dict.fromkeys(env["diffusion_models"] + env["unet"] + env["checkpoints"])),
-                "img2img_flux2_clip_models": env.get("flux2_text_encoders") or env["text_encoders"],
-                "img2img_flux2_vae_models": env["vae"],
-                "img2img_flux2_loras": env["loras"],
-                "current_img2img_flux2": self._get("img2img_flux2_unet_name", FLUX2_IMG2IMG_UNET_DEFAULT),
-                "current_img2img_flux2_clip": self._get("img2img_flux2_clip_name", FLUX2_IMG2IMG_CLIP_DEFAULT),
-                "current_img2img_flux2_vae": self._get("img2img_flux2_vae_name", FLUX2_IMG2IMG_VAE_DEFAULT),
-                "current_img2img_flux2_lora": self._get("img2img_flux2_lora_name", FLUX2_IMG2IMG_LORA_DEFAULT),
-                "current_img2img_engine": self._img2img_mode(),
                 "enabled_loras": list(self._get("lora_list", []) or []),
             })
         except (ComfyError, UsageError) as exc:
             return json_response({"error": str(exc)}, status_code=500)
+
+    async def api_model_profiles(self):
+        from astrbot.api.web import json_response, request
+
+        if request.method == "GET":
+            return json_response({"profiles": load_profiles(self.model_profiles_path)})
+        data = await self._request_json(request, {})
+        if not isinstance(data, dict):
+            return json_response({"error": "请求体必须是对象"}, status_code=400)
+        model = str(data.get("model", "") or "").strip()
+        mode = str(data.get("mode", "txt2img") or "txt2img")
+        accelerated = bool(data.get("accelerated", False))
+        profile = data.get("profile")
+        if not model or mode not in {"txt2img", "img2img"} or not isinstance(profile, dict):
+            return json_response({"error": "模型、绘图模式或档案格式无效"}, status_code=400)
+        try:
+            save_profile(self.model_profiles_path, model, mode, profile, accelerated)
+        except OSError as exc:
+            return json_response({"error": f"模型档案保存失败：{exc}"}, status_code=500)
+        return json_response({
+            "ok": True,
+            "key": profile_key(model, mode, accelerated),
+            "profile": self._model_profile(model, mode, accelerated),
+        })
 
     async def api_workflows(self):
         from astrbot.api.web import json_response
@@ -12158,9 +12397,93 @@ class ComfyUIAIStudio(Star):
         return json_response({
             "directory": directory,
             "workflow_dir": directory,
-            "files": sorted(path.name for path in self._workflow_dir().glob("*.json")),
+            "files": sorted({
+                path.name for directory in (self._workflow_dir(), self.plugin_dir / "workflows")
+                for path in directory.glob("*.json")
+            }),
             "selected": {mode: self._workflow_path(mode).name for mode in MODE_NAMES},
+            "selected_paths": {
+                mode: str(self._get(f"workflow_{mode}", ""))
+                if str(self._get(f"workflow_{mode}", "") or "").startswith("bundled:")
+                else str(self._workflow_path(mode))
+                if Path(str(self._get(f"workflow_{mode}", "") or "")).is_absolute()
+                else self._workflow_path(mode).name
+                for mode in MODE_NAMES
+            },
+            "bundled_files": sorted(
+                f"bundled:{path.name}" for path in (self.plugin_dir / "workflows").glob("*.json")
+            ),
         })
+
+    async def api_bundles(self):
+        """List, inspect or explicitly apply portable bundled recipes.
+
+        Returns:
+            Chinese diagnostics or a selected-mode-only configuration result.
+        """
+        from astrbot.api.web import json_response, request
+
+        entries = builtin_catalog(self.plugin_dir)
+        if request.method == "GET":
+            return json_response({
+                "schemes": entries, "connected": None,
+                "workflows": sorted(path.name for path in (self.plugin_dir / "workflows").glob("*.json")),
+                "knowledge_bundled": (self.plugin_dir / "knowledge").is_dir(),
+                "update_url": COMFY_UPDATE_URL,
+                "notice": "内置工作流、推荐参数及提示词规则，不含模型权重和私人设置。检查通过仅表示节点和文件可选，尚未验证显存及出图效果。",
+            })
+        data = await self._request_json(request, {})
+        if not isinstance(data, dict) or data.get("action") not in {"check", "apply"}:
+            return json_response({"error": "请指定检查或应用内置方案"}, status_code=400)
+        action = data["action"]
+        entry = next((item for item in entries if item["id"] == data.get("id")), None)
+        mode = str(data.get("mode", "") or "")
+        if action == "apply" and (entry is None or mode not in entry["workflows"]):
+            return json_response({"error": "内置方案或绘图模式无效"}, status_code=400)
+        try:
+            info = await self._client().object_info()
+        except ComfyError as exc:
+            return json_response({"connected": False, "error": str(exc), "schemes": entries}, status_code=400 if action == "apply" else 200)
+        if action == "check":
+            for item in entries:
+                item["checks"] = {
+                    selected_mode: inspect_bundle(item, self.plugin_dir, info, selected_mode)
+                    for selected_mode in item["workflows"]
+                }
+            return json_response({"connected": True, "schemes": entries, "update_url": COMFY_UPDATE_URL})
+        check = inspect_bundle(entry, self.plugin_dir, info, mode)
+        if not check["ready"]:
+            return json_response({"error": "内置方案所需文件或节点尚未就绪；请先补齐后再应用", "check": check}, status_code=400)
+        model = check["resolved"]["model"]
+        accelerated = entry["id"] == "qwen21-turbo"
+        saved = load_profiles(self.model_profiles_path).get(profile_key(model, mode, accelerated), {})
+        parameters = {**entry["parameters"], **{
+            key: saved[key] for key in entry["parameters"] if key in saved
+        }}
+        if accelerated:
+            parameters.update(steps=8, scheduler="manual_sigmas")
+        if mode == "txt2img":
+            updates = {key: value for key, value in parameters.items() if key in WRITABLE_CONFIG}
+            updates.update(model_name=model, clip_name=check["resolved"]["clip"], vae_name=check["resolved"]["vae"], qwen21_turbo_enabled=accelerated, source_workflow="")
+        else:
+            updates = {f"{mode}_{key}": value for key, value in parameters.items() if f"{mode}_{key}" in WRITABLE_CONFIG}
+            updates.update({f"{mode}_unet_name": model, f"{mode}_clip_name": check["resolved"]["clip"], f"{mode}_vae_name": check["resolved"]["vae"]})
+            if mode == "img2img":
+                updates.update(img2img_match_input_size=True, qwen21_img2img_turbo_enabled=accelerated)
+            else:
+                updates.update(qwen21_img2img_turbo_enabled=accelerated)
+        workflow_id = f"bundled:{entry['workflows'][mode]}"
+        updates[f"workflow_{mode}"] = workflow_id
+        profile = {**saved, **parameters, "clip_name": check["resolved"]["clip"], "vae_name": check["resolved"]["vae"], "workflow": workflow_id}
+        try:
+            if mode in {"txt2img", "img2img"}:
+                save_profile(self.model_profiles_path, model, mode, profile, accelerated)
+            for key, value in updates.items():
+                self._set(key, value)
+            self._save_config()
+        except OSError as exc:
+            return json_response({"error": f"保存内置方案失败：{exc}"}, status_code=500)
+        return json_response({"ok": True, "changed": sorted(updates), "mode": mode, "scheme": entry["title"], "check": check, "preserved_saved_parameters": bool(saved)})
 
     async def api_config(self):
         from astrbot.api.web import json_response, request
@@ -12209,6 +12532,49 @@ class ComfyUIAIStudio(Star):
                 return json_response({"ok": True, "model": translator.model, "message": "连接成功，模型响应正常"})
             return json_response({"error": "未知操作，请选择获取模型列表或测试连接"}, status_code=400)
         except AIError as exc:
+            return json_response({"error": str(exc)}, status_code=400)
+
+    async def api_prompt_enhancer(self):
+        """Preview enhancement without saving settings or submitting a workflow.
+
+        Returns:
+            JSON containing input, final prompt, mode, and selected model.
+        """
+        from astrbot.api.web import json_response, request
+
+        data = await self._request_json(request, {})
+        if not isinstance(data, dict):
+            return json_response({"error": "请求体必须是对象"}, status_code=400)
+        mode = str(data.get("mode", "txt2img"))
+        if mode not in {"txt2img", "img2img"}:
+            return json_response({"error": "请选择文生图或 Qwen 图生图"}, status_code=400)
+        text = str(data.get("prompt", "") or "").strip()
+        if not text or len(text) > 4000:
+            return json_response({"error": "请输入 1 到 4000 字的画面描述或编辑要求"}, status_code=400)
+        model = str(data.get("model") or self._get(
+            "model_name" if mode == "txt2img" else f"{mode}_unet_name", "",
+        ) or "")
+        # WebUI 预览可以显式指定 engine，用于在不切主模型的情况下试 Krea 2 的写法。
+        engine = str(data.get("engine") or "").strip()
+        # Parse control terms using task-local parameters; do not save stores.
+        params = DrawParams(prompt=text, mode=mode)
+        try:
+            self._extract_inline_presets(params)
+            await self._extract_inline_loras(params)
+            editable = self._remove_locked_control_terms(params.prompt, params)
+            result = await self._enhance_prompt(
+                None, editable, source="plugin", mode=mode, model=model,
+                engine=engine, preview_config=data,
+            ) if editable else ""
+            locked = [self.presets.effective(name) for name in params.presets]
+            return json_response({
+                "ok": True, "mode": mode, "model": model, "input": text,
+                "prompt": result, "presets": params.presets, "loras": params.loras,
+                "preset_content": self._merge_prompt_fragments(*locked),
+                "prompt_profile": describe_prompt_profile(model, engine),
+                "message": "测试成功，仅预览提示词，未提交绘图任务",
+            })
+        except (AIError, UsageError) as exc:
             return json_response({"error": str(exc)}, status_code=400)
 
     async def api_moderation_test(self):

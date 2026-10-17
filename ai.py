@@ -58,7 +58,9 @@ class AITranslator:
         # 只要服务地址和模型存在就允许调用；明确写 false 时仍然保持关闭。
         configured = bool(self.base_url and self.model)
         self.enabled = bool(cfg.get("ai_enabled", configured))
-        self.temperature = max(0.0, min(2.0, float(cfg.get("ai_temperature", 0.2) or 0.2)))
+        self.temperature = max(
+            0.0, min(2.0, float(cfg.get("ai_temperature", 0.2) or 0.2))
+        )
         self.to_danbooru = bool(cfg.get("ai_danbooru", True))
 
     def _headers(self) -> dict[str, str]:
@@ -84,7 +86,7 @@ class AITranslator:
         return message[:500]
 
     @staticmethod
-    def _content_value(data: Any) -> str:
+    def _content_value(data: Any, *, allow_reasoning: bool = True) -> str:
         """从常见 OpenAI 兼容响应中提取文本。
 
         不同的本地网关和推理模型会把结果放在 ``message.content``、
@@ -92,6 +94,10 @@ class AITranslator:
         多模态数组。以前只读取第一种格式，模型实际已经返回内容时也会被
         错误判定为“返回格式无法解析”。
         """
+
+        text_keys = ("text", "content", "value", "output_text")
+        if allow_reasoning:
+            text_keys += ("reasoning_content", "reasoning")
 
         def flatten(value: Any) -> str:
             if isinstance(value, str):
@@ -102,12 +108,20 @@ class AITranslator:
                     if isinstance(item, str):
                         parts.append(item)
                     elif isinstance(item, dict):
-                        nested = item.get("text") or item.get("content") or item.get("value")
+                        if not allow_reasoning and item.get("type") in {
+                            "reasoning",
+                            "thinking",
+                            "analysis",
+                        }:
+                            continue
+                        nested = (
+                            item.get("text") or item.get("content") or item.get("value")
+                        )
                         if nested:
                             parts.append(flatten(nested))
                 return "".join(parts)
             if isinstance(value, dict):
-                for key in ("text", "content", "value", "output_text", "reasoning_content", "reasoning"):
+                for key in text_keys:
                     if value.get(key):
                         return flatten(value[key])
             return str(value or "") if value is not None else ""
@@ -119,7 +133,11 @@ class AITranslator:
             choice = choices[0] if isinstance(choices[0], dict) else {}
             message = choice.get("message")
             if isinstance(message, dict):
-                for key in ("content", "text", "reasoning_content", "reasoning"):
+                for key in (
+                    ("content", "text", "reasoning_content", "reasoning")
+                    if allow_reasoning
+                    else ("content", "text")
+                ):
                     value = flatten(message.get(key))
                     if value.strip():
                         return value
@@ -127,7 +145,11 @@ class AITranslator:
                 value = flatten(message)
                 if value.strip():
                     return value
-            for key in ("text", "content", "reasoning_content", "reasoning"):
+            for key in (
+                ("text", "content", "reasoning_content", "reasoning")
+                if allow_reasoning
+                else ("text", "content")
+            ):
                 value = flatten(choice.get(key))
                 if value.strip():
                     return value
@@ -143,13 +165,17 @@ class AITranslator:
             raise AIError("请先填写 AI 服务地址")
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(self._url("models"), headers=self._headers())
+                response = await client.get(
+                    self._url("models"), headers=self._headers()
+                )
                 response.raise_for_status()
                 data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise AIError(f"获取模型列表失败：{self._error_text(exc)}") from exc
 
-        values = data.get("data", data.get("models", [])) if isinstance(data, dict) else data
+        values = (
+            data.get("data", data.get("models", [])) if isinstance(data, dict) else data
+        )
         if not isinstance(values, list):
             raise AIError("获取模型列表失败：服务返回格式不是模型列表")
         models: list[str] = []
@@ -176,7 +202,9 @@ class AITranslator:
         }
         try:
             async with httpx.AsyncClient(timeout=60) as client:
-                response = await client.post(self._url("chat/completions"), json=body, headers=self._headers())
+                response = await client.post(
+                    self._url("chat/completions"), json=body, headers=self._headers()
+                )
                 response.raise_for_status()
                 data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -190,7 +218,9 @@ class AITranslator:
             raise AIError("AI 未配置，请在 AstrBot WebUI 中填写 AI 地址、模型并启用 AI")
         return await self.generate(
             f"画面描述：{text}",
-            system_prompt=DANBOORU_SYSTEM_PROMPT if self.to_danbooru else PLAIN_SYSTEM_PROMPT,
+            system_prompt=DANBOORU_SYSTEM_PROMPT
+            if self.to_danbooru
+            else PLAIN_SYSTEM_PROMPT,
             require_enabled=True,
         )
 
@@ -202,6 +232,7 @@ class AITranslator:
         require_enabled: bool = False,
         max_tokens: int | None = None,
         preserve_newlines: bool = False,
+        allow_reasoning: bool = True,
     ) -> str:
         """调用插件配置的 OpenAI 兼容接口生成文本。"""
         if require_enabled and not self.enabled:
@@ -220,12 +251,14 @@ class AITranslator:
             body["max_tokens"] = max(1, int(max_tokens))
         try:
             async with httpx.AsyncClient(timeout=120) as client:
-                response = await client.post(self._url("chat/completions"), json=body, headers=self._headers())
+                response = await client.post(
+                    self._url("chat/completions"), json=body, headers=self._headers()
+                )
                 response.raise_for_status()
                 data = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise AIError(f"AI 请求失败：{self._error_text(exc)}") from exc
-        value = self._content_value(data)
+        value = self._content_value(data, allow_reasoning=allow_reasoning)
         if not value.strip():
             raise AIError("AI 返回格式无法解析")
         result = (
