@@ -316,6 +316,8 @@ AstrBot/data/plugins/astrbot_plugin_comfyui_ai_studio/
 ├── app.js
 ├── index.html
 ├── style.css
+├── p5-fonts.css / p5-fx.js / p5-ui.js / p5-bg.js   # WebUI P5 皮肤（与 pages/console 内同名文件保持一致）
+├── pages/console/                                # AstrBot 插件页面（与根目录前端副本内容相同）
 ├── metadata.yaml
 ├── _conf_schema.json
 ├── desktop/
