@@ -230,6 +230,7 @@
         <div><h2><svg class="ui-ic" aria-hidden="true"><use href="#i-sliders"/></svg>文生图模型与默认参数</h2><p>这里的模型和参数只控制文生图；指令或 LLM 明确传入参数时会优先使用单次参数。</p></div>
         <button id="saveTxt2ImgSettings" class="primary" type="button"><svg class="ui-ic" aria-hidden="true"><use href="#i-save"/></svg>保存文生图设置</button>
       </div>
+      <div class="form-sub" role="heading" aria-level="3">核心模型与组件</div>
       <select id="model" class="select"></select>
       <p id="modelHint" class="field-hint"></p>
       <div class="form-grid">
@@ -240,14 +241,17 @@
       <label class="txt2img-workflow-setting">当前文生图工作流<select id="txt2img_workflow_select" class="select"></select><small class="field-hint">切换已识别模型时会自动选择推荐工作流；也可以在这里手动切换，点击“保存文生图设置”后固定为当前模型的配置。</small></label>
       <div class="form-grid"><label class="check"><input id="qwen21_turbo_enabled" type="checkbox">Qwen Image 2.1 Turbo LoRA 加速（8 步官方 sigma）</label><label>Turbo LoRA 权重<input id="qwen21_turbo_lora_strength" class="input" type="number" min="0" max="2" step="0.05"></label></div>
       <div class="form-grid draw-settings-grid">
+        <div class="form-sub" role="heading" aria-level="3">尺寸与种子</div>
         <label>宽度<input id="width" class="input" type="number" min="64" step="8"></label>
         <label>高度<input id="height" class="input" type="number" min="64" step="8"></label>
-        <label>步数<input id="steps" class="input" type="number" min="1" max="200" step="1"></label>
         <label>种子<input id="seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
+        <div class="form-sub" role="heading" aria-level="3">采样</div>
+        <label>步数<input id="steps" class="input" type="number" min="1" max="200" step="1"></label>
         <label>CFG<input id="cfg" class="input" type="number" min="0" max="30" step="0.1"></label>
         <label>采样器<input id="sampler_name" class="input" type="text"></label>
         <label>调度器<input id="scheduler" class="input" type="text"></label>
         <label>图生图重绘幅度<input id="denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
+        <div class="form-sub" role="heading" aria-level="3">高清放大</div>
         <label>高清放大倍率<input id="hires_scale" class="input" type="number" min="1" max="8" step="0.1"></label>
         <label>高清放大步数<input id="hires_steps" class="input" type="number" min="1" max="200" step="1"></label>
         <label>高清放大重绘幅度<input id="hires_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
@@ -300,30 +304,35 @@
         <button id="saveImg2ImgSettings" class="primary" type="button"><svg class="ui-ic" aria-hidden="true"><use href="#i-save"/></svg>保存图生图设置</button>
       </div>
       <div class="form-grid">
+        <div class="form-sub" role="heading" aria-level="3">模型与加速</div>
         <label>图生图核心模型（UNet）<select id="img2img_unet_name" class="select"></select><small class="field-hint">在此选择 Qwen Image 2.1；选择后自动套用 Qwen Edit 工作流及对应编码器、VAE 和采样参数。</small></label>
         <label class="check"><input id="qwen21_img2img_turbo_enabled" type="checkbox">Qwen Image 2.1 Turbo LoRA 加速（官方 8 步）</label>
         <label>独立文本编码器<select id="img2img_clip_name" class="select"></select></label>
         <label>独立 VAE<select id="img2img_vae_name" class="select"></select></label>
+        <div class="form-sub" role="heading" aria-level="3">LoRA</div>
         <label class="lora-isolated-field">★ 独立 LoRA（图生图唯一长期生效）<select id="img2img_lora_name" class="select"><option value="">不使用</option></select></label>
         <label>LoRA 权重<input id="img2img_lora_strength" class="input" type="number" min="-2" max="2" step="0.05"></label>
         <label class="check"><input id="img2img_nsfw_lora_enabled" type="checkbox">额外启用 Qwen Image 2.1 NSFW LoRA（默认关闭）</label>
         <label>Qwen Image 2.1 NSFW LoRA<select id="img2img_nsfw_lora_name" class="select"><option value="">未检测到 LoRA</option></select><small class="field-hint">只兼容 Qwen Image 2.1 基础模型；不强行注入触发词。</small></label>
         <label>NSFW LoRA 权重<input id="img2img_nsfw_lora_strength" class="input" type="number" min="0" max="2" step="0.05"><small class="field-hint">默认 0.8；只在上方开关开启时叠加。</small></label>
+        <div class="form-sub" role="heading" aria-level="3">尺寸与参考图</div>
         <label>输出宽度<input id="img2img_width" class="input" type="number" min="64" step="8"></label>
         <label>输出高度<input id="img2img_height" class="input" type="number" min="64" step="8"></label>
         <label class="check"><input id="img2img_keep_aspect_ratio" type="checkbox" checked>按原图宽高比输出</label>
+        <label class="check"><input id="img2img_match_input_size" type="checkbox">默认使用输入图原始尺寸</label>
+        <label>参考图最大边<input id="img2img_largest_size" class="input" type="number" min="64" step="64"></label>
+        <label>参考图裁剪方式<select id="img2img_crop" class="select"><option value="center">居中裁剪</option><option value="disabled">不裁剪</option></select></label>
+        <label>输入缩放算法<input id="img2img_scale_method" class="input" type="text"></label>
+        <p class="field-hint wide">同一条消息附两张图时，第一张是主图，第二张作为 Qwen 的第二参考图。未明确填写宽高时默认保持主图尺寸和比例。</p>
+        <div class="form-sub" role="heading" aria-level="3">采样</div>
         <label>采样步数<input id="img2img_steps" class="input" type="number" min="1" max="200" step="1"><small class="field-hint">Qwen 2.1 普通档自动设为 25 步；开启 Turbo 后自动设为 8 步。</small></label>
         <label>CFG<input id="img2img_cfg" class="input" type="number" min="0" max="30" step="0.1"><small class="field-hint">Qwen 图生图建议 CFG 1.0</small></label>
         <label>种子<input id="img2img_seed" class="input" type="number" min="-1" step="1"><small class="field-hint">-1 表示每次随机</small></label>
         <label>采样器<input id="img2img_sampler_name" class="input" type="text"></label>
         <label>调度器<input id="img2img_scheduler" class="input" type="text"></label>
         <label>重绘幅度<input id="img2img_denoise" class="input" type="number" min="0" max="1" step="0.01"></label>
-        <label>输入缩放算法<input id="img2img_scale_method" class="input" type="text"></label>
-        <label>参考图最大边<input id="img2img_largest_size" class="input" type="number" min="64" step="64"></label>
-        <label>参考图裁剪方式<select id="img2img_crop" class="select"><option value="center">居中裁剪</option><option value="disabled">不裁剪</option></select></label>
-        <label class="check"><input id="img2img_match_input_size" type="checkbox">默认使用输入图原始尺寸</label>
-        <p class="field-hint wide">同一条消息附两张图时，第一张是主图，第二张作为 Qwen 的第二参考图。未明确填写宽高时默认保持主图尺寸和比例。</p>
         <label>AuraFlow 偏移<input id="img2img_sampling_shift" class="input" type="number" min="0" max="100" step="0.01"></label>
+        <div class="form-sub" role="heading" aria-level="3">提示词与输出</div>
         <label class="wide">图生图默认正面提示词<textarea id="img2img_default_positive" class="textarea"></textarea></label>
         <label class="wide">图生图默认负面提示词<textarea id="img2img_default_negative" class="textarea"></textarea></label>
         <label class="wide">输出文件名前缀<input id="img2img_filename_prefix" class="input" type="text" placeholder="例如：astrbot/img2img_qwen"></label>
