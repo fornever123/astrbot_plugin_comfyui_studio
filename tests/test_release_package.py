@@ -42,6 +42,7 @@ ROOT_FILES = (
     "p5-fx.js",
     "p5-ui.js",
     "p5-bg.js",
+    "p5-forms.js",
 )
 SHIPPED_ASSETS = (
     "pages/console/index.html",
@@ -51,6 +52,7 @@ SHIPPED_ASSETS = (
     "pages/console/p5-fx.js",
     "pages/console/p5-ui.js",
     "pages/console/p5-bg.js",
+    "pages/console/p5-forms.js",
     "knowledge/提示词模版.txt",
     "knowledge/qwen21_提示词模版.txt",
     "knowledge/qwen21_提示词模版_nsfw.txt",
